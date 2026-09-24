@@ -129,6 +129,9 @@ const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsP
 const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDialog"));
 const AiCaptionSuggestion = lazy(() => import("./components/AiCaptionSuggestion"));
 const FancyTextTool = lazy(() => import("./components/FancyTextTool"));
+import CheckWritingButton from "../../components/proofread/CheckWritingButton";
+import ProofreadResult from "../../components/proofread/ProofreadResult";
+import { useProofread } from "../../hooks/useProofread";
 const SubmissionReadOnlyBody = lazy(() => import("./components/SubmissionReadOnlyView"));
 const TopPostTemplateModal = lazy(() => import("./components/TopPostTemplateModal"));
 const EngagementRecommendationsPanel = lazy(() =>
@@ -874,6 +877,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form.files, form.savedAssets],
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
+  const proofread = useProofread(form.id);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -3162,6 +3166,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                         forceOpen={composerTourPanel === "fancy"}
                       />
                     </Suspense>
+                    <CheckWritingButton
+                      state={proofread.state}
+                      disabled={!form.caption.trim()}
+                      onCheck={() => void proofread.check(form.caption)}
+                    />
                   </div>
                 ) : undefined
               }
@@ -3223,6 +3232,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     </div>
                   )}
               </div>
+              {!isReadOnlySubmission && (
+                <ProofreadResult
+                  state={proofread.state}
+                  issues={proofread.issues}
+                  text={form.caption}
+                  onApply={(issue) => updateCaption(proofread.apply(form.caption, issue))}
+                  onDismiss={proofread.dismiss}
+                />
+              )}
               {canUseAiCaption && aiCaption.variants && (
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                   <AiCaptionSuggestion

@@ -536,6 +536,8 @@ public class AuditLogService {
                 "Guard rail overridden (calendar reschedule)";
             case "MANUAL_PUBLISH_RETRY_OVERRIDE" ->
                 "Guard rail overridden (failed-post retry)";
+            case "LATE_PUBLISH_OVERRIDE" ->
+                "Approved after its slot — published now";
             case "GUARD_RAIL_CONFIG_UPDATED" ->
                 "Guard rail settings changed";
             // ── Manual publishing ──
@@ -783,6 +785,11 @@ public class AuditLogService {
                 yield "Bypassed a guard rail to schedule " + what + (to != null ? " for " + to : "")
                 + (rule != null && !rule.isBlank() ? " (" + rule + ")" : "")
                 + (reason != null ? " — reason: " + reason : "");
+            }
+            case "LATE_PUBLISH_OVERRIDE" -> {
+                String from = fmtSlot(m.get("originalSlot"));
+                yield "Approved " + what + " after its publish slot" + (from != null ? " (" + from + ")" : "")
+                + " had passed and published it immediately";
             }
             case "SUBMISSION_PUBLISHED" ->
                 "Published " + what + " to the DASIG Facebook Page"

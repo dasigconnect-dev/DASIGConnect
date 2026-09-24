@@ -13,7 +13,7 @@ interface AiSuggestedMediaTabProps {
   caption: string;
   category: string;
   tags: string[];
-  selectedImageCount: number;
+  selectedImageCount?: number;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
 }
@@ -26,7 +26,7 @@ export default function AiSuggestedMediaTab({
   caption,
   category,
   tags,
-  selectedImageCount,
+  selectedImageCount = 0,
   onAddItems,
   disabled,
 }: AiSuggestedMediaTabProps) {

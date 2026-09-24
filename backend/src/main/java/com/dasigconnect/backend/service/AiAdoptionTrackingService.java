@@ -40,6 +40,9 @@ public class AiAdoptionTrackingService {
 
     static final String ALBUM_MATCH = "album_match";
     static final String TEMPLATE_DRAFT = "template_draft";
+    static final String PROOFREAD = "proofread";
+    static final String CHECKED = "checked";
+    static final String APPLIED = "applied";
     static final String SUGGESTED = "suggested";
     static final String KEPT = "kept";
     static final String CHANGED = "changed";
@@ -118,6 +121,22 @@ public class AiAdoptionTrackingService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordTemplateDraft(UUID institutionId, String action) {
         save(null, institutionId, TEMPLATE_DRAFT, action, null);
+    }
+
+    /**
+     * A caption writing check ran and returned {@code findings} suggestions.
+     * The count lives in {@code suggested_value} so adoption can be reported
+     * as fixes applied / fixes suggested.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordProofreadCheck(UUID submissionId, UUID institutionId, int findings) {
+        save(submissionId, institutionId, PROOFREAD, CHECKED, String.valueOf(Math.max(findings, 0)));
+    }
+
+    /** The user applied one suggested writing fix. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordProofreadFixApplied(UUID submissionId, UUID institutionId) {
+        save(submissionId, institutionId, PROOFREAD, APPLIED, null);
     }
 
     /** Album names from a stored proposal ("status\nName\nName…"); the status line is skipped. */

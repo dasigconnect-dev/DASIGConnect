@@ -368,6 +368,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
      * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions
      * whose scheduled publication time has already passed — they missed their review
      * window and must be transitioned to MISSED_REVIEW.
+     *
+     * A submission someone is actively reviewing (an unexpired review lock) is
+     * skipped: taking it mid-review would make their decision fail. If the lock
+     * expires or is released without a decision it reverts to pending and the
+     * next sweep catches it; approving it after the slot is handled by
+     * {@code ValidationService.approve} (pick a new slot, or Admin publish-now).
      */
     @Query("""
         SELECT s FROM Submission s
@@ -377,9 +383,14 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         )
         AND s.scheduledAt IS NOT NULL
         AND s.scheduledAt < :cutoff
+        AND NOT EXISTS (
+            SELECT rl.id FROM ReviewLock rl
+            WHERE rl.submission.id = s.id
+            AND rl.expiresAt > :now
+        )
         ORDER BY s.scheduledAt ASC
         """)
-    List<Submission> findMissedReviewSubmissions(@Param("cutoff") Instant cutoff);
+    List<Submission> findMissedReviewSubmissions(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
 
     /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
     @Query("SELECT s FROM Submission s JOIN FETCH s.institution JOIN FETCH s.contributor WHERE s.id = :id")

@@ -19,5 +19,11 @@ public record AiPerformanceDto(
         long templateDraftsGenerated,
         long templateDraftsSaved,
         double templateDraftSaveRate,
+        /** Caption writing checks run. */
+        long proofreadChecks,
+        /** Fixes those checks suggested, and how many were applied. */
+        long proofreadSuggestions,
+        long proofreadFixesApplied,
+        double proofreadApplyRate,
         boolean insufficientData) {
 }

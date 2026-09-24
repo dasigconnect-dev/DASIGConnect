@@ -578,7 +578,9 @@ class ValidationServiceTest {
         submission.setId(UUID.randomUUID());
         submission.setStatus(SubmissionStatus.pending);
         submission.setFastTrack(false);
-        java.time.Instant slot = java.time.Instant.parse("2026-06-01T08:00:00Z");
+        // Relative, not a fixed date: approving a slot that has already passed is refused.
+        java.time.Instant slot = java.time.Instant.now().plus(java.time.Duration.ofDays(7))
+                .truncatedTo(java.time.temporal.ChronoUnit.HOURS);
         submission.setScheduledAt(slot);
 
         Institution institution = new Institution();
@@ -851,5 +853,77 @@ class ValidationServiceTest {
                 .map(e -> (com.dasigconnect.backend.event.SubmissionApprovedEvent) e)
                 .findFirst().orElseThrow();
         assertThat(approvedEvent.edited()).isFalse();
+    }
+
+    private Submission scheduledInReview(java.time.Instant slot) {
+        Submission submission = inReviewSubmission();
+        submission.setFastTrack(false);
+        submission.setScheduledAt(slot);
+        stubInReview(submission);
+        return submission;
+    }
+
+    @Test
+    void approve_slotPassed_refusesWithoutAnExplicitChoice() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), moderator()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("slot has already passed");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.in_review);
+    }
+
+    @Test
+    void approve_slotPassed_publishNowIsAdminOnly() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), true, moderator()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Only an Administrator");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.in_review);
+    }
+
+    @Test
+    void approve_slotPassed_adminPublishNow_movesSlotToNowAndAudits() {
+        java.time.Instant passed = java.time.Instant.now().minusSeconds(600);
+        Submission submission = scheduledInReview(passed);
+
+        validationService.approve(submission.getId(), true, admin());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        assertThat(submission.getScheduledAt()).isAfter(passed);
+        assertThat(submission.getScheduledAt()).isBeforeOrEqualTo(java.time.Instant.now());
+        verify(auditLogService).record(any(), org.mockito.ArgumentMatchers.eq("LATE_PUBLISH_OVERRIDE"),
+                any(), any(), org.mockito.ArgumentMatchers.eq(submission.getId()), any());
+    }
+
+    @Test
+    void approve_publishNowWithAFutureSlot_isRejected() {
+        Submission submission = scheduledInReview(java.time.Instant.now().plusSeconds(3600));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), true, admin()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("only for a post whose publish slot has already passed");
+    }
+
+    @Test
+    void approve_futureSlot_approvesNormally() {
+        Submission submission = scheduledInReview(java.time.Instant.now().plusSeconds(3600));
+
+        validationService.approve(submission.getId(), moderator());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        verify(auditLogService, org.mockito.Mockito.never()).record(any(),
+                org.mockito.ArgumentMatchers.eq("LATE_PUBLISH_OVERRIDE"), any(), any(), any(), any());
+    }
+
+    @Test
+    void approve_liveEventWithAPastSlotField_isNotTreatedAsLate() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+        submission.setFastTrack(true);
+
+        validationService.approve(submission.getId(), moderator());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
     }
 }

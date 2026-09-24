@@ -58,10 +58,22 @@ public class ValidationService {
     private static final int MAX_QUEUE_PAGE_SIZE = 50;
     private static final ZoneId DASHBOARD_ZONE = ZoneId.of("Asia/Manila");
 
-    // BR-VAL-03 rejection reason codes
-    private static final Set<String> VALID_REJECTION_CODES = Set.of(
-            "INCOMPLETE_CONTENT", "INAPPROPRIATE_CONTENT", "WRONG_FORMAT",
-            "DUPLICATE_EVENT", "WRONG_INSTITUTION", "OTHER");
+    /**
+     * BR-VAL-03 rejection reason codes → the label the contributor sees.
+     * Rejecting declines the post as submitted (the contributor can still edit
+     * and resubmit — {@code SubmissionService.submit} accepts {@code rejected});
+     * anything that only needs fixing (content, format) goes through Request
+     * Revision instead, so INCOMPLETE_CONTENT and WRONG_FORMAT are no longer accepted. Rejections stored under those codes
+     * before 2026-09-24 still display — the frontend keeps their labels.
+     */
+    static final Map<String, String> REJECTION_REASON_LABELS = Map.of(
+            "INAPPROPRIATE_CONTENT", "Inappropriate content",
+            "OUT_OF_SCOPE", "Not a DASIG activity",
+            "DUPLICATE_EVENT", "Duplicate",
+            "NO_LONGER_RELEVANT", "No longer timely",
+            "RIGHTS_OR_PRIVACY", "Rights or privacy issue",
+            "WRONG_INSTITUTION", "Belongs to another institution",
+            "OTHER", "Other");
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -321,11 +333,42 @@ public class ValidationService {
      * must make the approval decision.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
+        approve(submissionId, false, caller);
+    }
+
+    /**
+     * Approves a submission. A Scheduled post whose slot has already passed is
+     * not approved silently — the scheduler would post it up to 5 minutes late,
+     * or the stale-slot sweep would mark it Publish Failed. The reviewer must
+     * pick a new slot first (edit), or an Administrator approves with
+     * {@code publishNow}: the slot moves to now, the next scheduler run
+     * publishes it, and the late publish is audited ({@code LATE_PUBLISH_OVERRIDE}).
+     */
+    public void approve(UUID submissionId, boolean publishNow, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
         boolean selfReview = isSelfReview(submission, caller);
         assertNotSelfApproval(selfReview);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        Instant now = Instant.now();
+        Instant passedSlot = slotHasPassed(submission, now) ? submission.getScheduledAt() : null;
+        if (passedSlot == null && publishNow) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Publish now is only for a post whose publish slot has already passed.");
+        }
+        if (passedSlot != null && !publishNow) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This post's publish slot has already passed. Pick a new slot before approving"
+                            + ("admin".equals(caller.role()) ? ", or publish it now." : "."));
+        }
+        if (passedSlot != null && !"admin".equals(caller.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can publish a post after its slot has passed.");
+        }
+        if (passedSlot != null) {
+            submission.setScheduledAt(now);
+        }
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
         ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
@@ -351,11 +394,16 @@ public class ValidationService {
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.approved,
                 null, null, selfReview, submission.isFastTrack(), sessionEditDiff, null);
+        if (passedSlot != null) {
+            auditLogService.record(validator, "LATE_PUBLISH_OVERRIDE", null, null, submissionId,
+                    Map.of("originalSlot", passedSlot.toString(), "newSlot", now.toString()));
+        }
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
         if (edited) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
                 submission.isFastTrack(), edited, submissionId, caller.userId());
@@ -512,7 +560,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
     }
@@ -544,15 +593,24 @@ public class ValidationService {
         logAction(submission, validator, ValidationAction.rejected, null, fullReason,
                 selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
-        eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
+        eventPublisher.publishEvent(
+                new SubmissionRejectedEvent(submission, readableRejectionReason(reasonCode, notes)));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** A Scheduled (not Live Event) post whose slot is now or earlier. */
+    static boolean slotHasPassed(Submission submission, Instant now) {
+        return !submission.isFastTrack()
+                && submission.getScheduledAt() != null
+                && !submission.getScheduledAt().isAfter(now);
+    }
 
     private void validateRemarks(String remarks) {
         if (remarks == null || remarks.trim().length() < 10 || remarks.trim().length() > 1000) {
@@ -561,16 +619,23 @@ public class ValidationService {
         }
     }
 
-    private void validateRejectionCode(String reasonCode, String notes) {
-        if (reasonCode == null || !VALID_REJECTION_CODES.contains(reasonCode)) {
+    static void validateRejectionCode(String reasonCode, String notes) {
+        if (reasonCode == null || !REJECTION_REASON_LABELS.containsKey(reasonCode)) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Invalid rejection reason code. Valid codes: "
-                            + String.join(", ", VALID_REJECTION_CODES));
+                            + String.join(", ", REJECTION_REASON_LABELS.keySet())
+                            + ". Missing or fixable content should be sent back with Request Revision.");
         }
         if ("OTHER".equals(reasonCode) && (notes == null || notes.trim().isEmpty())) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Notes are required when rejection reason is OTHER.");
         }
+    }
+
+    /** "Duplicate — already posted on 12 Sep", for the contributor's email. */
+    static String readableRejectionReason(String reasonCode, String notes) {
+        String label = REJECTION_REASON_LABELS.getOrDefault(reasonCode, reasonCode);
+        return notes != null && !notes.trim().isEmpty() ? label + " — " + notes.trim() : label;
     }
 
     private String buildRejectionReason(String reasonCode, String notes) {

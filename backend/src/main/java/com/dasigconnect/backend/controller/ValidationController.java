@@ -137,15 +137,18 @@ public class ValidationController {
     }
 
     /**
-     * POST /api/v1/validation/{id}/approve
+     * POST /api/v1/validation/{id}/approve[?publishNow=true]
      * Approves a submission: transitions to SCHEDULED and confirms slot reservation.
+     * A Scheduled post whose slot has passed is refused (409) unless an Admin
+     * passes {@code publishNow=true}.
      */
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> approve(
             @PathVariable UUID id,
+            @RequestParam(defaultValue = "false") boolean publishNow,
             @AuthenticationPrincipal JwtUserDetails caller) {
-        validationService.approve(id, caller);
+        validationService.approve(id, publishNow, caller);
         return ResponseEntity.noContent().build();
     }
 

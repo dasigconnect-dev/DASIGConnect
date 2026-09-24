@@ -52,11 +52,17 @@ export interface RejectionPayload {
   notes?: string;
 }
 
+/**
+ * Reasons a reviewer can reject with (BR-VAL-03) — why the post is declined
+ * as submitted; anything that only needs fixing goes through Request Revision.
+ * Must match ValidationService.REJECTION_REASON_LABELS.
+ */
 export type RejectionReasonCode =
-  | "INCOMPLETE_CONTENT"
   | "INAPPROPRIATE_CONTENT"
-  | "WRONG_FORMAT"
+  | "OUT_OF_SCOPE"
   | "DUPLICATE_EVENT"
+  | "NO_LONGER_RELEVANT"
+  | "RIGHTS_OR_PRIVACY"
   | "WRONG_INSTITUTION"
   | "OTHER";
 
@@ -136,8 +142,16 @@ export function releaseReviewLock(submissionId: string) {
   return api.delete<void>(`/validation/${submissionId}/lock`);
 }
 
-export function approveSubmission(submissionId: string) {
-  return api.post<void>(`/validation/${submissionId}/approve`);
+/**
+ * Approves a submission. A Scheduled post whose slot has passed is refused
+ * (409) unless an Admin passes `publishNow`, which moves the slot to now.
+ */
+export function approveSubmission(submissionId: string, publishNow = false) {
+  return api.post<void>(
+    `/validation/${submissionId}/approve`,
+    undefined,
+    publishNow ? { params: { publishNow: true } } : undefined,
+  );
 }
 
 export function editSubmission(

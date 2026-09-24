@@ -19,7 +19,7 @@ export function useAiMediaSuggestions(
   caption: string,
   category: string,
   tags: string[],
-  selectedImageAssetIds: string[],
+  selectedImageAssetIds: string[] = [],
 ): UseAiMediaSuggestionsReturn {
   const [state, setState] = useState<AiMediaSuggestState>("idle");
   const [results, setResults] = useState<MediaSuggestResult[]>([]);

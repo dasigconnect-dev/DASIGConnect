@@ -29,9 +29,10 @@ interface MediaAssetsPickerProps {
   /** Show the library across every institution for network-wide roles. */
   networkView?: boolean;
   /**
-   * Hide the Upload / My Library / AI Suggestions tab bar and its panels. The
-   * selected-media strip and the auto AI-suggestions block are still rendered —
-   * the host supplies its own add-media controls. Defaults to showing the tabs.
+   * Hide the Upload / My Library / AI Suggestions tab bar and its panels, so
+   * only the selected-media strip renders — the host supplies its own
+   * add-media controls (the review editor opens Library and AI suggestions as
+   * dialogs). Defaults to showing the tabs.
    */
   sourceTabs?: boolean;
   /**
@@ -73,8 +74,11 @@ export default function MediaAssetsPicker({
   const selectedImageAssetIds = items
     .filter((item) => item.mediaType === "image" && item.assetId)
     .map((item) => item.assetId!);
+  // No source tabs means no AI tab to show results in - don't fetch. This is
+  // used by the moderator review editor, which must keep its established media
+  // permissions and controls.
   const aiSuggestions = useAiMediaSuggestions(
-    submissionId,
+    sourceTabs ? submissionId : null,
     eventTitle,
     caption,
     category,
@@ -127,23 +131,6 @@ export default function MediaAssetsPicker({
         onItemClick={onItemClick}
         getItemCaption={getItemCaption}
       />
-
-      {!sourceTabs && aiSuggestions.state === "ready" && (
-        <div className="mp-auto-suggestions" aria-label="Suggested media ranked by relevance">
-          <AiSuggestedMediaTab
-            suggestions={aiSuggestions}
-            submissionId={submissionId}
-            alreadyAddedIds={alreadyAddedIds}
-            eventTitle={eventTitle}
-            caption={caption}
-            category={category}
-            tags={tags}
-            selectedImageCount={selectedImageAssetIds.length}
-            onAddItems={handleAddItems}
-            disabled={disabled}
-          />
-        </div>
-      )}
 
       {!sourceTabs ? null : (
       <>
