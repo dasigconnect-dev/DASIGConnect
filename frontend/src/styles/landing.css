@@ -340,13 +340,13 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   flex-wrap: wrap;
 }
 
-/* Compact Pillars Row under Hero CTA */
+/* Compact Pillars Row */
 .hero-mini-pillars {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-top: 40px;
-  padding-top: 28px;
+  margin-top: 32px;
+  padding-top: 24px;
   border-top: 1px solid var(--lp-light-border);
 }
 
