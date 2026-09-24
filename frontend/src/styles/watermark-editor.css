@@ -394,7 +394,14 @@
   width: 32px;
   height: 12px;
   background: #1877f2;
-  border-radius: 3px;
+  border-radius: 4px;
+}
+
+.shape-gradient-preview .mini-gradient {
+  width: 32px;
+  height: 16px;
+  background: linear-gradient(to bottom, transparent, #1877f2);
+  border-radius: 4px;
 }
 
 .shape-line-preview .mini-line {
@@ -1201,14 +1208,23 @@
 }
 
 /* Shape Element */
+.wm-shape-content.is-rect,
+.wm-shape-content.is-gradient {
+  border-radius: 8px;
+}
+
 .wm-shape-content.is-rect {
-  border-radius: 0;
   backdrop-filter: blur(4px);
+}
+
+.wm-shape-content.is-gradient {
+  backdrop-filter: none;
 }
 
 .wm-shape-content.is-line {
   height: 0;
   width: 100%;
+  border-radius: 0;
 }
 
 /* 8-Point Selection Handles */

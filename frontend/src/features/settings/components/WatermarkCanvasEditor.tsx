@@ -154,16 +154,17 @@ export default function WatermarkCanvasEditor({
     } else {
       // Shape
       const isLine = initialVariant === "line";
+      const isGradient = initialVariant === "gradient";
       newElement = {
         id,
         type: "shape",
-        shapeType: isLine ? "line" : "rectangle",
+        shapeType: isLine ? "line" : isGradient ? "gradient" : "rectangle",
         xPercent: 0,
-        yPercent: 86,
+        yPercent: isLine ? 86 : isGradient ? 70 : 86,
         widthPercent: 100,
-        heightPercent: isLine ? 2 : 14,
-        opacity: 0.5,
-        fillColor: "rgba(15, 23, 42, 0.75)",
+        heightPercent: isLine ? 2 : isGradient ? 28 : 14,
+        opacity: isGradient ? 0.85 : 0.5,
+        fillColor: isGradient ? "#07112a" : "rgba(15, 23, 42, 0.75)",
         strokeColor: "transparent",
       };
     }
@@ -427,7 +428,9 @@ export default function WatermarkCanvasEditor({
     if (el.type === "text") {
       return el.text || "Text / Handle";
     }
-    return el.shapeType === "line" ? "Divider Line" : "Background Ribbon";
+    if (el.shapeType === "line") return "Divider Line";
+    if (el.shapeType === "gradient") return "Gradient Scrim";
+    return "Background Ribbon";
   }
 
   // Floating pill positioning helpers
@@ -561,7 +564,7 @@ export default function WatermarkCanvasEditor({
               {/* Drawer Tab 1: Shapes */}
               {activeTab === "shapes" && (
                 <div className="canva-drawer-section canva-anim-fade">
-                  <p className="canva-drawer-desc">Add solid backdrop ribbons or divider lines to highlight text.</p>
+                  <p className="canva-drawer-desc">Add solid ribbons, gradient scrims, or divider lines to highlight text.</p>
                   <div className="canva-item-card-grid">
                     <button
                       type="button"
@@ -574,7 +577,23 @@ export default function WatermarkCanvasEditor({
                       </div>
                       <div className="canva-item-meta">
                         <strong>Background Ribbon</strong>
-                        <span>Bottom or top branding banner</span>
+                        <span>Bottom or top solid branding banner</span>
+                      </div>
+                      <i className="ti ti-plus canva-add-icon"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="canva-item-card"
+                      onClick={() => addElement("shape", "gradient")}
+                      disabled={elements.length >= 3 || disabled}
+                    >
+                      <div className="canva-item-preview shape-gradient-preview">
+                        <div className="mini-gradient" />
+                      </div>
+                      <div className="canva-item-meta">
+                        <strong>Gradient Scrim</strong>
+                        <span>Smooth bottom photo fade</span>
                       </div>
                       <i className="ti ti-plus canva-add-icon"></i>
                     </button>
@@ -1039,11 +1058,27 @@ export default function WatermarkCanvasEditor({
               <div className="canva-pill-segment">
                 <button
                   type="button"
-                  className={`canva-segment-item ${selectedElement.shapeType !== "line" ? "is-active" : ""}`}
+                  className={`canva-segment-item ${selectedElement.shapeType === "rectangle" || (!selectedElement.shapeType && selectedElement.shapeType !== "line" && selectedElement.shapeType !== "gradient") ? "is-active" : ""}`}
                   onClick={() => updateSelected({ shapeType: "rectangle" })}
                   disabled={disabled}
                 >
                   Ribbon
+                </button>
+                <button
+                  type="button"
+                  className={`canva-segment-item ${selectedElement.shapeType === "gradient" ? "is-active" : ""}`}
+                  onClick={() => {
+                    updateSelected({
+                      shapeType: "gradient",
+                      ...(selectedElement.heightPercent && selectedElement.heightPercent < 20 ? {
+                        heightPercent: 28,
+                        yPercent: Math.max(0, 100 - 28),
+                      } : {}),
+                    });
+                  }}
+                  disabled={disabled}
+                >
+                  Gradient Scrim
                 </button>
                 <button
                   type="button"
@@ -1070,7 +1105,7 @@ export default function WatermarkCanvasEditor({
                       backgroundColor:
                         selectedElement.shapeType === "line"
                           ? selectedElement.strokeColor || "#FFFFFF"
-                          : selectedElement.fillColor || "rgba(15, 23, 42, 0.75)",
+                          : selectedElement.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "rgba(15, 23, 42, 0.75)"),
                     }}
                   />
                   <span>Color</span>
@@ -1080,14 +1115,18 @@ export default function WatermarkCanvasEditor({
                 {showColorPicker && (
                   <div className="canva-floating-menu canva-color-dropdown">
                     <div className="canva-dropdown-title">
-                      {selectedElement.shapeType === "line" ? "Line Color" : "Fill Color"}
+                      {selectedElement.shapeType === "line"
+                        ? "Line Color"
+                        : selectedElement.shapeType === "gradient"
+                          ? "Gradient Color"
+                          : "Fill Color"}
                     </div>
                     <div className="canva-color-grid">
                       {COLOR_PRESETS.map((color) => {
                         const activeColor =
                           selectedElement.shapeType === "line"
                             ? selectedElement.strokeColor || "#FFFFFF"
-                            : selectedElement.fillColor || "rgba(15, 23, 42, 0.75)";
+                            : selectedElement.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "rgba(15, 23, 42, 0.75)");
                         return (
                           <button
                             key={color}
@@ -1112,13 +1151,13 @@ export default function WatermarkCanvasEditor({
 
               {/* Height / Thickness Stepper with Slider */}
               {selectedElement.shapeType !== "line" ? (
-                <div className="canva-stepper-pill" title="Ribbon Height (% of canvas)">
+                <div className="canva-stepper-pill" title="Ribbon / Scrim Height (% of canvas)">
                   <span className="canva-stepper-label">Height:</span>
                   <span className="canva-stepper-val">{Math.round((selectedElement.heightPercent || 14) * 10) / 10}%</span>
                   <input
                     type="range"
                     min={3}
-                    max={45}
+                    max={60}
                     step={0.5}
                     className="canva-mini-slider"
                     value={selectedElement.heightPercent || 14}
@@ -1499,11 +1538,17 @@ export default function WatermarkCanvasEditor({
 
                   {el.type === "shape" && (
                     <div
-                      className={`wm-element-content wm-shape-content ${el.shapeType === "line" ? "is-line" : "is-rect"}`}
+                      className={`wm-element-content wm-shape-content ${el.shapeType === "line" ? "is-line" : el.shapeType === "gradient" ? "is-gradient" : "is-rect"}`}
                       style={{
                         opacity: el.opacity,
-                        backgroundColor: el.shapeType === "line" ? "transparent" : el.fillColor || "rgba(0,0,0,0.5)",
+                        background:
+                          el.shapeType === "line"
+                            ? "transparent"
+                            : el.shapeType === "gradient"
+                              ? `linear-gradient(to bottom, transparent 0%, ${el.fillColor || "#07112a"} 100%)`
+                              : el.fillColor || "rgba(0,0,0,0.5)",
                         borderTop: el.shapeType === "line" ? `3px solid ${el.strokeColor || "#FFFFFF"}` : "none",
+                        borderRadius: el.shapeType === "line" ? "0" : "8px",
                       }}
                     />
                   )}
