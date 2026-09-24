@@ -60,9 +60,10 @@ public class ValidationService {
 
     /**
      * BR-VAL-03 rejection reason codes → the label the contributor sees.
-     * Only problems a revision can't fix: anything missing or fixable (content,
-     * format) goes through Request Revision instead, so INCOMPLETE_CONTENT and
-     * WRONG_FORMAT are no longer accepted. Rejections stored under those codes
+     * Rejecting declines the post as submitted (the contributor can still edit
+     * and resubmit — {@code SubmissionService.submit} accepts {@code rejected});
+     * anything that only needs fixing (content, format) goes through Request
+     * Revision instead, so INCOMPLETE_CONTENT and WRONG_FORMAT are no longer accepted. Rejections stored under those codes
      * before 2026-09-24 still display — the frontend keeps their labels.
      */
     static final Map<String, String> REJECTION_REASON_LABELS = Map.of(
@@ -332,11 +333,42 @@ public class ValidationService {
      * must make the approval decision.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
+        approve(submissionId, false, caller);
+    }
+
+    /**
+     * Approves a submission. A Scheduled post whose slot has already passed is
+     * not approved silently — the scheduler would post it up to 5 minutes late,
+     * or the stale-slot sweep would mark it Publish Failed. The reviewer must
+     * pick a new slot first (edit), or an Administrator approves with
+     * {@code publishNow}: the slot moves to now, the next scheduler run
+     * publishes it, and the late publish is audited ({@code LATE_PUBLISH_OVERRIDE}).
+     */
+    public void approve(UUID submissionId, boolean publishNow, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
         boolean selfReview = isSelfReview(submission, caller);
         assertNotSelfApproval(selfReview);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        Instant now = Instant.now();
+        Instant passedSlot = slotHasPassed(submission, now) ? submission.getScheduledAt() : null;
+        if (passedSlot == null && publishNow) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Publish now is only for a post whose publish slot has already passed.");
+        }
+        if (passedSlot != null && !publishNow) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This post's publish slot has already passed. Pick a new slot before approving"
+                            + ("admin".equals(caller.role()) ? ", or publish it now." : "."));
+        }
+        if (passedSlot != null && !"admin".equals(caller.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can publish a post after its slot has passed.");
+        }
+        if (passedSlot != null) {
+            submission.setScheduledAt(now);
+        }
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
         ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
@@ -362,6 +394,10 @@ public class ValidationService {
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.approved,
                 null, null, selfReview, submission.isFastTrack(), sessionEditDiff, null);
+        if (passedSlot != null) {
+            auditLogService.record(validator, "LATE_PUBLISH_OVERRIDE", null, null, submissionId,
+                    Map.of("originalSlot", passedSlot.toString(), "newSlot", now.toString()));
+        }
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
         if (edited) {
@@ -568,6 +604,13 @@ public class ValidationService {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** A Scheduled (not Live Event) post whose slot is now or earlier. */
+    static boolean slotHasPassed(Submission submission, Instant now) {
+        return !submission.isFastTrack()
+                && submission.getScheduledAt() != null
+                && !submission.getScheduledAt().isAfter(now);
+    }
 
     private void validateRemarks(String remarks) {
         if (remarks == null || remarks.trim().length() < 10 || remarks.trim().length() > 1000) {

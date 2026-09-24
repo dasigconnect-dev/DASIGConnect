@@ -346,7 +346,7 @@ export default function ValidationQueueScreen({
   const [remarks, setRemarks] = useState("");
   const [revisionFieldComments, setRevisionFieldComments] = useState<Record<string, string>>({});
   const [activeRevisionField, setActiveRevisionField] = useState<string | null>("caption");
-  // No default: rejecting is final, so the reviewer picks a reason on purpose.
+  // No default: the reason is what the contributor sees, so the reviewer picks it on purpose.
   const [reasonCode, setReasonCode] = useState<RejectionReasonCode | null>(null);
   const [notes, setNotes] = useState("");
   const [editMode, setEditMode] = useState(false);
@@ -365,6 +365,15 @@ export default function ValidationQueueScreen({
   // Edit safeguards: review-before-save dialog (+ on-demand writing check, below).
   const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
   const proofread = useProofread(selectedId);
+
+  // Publish-slot countdown: ticks while a submission is open, so the review
+  // screen can warn before the slot and switch Approve once it has passed.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!selectedId) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [selectedId]);
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
@@ -529,6 +538,13 @@ export default function ValidationQueueScreen({
   const isTerminalStatus = Boolean(
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
+  // A Scheduled post still under review: how long until its slot.
+  const slotMsLeft =
+    selected && !selected.fastTrack && selected.scheduledAt && !isTerminalStatus
+      ? new Date(selected.scheduledAt).getTime() - nowMs
+      : null;
+  const slotPassed = slotMsLeft !== null && slotMsLeft <= 0;
+  const slotSoon = slotMsLeft !== null && slotMsLeft > 0 && slotMsLeft <= 30 * 60_000;
 
   const watermarkQuery = useWatermarkConfiguration({
     user,
@@ -918,7 +934,7 @@ export default function ValidationQueueScreen({
     void invalidateValidationWorkflow();
   }
 
-  async function handleApprove() {
+  async function handleApprove(publishNow = false) {
     if (!selected) return;
     if (isSelfReview) {
       toast.error("Your own submission must be reviewed by another moderator.");
@@ -926,8 +942,8 @@ export default function ValidationQueueScreen({
     }
     setDecisionBusy(true);
     try {
-      await approveSubmission(selected.id);
-      toast.success("Submission approved and scheduled.");
+      await approveSubmission(selected.id, publishNow);
+      toast.success(publishNow ? "Approved — publishing now." : "Submission approved and scheduled.");
       closeDecisionModal();
       clearLockFor(selected.id);
       setSelected(null);
@@ -936,16 +952,29 @@ export default function ValidationQueueScreen({
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 403 || status === 409) {
+      const message = readApiError(err, "Approval failed.");
+      if (status === 409 && message.includes("slot has already passed")) {
+        // The slot passed while the dialog was open — refresh the clock so the
+        // dialog switches to "pick a new slot" instead of a lock-lost message.
+        setNowMs(Date.now());
+        toast.error(message);
+      } else if (status === 403 || status === 409) {
         closeDecisionModal();
         handleLockLost(selected.id);
         toast.error("Review lock expired before the approval could be recorded.");
       } else {
-        toast.error(readApiError(err, "Approval failed."));
+        toast.error(message);
       }
     } finally {
       setDecisionBusy(false);
     }
+  }
+
+  /** Slot passed: go straight to the edit form's Schedule tab to pick a new one. */
+  async function handlePickNewSlot() {
+    closeDecisionModal();
+    await handleStartEdit();
+    setEditTab("schedule");
   }
 
   async function handleStartEdit() {
@@ -1891,6 +1920,20 @@ export default function ValidationQueueScreen({
                   text="You cannot review your own submission. Another Moderator must review it."
                 />
               )}
+              {slotPassed && selected?.scheduledAt && (
+                <NoticeBar
+                  tone="danger"
+                  icon="ti-clock-exclamation"
+                  text={`The publish slot (${formatDateTime(selected.scheduledAt)}) has passed. To approve, pick a new slot${isAdmin ? " or publish it now" : ""}.`}
+                />
+              )}
+              {slotSoon && selected?.scheduledAt && slotMsLeft !== null && (
+                <NoticeBar
+                  tone="warn"
+                  icon="ti-clock"
+                  text={`Publishes at ${formatTime(selected.scheduledAt)} — ${Math.max(1, Math.ceil(slotMsLeft / 60_000))} min left to approve it on time.`}
+                />
+              )}
               {failureInfo?.lastManualPublishAbandonedAt && (
                 <NoticeBar
                   tone="warn"
@@ -2500,11 +2543,20 @@ export default function ValidationQueueScreen({
                 inert={!activeLock || undefined}
               >
                 <div className="val-action-status">
-                  <span className="val-action-lock-pill">
-                    <i className="ti ti-lock-check" />
-                    {activeLock
-                      ? `Review in progress by you until ${formatDateTime(activeLock.expiresAt)}`
-                      : "Preview — shown after you Start Review"}
+                  <span
+                    className="val-action-lock-pill"
+                    title={activeLock ? `Locked to you until ${formatDateTime(activeLock.expiresAt)}` : undefined}
+                  >
+                    <i className="ti ti-lock-check" aria-hidden="true" />
+                    <span className="val-action-lock-text">
+                      {activeLock
+                        ? `Locked to you until ${
+                            isSameLocalDay(activeLock.expiresAt, nowMs)
+                              ? formatTime(activeLock.expiresAt)
+                              : formatDateTime(activeLock.expiresAt)
+                          }`
+                        : "Preview — shown after you Start Review"}
+                    </span>
                   </span>
                 </div>
                 <div className="val-action-group" id="val-review-decision-group">
@@ -2590,7 +2642,37 @@ export default function ValidationQueueScreen({
         )}
       </main>
 
-      {renderedModal === "approve" && (
+      {renderedModal === "approve" && slotPassed && selected?.scheduledAt && (
+        <DecisionDialog
+          icon="ti-clock-exclamation"
+          tone="warn"
+          title="The publish slot has passed"
+          body={`This post was set to publish at ${formatDateTime(selected.scheduledAt)}. Pick a new slot, then approve.`}
+          confirmLabel="Pick a new slot"
+          exiting={modalClosing}
+          confirmBusy={decisionBusy}
+          onCancel={closeDecisionModal}
+          onConfirm={() => void handlePickNewSlot()}
+        >
+          {isAdmin && (
+            <div className="val-late-publish">
+              <div>
+                <strong>Or publish it now</strong>
+                <span>Goes out within a minute. Recorded in the audit log.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleApprove(true)}
+                disabled={decisionBusy}
+              >
+                <i className="ti ti-send" aria-hidden="true" /> Publish now
+              </button>
+            </div>
+          )}
+        </DecisionDialog>
+      )}
+
+      {renderedModal === "approve" && !slotPassed && (
         <DecisionDialog
           icon="ti-circle-check"
           tone="success"
@@ -2735,7 +2817,7 @@ export default function ValidationQueueScreen({
           icon="ti-ban"
           tone="danger"
           title="Reject submission"
-          body="Rejecting is final — the contributor can't resubmit this post. Pick the reason they'll see."
+          body="Choose why this post can't be approved."
           confirmLabel={decisionBusy ? "Rejecting..." : "Reject Submission"}
           exiting={modalClosing}
           confirmBusy={decisionBusy}
@@ -2746,12 +2828,9 @@ export default function ValidationQueueScreen({
         >
           <div className="val-reject-revise-hint">
             <i className="ti ti-pencil-exclamation" aria-hidden="true" />
-            <span>
-              Something missing or fixable, like the caption, photos, or format? Send it back
-              instead so the contributor can correct it.
-            </span>
+            <span>Only needs fixes?</span>
             <button type="button" onClick={() => openDecisionModal("revise")}>
-              Request Revision
+              Request Revision instead
             </button>
           </div>
 
@@ -2778,14 +2857,13 @@ export default function ValidationQueueScreen({
 
           <label className="val-reject-note">
             <span>
-              Note to the contributor{" "}
-              <small>{reasonCode === "OTHER" ? "Required" : "Optional"}</small>
+              Note <small>{reasonCode === "OTHER" ? "(required)" : "(optional)"}</small>
             </span>
             <textarea
               className="val-modal-input"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              rows={3}
+              rows={2}
               placeholder={
                 reasonCode === "OTHER"
                   ? "Explain why this can't be posted…"
@@ -3949,6 +4027,13 @@ function formatTime(value?: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+/** True when `iso` falls on the same local calendar day as `nowMs`. */
+function isSameLocalDay(iso: string, nowMs: number) {
+  const a = new Date(iso);
+  const b = new Date(nowMs);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function formatDateTime(value?: string) {

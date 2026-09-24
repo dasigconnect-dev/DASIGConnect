@@ -44,7 +44,7 @@ class StaleSubmissionDetectorJobTest {
 
         Submission pending = submission(SubmissionStatus.pending);
         Submission inReview = submission(SubmissionStatus.in_review);
-        when(submissionRepository.findMissedReviewSubmissions(any()))
+        when(submissionRepository.findMissedReviewSubmissions(any(), any()))
                 .thenReturn(List.of(pending, inReview));
 
         List<Submission> result = job.findAndMarkMissedReview(cutoff);
@@ -61,7 +61,7 @@ class StaleSubmissionDetectorJobTest {
     void run_emitsMissedReviewEventPerSubmission() {
         Submission pending = submission(SubmissionStatus.pending);
         when(submissionRepository.findMissedScheduledSubmissions(any())).thenReturn(new java.util.ArrayList<>());
-        when(submissionRepository.findMissedReviewSubmissions(any())).thenReturn(List.of(pending));
+        when(submissionRepository.findMissedReviewSubmissions(any(), any())).thenReturn(List.of(pending));
 
         job.run();
 
@@ -112,7 +112,7 @@ class StaleSubmissionDetectorJobTest {
         when(submissionRepository.findMissedScheduledSubmissions(any())).thenReturn(new java.util.ArrayList<>());
         when(submissionRepository.findStuckFastTrackPublishing(any()))
                 .thenReturn(new java.util.ArrayList<>(List.of(stuck)));
-        when(submissionRepository.findMissedReviewSubmissions(any())).thenReturn(List.of());
+        when(submissionRepository.findMissedReviewSubmissions(any(), any())).thenReturn(List.of());
 
         job.run();
 
