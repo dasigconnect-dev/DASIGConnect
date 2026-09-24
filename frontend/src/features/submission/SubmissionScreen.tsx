@@ -115,6 +115,7 @@ import {
   SectionHead,
 } from "./components/SharedPrimitives";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useSubmissionMediaAutosave } from "./hooks/useSubmissionMediaAutosave";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
@@ -542,8 +543,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form, isReadOnlySubmission],
   );
   const shouldPromptBeforeLeave = isDirty;
+  const mediaAutosave = useSubmissionMediaAutosave({
+    submissionId: form.id,
+    enabled:
+      Boolean(form.id) &&
+      isEditableSubmission &&
+      (form.files.length > 0 || form.pendingAssetIds.length > 0 || form.removedAssetIds.length > 0),
+    items: pickerItems,
+    removedAssetIds: form.removedAssetIds,
+    mediaCaptions: form.mediaCaptions,
+    skipWatermarks: form.mediaSkipWatermark,
+    onReconciled: handleMediaAutosaveReconciled,
+    onError: handleMediaAutosaveError,
+  });
   const busy =
-    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia || mediaAutosave.blocking;
   const canDeleteCurrentSubmission = Boolean(
     form.id && (form.status === "draft" || form.status === "rejected"),
   );
@@ -622,6 +636,67 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         return typeof params === "object" && params !== null && "view" in params && params.view === "page";
       },
     });
+  }
+
+  function handleMediaAutosaveReconciled({
+    summary,
+    items,
+  }: {
+    summary: SubmissionSummary;
+    items: SubmissionMediaItem[];
+    uploadAssetIds: ReadonlyMap<string, string>;
+  }) {
+    const assetsById = new Map((summary.mediaAssets ?? []).map((asset) => [asset.id, asset]));
+    const nextSavedAssets = items
+      .map((item) => item.assetId ? assetsById.get(item.assetId) : undefined)
+      .filter((asset): asset is SavedMediaAsset => Boolean(asset));
+    const serverIds = new Set((summary.mediaAssets ?? []).map((asset) => asset.id));
+    const nextFiles = items.flatMap((item) => item.file ? [item.file] : []);
+    const nextPendingAssetIds = items
+      .map((item) => item.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId && !serverIds.has(assetId)));
+    const previousItemsByClientId = new Map(pickerItems.map((item) => [item.clientId, item]));
+
+    setForm((current) => {
+      const nextOrder = items.map(pickerMediaKey);
+      const nextCaptions: Record<string, string> = {};
+      const nextSkipWatermark: Record<string, boolean> = {};
+      for (const item of items) {
+        const nextKey = pickerMediaKey(item);
+        const previousItem = previousItemsByClientId.get(item.clientId);
+        const previousKey = previousItem ? pickerMediaKey(previousItem) : nextKey;
+        const savedAsset = item.assetId ? assetsById.get(item.assetId) : undefined;
+        nextCaptions[nextKey] = current.mediaCaptions[previousKey]
+          ?? current.mediaCaptions[nextKey]
+          ?? savedAsset?.caption
+          ?? "";
+        nextSkipWatermark[nextKey] = current.mediaSkipWatermark[previousKey]
+          ?? current.mediaSkipWatermark[nextKey]
+          ?? Boolean(savedAsset?.skipWatermark);
+      }
+      return {
+        ...current,
+        status: summary.status,
+        files: nextFiles,
+        savedAssets: nextSavedAssets,
+        mediaOrder: nextOrder,
+        mediaCaptions: nextCaptions,
+        mediaSkipWatermark: nextSkipWatermark,
+        pendingAssetIds: nextPendingAssetIds,
+        removedAssetIds: current.removedAssetIds.filter((assetId) => serverIds.has(assetId)),
+      };
+    });
+    setPickerItems(items);
+    syncSubmissionCaches(summary);
+    clearAssetIdParam();
+    setMediaUploadFailed(false);
+  }
+
+  function handleMediaAutosaveError(error: unknown) {
+    setMediaUploadFailed(true);
+    toast.warning(
+      getErrorMessage(error, "Media could not be saved automatically. Use Save Draft to retry."),
+    );
   }
 
   useEffect(() => () => {
@@ -2004,6 +2079,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
+    mediaAutosave.updateDesiredItems(items);
     setAddressedRevisionFields((prev) => new Set(prev).add("media"));
     setPickerItems(items);
     if (captionMediaKey && !items.some((item) => pickerMediaKey(item) === captionMediaKey)) {

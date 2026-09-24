@@ -81,6 +81,18 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       minScheduleLeadTimeHours: 2, maxScheduleDaysAhead: 30, categories: [], availableTags: [],
       guardrailsEnforced: true,
     },
+    "GET /api/v1/media-assets": {
+      items: [{
+        ...savedAsset(2),
+        assetCode: "MED-E2E-2",
+        createdAt: "2026-09-20T00:00:00Z",
+        institutionId: institution.id,
+        institutionName: institution.name,
+      }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 24,
+    },
     "POST /api/v1/submissions": async (request: ApiRequest) => {
       state.draft = baseDraft({ ...record(request), id: DRAFT_ID, status: "draft" });
       await json(request, state.draft);
@@ -102,12 +114,42 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       });
     },
     [`POST /api/v1/submissions/${DRAFT_ID}/media`]: async (request: ApiRequest) => {
-      record(request);
+      const body = record(request);
       const draft = state.draft ?? baseDraft();
-      draft.mediaAssets = [...draft.mediaAssets, savedAsset(draft.mediaAssets.length + 1)];
+      const asset = {
+        ...savedAsset(draft.mediaAssets.length + 1),
+        storageUrl: String(body.storageUrl),
+        fileName: String(body.fileName),
+        fileType: String(body.fileType),
+        fileSizeBytes: Number(body.fileSizeBytes),
+      };
+      draft.mediaAssets = [...draft.mediaAssets, asset];
       draft.mediaCount = draft.mediaAssets.length;
       state.draft = draft;
       await json(request, draft);
+    },
+    [`GET /api/v1/media-assets/${savedAsset(2).id}`]: savedAsset(2),
+    [`POST /api/v1/submissions/${DRAFT_ID}/assets`]: async (request: ApiRequest) => {
+      const body = record(request);
+      const draft = state.draft ?? baseDraft();
+      const assetId = String(body.mediaAssetId ?? "");
+      if (draft.mediaAssets.some((asset) => asset.id === assetId)) {
+        await json(request, { message: "Asset is already attached to this submission." }, 409);
+        return;
+      }
+      const asset = assetId === savedAsset(2).id ? savedAsset(2) : { ...savedAsset(2), id: assetId };
+      draft.mediaAssets = [...draft.mediaAssets, asset];
+      draft.mediaCount = draft.mediaAssets.length;
+      state.draft = draft;
+      await json(request, draft, 201);
+    },
+    [`DELETE /api/v1/submissions/${DRAFT_ID}/assets/${savedAsset(1).id}`]: async (request: ApiRequest) => {
+      record(request);
+      const draft = state.draft ?? baseDraft();
+      draft.mediaAssets = draft.mediaAssets.filter((asset) => asset.id !== savedAsset(1).id);
+      draft.mediaCount = draft.mediaAssets.length;
+      state.draft = draft;
+      await request.route.fulfill({ status: 204, body: "" });
     },
     [`PATCH /api/v1/submissions/${DRAFT_ID}/media/order`]: async (request: ApiRequest) => {
       record(request);
@@ -214,6 +256,160 @@ test.describe("submission composer", () => {
         { timeout: 6_000 },
       )
       .toBe(true);
+  });
+
+  test("a saved draft uploads newly selected media without a full draft save", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Saved Draft Event",
+        eventDate: "2026-09-25",
+        caption: "Original caption",
+        albumName: "Saved Album",
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    await page.locator("input.umt-input").setInputFiles({
+      name: "autosaved.png",
+      mimeType: "image/png",
+      buffer: PNG_BYTES,
+    });
+
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === `POST /api/v1/submissions/${DRAFT_ID}/media`),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+    expect(state.draft?.mediaAssets).toHaveLength(2);
+  });
+
+  test("removing an upload in flight leaves no attachment behind", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Saved Draft Event",
+        eventDate: "2026-09-25",
+        caption: "Original caption",
+        albumName: "Saved Album",
+      }),
+    );
+    await page.route(`**/api/v1/submissions/${DRAFT_ID}/media`, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fallback();
+    });
+
+    await page.locator("input.umt-input").setInputFiles({
+      name: "cancelled.png",
+      mimeType: "image/png",
+      buffer: PNG_BYTES,
+    });
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === `POST /api/v1/submissions/${DRAFT_ID}/media/upload-url`),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+    await page.getByRole("button", { name: "Remove cancelled.png" }).click();
+
+    await page.waitForTimeout(1_000);
+    await expect.poll(() => state.draft?.mediaAssets.length ?? -1, { timeout: 6_000 }).toBe(0);
+    const registered = state.log.some(
+      (entry) => entry.key === `POST /api/v1/submissions/${DRAFT_ID}/media`,
+    );
+    if (registered) {
+      expect(state.log.some(
+        (entry) => entry.key === `DELETE /api/v1/submissions/${DRAFT_ID}/assets/${savedAsset(1).id}`,
+      )).toBe(true);
+    }
+  });
+
+  test("a transient automatic upload failure falls back to the established draft retry", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Saved Draft Event",
+        eventDate: "2026-09-25",
+        caption: "Original caption",
+        albumName: "Saved Album",
+      }),
+    );
+    let failedOnce = false;
+    await page.route(`**/api/v1/submissions/${DRAFT_ID}/media`, async (route) => {
+      if (!failedOnce) {
+        failedOnce = true;
+        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Temporary failure" }) });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.locator("input.umt-input").setInputFiles({
+      name: "retry.png",
+      mimeType: "image/png",
+      buffer: PNG_BYTES,
+    });
+
+    await expect.poll(() => state.draft?.mediaAssets.length ?? 0, { timeout: 8_000 }).toBe(1);
+    expect(failedOnce).toBe(true);
+  });
+
+  test("a saved draft detaches removed media automatically", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Saved Draft Event",
+        eventDate: "2026-09-25",
+        caption: "Original caption",
+        albumName: "Saved Album",
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    await page.getByRole("button", { name: "Remove asset-1.png" }).click();
+
+    await expect
+      .poll(
+        () => state.log.some(
+          (entry) => entry.key === `DELETE /api/v1/submissions/${DRAFT_ID}/assets/${savedAsset(1).id}`,
+        ),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+    expect(state.draft?.mediaAssets).toHaveLength(0);
+  });
+
+  test("a saved draft attaches a library selection automatically", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Saved Draft Event",
+        eventDate: "2026-09-25",
+        caption: "Original caption",
+        albumName: "Saved Album",
+      }),
+    );
+
+    await page.getByRole("tab", { name: "My Library" }).click();
+    await page.getByRole("button", { name: /asset-2\.png/ }).click();
+    await page.getByRole("button", { name: "Add Selected (1)" }).click();
+
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === `POST /api/v1/submissions/${DRAFT_ID}/assets`),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+    expect(state.draft?.mediaAssets).toHaveLength(1);
+    expect(state.draft?.mediaAssets[0]?.id).toBe(savedAsset(2).id);
   });
 
   test("My Submissions lists posts and opens one", async ({ page }) => {
