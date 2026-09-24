@@ -969,7 +969,7 @@ function App() {
             element={<RecentActivityScreen user={currentUser!} />}
           />
           <Route
-            path="/admin/institution-management"
+            path="/institution-management"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <InstitutionManagementScreen user={currentUser!} />
@@ -996,14 +996,6 @@ function App() {
             }
           />
           <Route
-            path="/admin/administrator-management"
-            element={<Navigate to="/admin/admin-management" replace />}
-          />
-          <Route
-            path="/admin/moderator-management"
-            element={<Navigate to="/admin/admin-management" replace />}
-          />
-          <Route
             path="/admin/system-health"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
@@ -1020,7 +1012,7 @@ function App() {
             }
           />
           <Route
-            path="/validation/queue"
+            path="/queue"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <ValidationQueueScreen user={currentUser!} />
@@ -1028,7 +1020,7 @@ function App() {
             }
           />
           <Route
-            path="/scheduler/calendar"
+            path="/calendar"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <CalendarScreen user={currentUser!} />

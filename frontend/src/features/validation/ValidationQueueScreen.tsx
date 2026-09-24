@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
@@ -118,6 +119,13 @@ const TAB_ORDER: Array<{ key: QueueFilter; label: string }> = [
   { key: "rejected", label: "Rejected" },
   { key: "failed", label: "Failed" },
 ];
+const TAB_KEYS = new Set<string>(TAB_ORDER.map((tab) => tab.key));
+
+/** The tab named by `?tab=` (any tab key, e.g. `in_review`, `failed`), or All. */
+function tabFromSearch(search: URLSearchParams): QueueFilter {
+  const value = search.get("tab");
+  return value && TAB_KEYS.has(value) ? (value as QueueFilter) : "all";
+}
 type SortKey = ValidationQueueSort;
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
@@ -292,7 +300,10 @@ export default function ValidationQueueScreen({
   const toast = useToast();
   const queryClient = useQueryClient();
   const currentUserScope = getUserCacheScope(user);
-  const [filter, setFilter] = useState<QueueFilter>("all");
+  // The open tab lives in the URL (`/queue?tab=pending`), so a link or a
+  // reload lands on the same tab. All is the default and omits the param.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filter, setFilter] = useState<QueueFilter>(() => tabFromSearch(searchParams));
   const isFailedMode = filter === "failed";
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
@@ -632,6 +643,15 @@ export default function ValidationQueueScreen({
     setMobileView("queue");
     setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "all") params.delete("tab");
+        else params.set("tab", next);
+        return params;
+      },
+      { replace: true },
+    );
     setShowHistoryModal(false);
     // Deliberately does NOT clear selectedId/selected here — switching tabs
     // is just re-filtering the list on the left; a submission already open
@@ -808,6 +828,39 @@ export default function ValidationQueueScreen({
     // and a card shown as selected that nobody had tapped.)
     if (selectedId || selected) clearSelection();
   }, [isFailedMode, loading, failuresLoading, failures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, isDesktop]);
+
+  // `?submissionId=` (from notifications) opens that submission once, then the
+  // param is dropped so a reload doesn't reopen it after it's been closed.
+  const deepLinkId = searchParams.get("submissionId");
+  useEffect(() => {
+    if (!deepLinkId) return;
+    let active = true;
+    fetchSubmissionDetail(deepLinkId)
+      .then((detail) => {
+        if (!active) return;
+        void openSubmission(detail);
+        setMobileView("review");
+      })
+      .catch((err: unknown) => {
+        if (active) toast.error(readApiError(err, "Unable to open this submission."));
+      })
+      .finally(() => {
+        if (!active) return;
+        setSearchParams(
+          (prev) => {
+            const params = new URLSearchParams(prev);
+            params.delete("submissionId");
+            return params;
+          },
+          { replace: true },
+        );
+      });
+    return () => {
+      active = false;
+    };
+    // Runs per deep-link id only; openSubmission's identity changes with the selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkId]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));

@@ -64,10 +64,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
 
   const actionRoutes: Record<string, string> = {
     "Submit Event Content": "/submissions/new",
-    "Add Institution": "/admin/institution-management",
-    "Institution Management": "/admin/institution-management",
-    "Review Queue": "/validation/queue",
-    "View Calendar": "/scheduler/calendar",
+    "Add Institution": "/institution-management",
+    "Institution Management": "/institution-management",
+    "Review Queue": "/queue",
+    "View Calendar": "/calendar",
     "Analytics": "/analytics",
   };
 
