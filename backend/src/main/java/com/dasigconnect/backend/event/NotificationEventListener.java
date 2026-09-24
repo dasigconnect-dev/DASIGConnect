@@ -244,7 +244,7 @@ public class NotificationEventListener {
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_publish_failed.name(),
                     "DASIGConnect — Publishing failed",
-                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/validation/queue?tab=failed");
+                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
             // Messenger alert (A4 / A5)
             String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
                     + "\". Manual action required: " + frontendBaseUrl + link;
@@ -297,7 +297,7 @@ public class NotificationEventListener {
             }
         }
         String msg = sb.toString();
-        String link = "/scheduler/calendar";
+        String link = "/calendar";
 
         // A week-long content gap for a member HEI is a review + network
         // planning concern — notify every moderator, every admin, and that
@@ -452,7 +452,7 @@ public class NotificationEventListener {
         String name = event.institution().getName();
         String msg = name + " has no active moderator. Its pending submissions are being escalated "
                 + "until one is assigned.";
-        String link = "/admin/institution-management";
+        String link = "/institution-management";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_no_moderator, msg, link);
             emailDeliveryService.send(admin,
@@ -467,7 +467,7 @@ public class NotificationEventListener {
     public void onInstitutionOnboarded(InstitutionOnboardedEvent event) {
         String name = event.institution().getName();
         String msg = name + " finished onboarding — its moderator account is active and the workspace is ready.";
-        String link = "/admin/institution-management";
+        String link = "/institution-management";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
         }

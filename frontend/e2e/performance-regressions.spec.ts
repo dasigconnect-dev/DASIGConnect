@@ -33,17 +33,17 @@ test.describe("data loading and cache regressions", () => {
         };
       },
     });
-    await page.goto("/validation/queue", { waitUntil: "domcontentloaded" });
+    await page.goto("/queue", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Cached Queue Item 1")).toBeVisible();
     await navigateInApp(page, "/notifications");
     await expect(page.getByRole("heading", { name: "Validation Inbox" })).toBeVisible();
-    await navigateInApp(page, "/validation/queue");
+    await navigateInApp(page, "/queue");
     await expect(page.getByText("Cached Queue Item 1")).toBeVisible();
     expect(queueVersion).toBe(1);
     await page.waitForTimeout(5_100);
     await navigateInApp(page, "/notifications");
     await expect(page.getByRole("heading", { name: "Validation Inbox" })).toBeVisible();
-    await navigateInApp(page, "/validation/queue");
+    await navigateInApp(page, "/queue");
     await expect(page.getByText("Cached Queue Item 1")).toBeVisible();
     await expect(page.getByText("Cached Queue Item 2")).toBeVisible();
     expect(queueVersion).toBe(2);
@@ -104,7 +104,7 @@ test.describe("data loading and cache regressions", () => {
         return [{ institutionId: institution.id, contributors: 3, moderators: 1, pendingInvitations: 2 }];
       },
     });
-    await page.goto("/admin/institution-management", { waitUntil: "domcontentloaded" });
+    await page.goto("/institution-management", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: institution.name })).toBeVisible({ timeout: 700 });
     await expect.poll(() => summaryResolved).toBe(true);
     await expect(page.getByRole("heading", { name: institution.name })).toBeVisible();
@@ -191,7 +191,7 @@ test.describe("data loading and cache regressions", () => {
     await installSession(page, "admin");
     await installFragmentableSse(page);
     const api = await mockApi(page, "admin");
-    await page.goto("/validation/queue", { waitUntil: "domcontentloaded" });
+    await page.goto("/queue", { waitUntil: "domcontentloaded" });
     await page.getByText(submission.eventTitle).click();
     await expect.poll(() => api.count("GET", "/api/v1/settings/watermark")).toBe(1);
     await navigateInApp(page, "/settings#page");

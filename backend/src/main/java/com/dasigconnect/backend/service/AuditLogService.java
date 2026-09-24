@@ -455,7 +455,7 @@ public class AuditLogService {
             case USER -> {
                 User u = lookups.users().get(resourceId);
                 if (u != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/moderator-management");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/admin-management");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
@@ -470,7 +470,7 @@ public class AuditLogService {
             case INSTITUTION -> {
                 Institution inst = lookups.institutions().get(resourceId);
                 if (inst != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/admin/institution-management");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/institution-management");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }

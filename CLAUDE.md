@@ -110,12 +110,13 @@ the private Supabase bucket.
 ### Frontend - React 19 / TypeScript / Vite
 
 - Entry: `frontend/src/main.tsx`.
-- App shell: `frontend/src/app/App.tsx`.
+- App shell: `frontend/src/app/App.tsx` — routes only. Access is grouped with layout-route gates (`RequireSignedIn` / `RequireReviewer` / `RequireAdmin`, `components/common/RouteGates.tsx`), not per-route role arrays.
+- Auth/session: `frontend/src/features/auth/hooks/useAuthSession.ts` (session restore, login + lockout, session-expired modal, invite activation, sign-out), with `useLoginLockout`, `useSessionCountdown`, `usePasswordResetFlow`, `useInviteForm` beside it and pure helpers in `features/auth/utils.ts`.
 - API clients: `frontend/src/api/`.
 - UI: shadcn/ui, Radix UI, Tailwind CSS v4.
 - Routing: React Router v7.
 - HTTP: Axios with Authorization header managed by `setAuthToken`.
-- Session expiry: `App.tsx` parses JWT `exp`, shows countdown banner near expiry, and opens the session modal at timeout.
+- Session expiry: `useSessionCountdown` parses JWT `exp`, shows the countdown banner near expiry, and opens the session modal at timeout.
 - Media upload: browser requests a presigned URL from the backend, `PUT`s the file bytes directly to Cloudflare R2, then sends media metadata to the backend. No `@supabase/*` client or storage keys in the frontend.
 
 ---

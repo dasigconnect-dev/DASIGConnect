@@ -229,7 +229,7 @@ export default function CalendarEventDetailModal({
         {/* Drawer Sticky Footer Toolbar */}
         <div className="cal-drawer-footer">
           {isPendingApproval && isAdmin && (
-            <a className="cal-drawer-cta-btn" href="/validation/queue">
+            <a className="cal-drawer-cta-btn" href="/queue">
               <i className="ti ti-checklist" aria-hidden="true" />
               <span>Open in Approval Queue</span>
               <i className="ti ti-arrow-right" aria-hidden="true" />
