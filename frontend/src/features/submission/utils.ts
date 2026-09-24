@@ -164,6 +164,24 @@ export function extractHashtags(caption: string) {
   return [...new Set(matches)];
 }
 
+/**
+ * The stored tags that publishing appends after the caption, as "#Tag": tags
+ * the caption doesn't already contain (case-insensitive), each once. Mirrors
+ * FacebookPublisherService.buildPostMessage so a preview shows exactly what
+ * gets posted.
+ */
+export function tagsAppendedToCaption(tags: string[], caption: string) {
+  const seen = new Set(extractHashtags(caption).map((tag) => tag.toLowerCase()));
+  const appended: string[] = [];
+  for (const raw of tags) {
+    const tag = `#${raw.trim().replace(/\s/g, "").replace(/^#+/, "")}`;
+    if (tag.length <= 1 || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    appended.push(tag);
+  }
+  return appended;
+}
+
 export function normalizeHashtagInput(value: string) {
   const clean = value.trim().replace(/^#+/, "").replace(/[^A-Za-z0-9_]/g, "");
   return clean ? `#${clean}` : "";

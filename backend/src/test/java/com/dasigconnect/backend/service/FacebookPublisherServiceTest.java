@@ -132,4 +132,34 @@ class FacebookPublisherServiceTest {
         assertThat(captor.getValue().getPhotoIdsStaged()).isEqualTo("[\"111\",\"222\"]");
         assertThat(captor.getValue().getPhotoIdsCleanupFailed()).isEqualTo("[\"222\"]");
     }
+
+    @Test
+    void buildPostMessageSkipsTagsTheCaptionAlreadyHas() {
+        Submission submission = new Submission();
+        submission.setCaption("Hello network.\n\n#DASIGConnect #DOSTAcademe");
+        submission.setTags("DASIGConnect,dostacademe,Research");
+
+        assertThat(FacebookPublisherService.buildPostMessage(submission))
+                .isEqualTo("Hello network.\n\n#DASIGConnect #DOSTAcademe\n\n#Research");
+    }
+
+    @Test
+    void buildPostMessageReturnsCaptionUnchangedWhenEveryTagIsInIt() {
+        Submission submission = new Submission();
+        submission.setCaption("Launch day #ScienceAndInnovation");
+        submission.setTags("ScienceAndInnovation,#ScienceAndInnovation");
+
+        assertThat(FacebookPublisherService.buildPostMessage(submission))
+                .isEqualTo("Launch day #ScienceAndInnovation");
+    }
+
+    @Test
+    void buildPostMessageAppendsEachNewTagOnce() {
+        Submission submission = new Submission();
+        submission.setCaption("No hashtags here");
+        submission.setTags("Science, science ,Research");
+
+        assertThat(FacebookPublisherService.buildPostMessage(submission))
+                .isEqualTo("No hashtags here\n\n#Science #Research");
+    }
 }
