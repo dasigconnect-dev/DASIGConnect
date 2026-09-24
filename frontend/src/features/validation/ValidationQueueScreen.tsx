@@ -61,10 +61,11 @@ import {
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import ReviewAiSuggestionsModal from "./ReviewAiSuggestionsModal";
 import ReviewChangesDialog, { type EditChangeRow } from "./ReviewChangesDialog";
+import WordDiffText from "./WordDiffText";
 import CheckWritingButton from "../../components/proofread/CheckWritingButton";
 import ProofreadResult from "../../components/proofread/ProofreadResult";
 import { useProofread } from "../../hooks/useProofread";
-import { contributorOriginals, isoToLocalDateTime } from "./editSafeguards";
+import { contributorOriginals, isoToLocalDateTime, wordDiff } from "./editSafeguards";
 import type { ProofreadIssue } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
@@ -1062,6 +1063,7 @@ export default function ValidationQueueScreen({
     if (editForm.caption !== base.caption) {
       rows.push({
         key: "caption", label: "Caption", before: base.caption, after: editForm.caption,
+        diff: wordDiff(base.caption, editForm.caption),
         onUndo: () => setEditForm((f) => ({ ...f, caption: base.caption })),
       });
     }
@@ -3044,20 +3046,72 @@ function PanelContentLoader({ text = "Loading submission details..." }: { text?:
   );
 }
 
+const EDIT_DIFF_FIELD_LABELS: Record<string, string> = {
+  eventTitle: "Event title",
+  eventDate: "Event date",
+  caption: "Caption",
+  description: "Moderator notes",
+  category: "Category",
+  tags: "Tags",
+  scheduledAt: "Publish slot",
+  media: "Media",
+};
+
+/** Long free text gets a word-level diff; everything else one "old → new" line. */
+const WORD_DIFF_FIELDS = new Set(["caption", "description"]);
+
+/** A stored diff value as display text (dates and slots formatted). */
+function editDiffValue(field: string, value: unknown): string {
+  const text = value == null ? "" : String(value);
+  if (!text) return "";
+  if (field === "eventDate") return formatDate(text);
+  if (field === "scheduledAt") return formatDateTime(text);
+  return text;
+}
+
+/**
+ * One review edit's changes in the Review History, laid out like Review & Save:
+ * the caption as changed words only (grouped, with context), short fields as
+ * "old → new". Media edits are stored without before/after, so they read as
+ * a one-line summary.
+ */
 function EditDiffView({ diffJson }: { diffJson: string }) {
   const entries = parseEditDiff(diffJson);
   if (entries.length === 0) return null;
   return (
-    <div className="val-edit-diff">
-      {entries.map(([field, change]) => (
-        <div key={field} className="val-edit-diff-row">
-          <span className="val-edit-diff-field">{formatAction(field)}</span>
-          <span className="val-edit-diff-from">{String(change.from) || "—"}</span>
-          <i className="ti ti-arrow-right"></i>
-          <span className="val-edit-diff-to">{String(change.to) || "—"}</span>
-        </div>
-      ))}
-    </div>
+    <ul className="val-change-list val-change-list--history">
+      {entries.map(([field, change]) => {
+        const label = EDIT_DIFF_FIELD_LABELS[field] ?? formatAction(field);
+        if (!change || typeof change !== "object") {
+          return (
+            <li key={field} className="val-change-row">
+              <p className="val-change-inline">
+                <strong>{label}</strong>
+                <span>{change === "library_asset_added" ? "Library media added" : "updated"}</span>
+              </p>
+            </li>
+          );
+        }
+        const before = editDiffValue(field, change.from);
+        const after = editDiffValue(field, change.to);
+        return (
+          <li key={field} className="val-change-row">
+            <div className="val-change-head">
+              <strong>{label}</strong>
+            </div>
+            {WORD_DIFF_FIELDS.has(field) ? (
+              <WordDiffText segments={wordDiff(before, after)} />
+            ) : (
+              <p className="val-change-inline">
+                <del>{before || "empty"}</del>
+                <i className="ti ti-arrow-right" aria-hidden="true" />
+                <ins>{after || "empty"}</ins>
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -3794,9 +3848,9 @@ function DecisionDialog({
   );
 }
 
-function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: unknown }]> {
+function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: unknown } | string]> {
   try {
-    return Object.entries(JSON.parse(diffJson) as Record<string, { from: unknown; to: unknown }>);
+    return Object.entries(JSON.parse(diffJson) as Record<string, { from: unknown; to: unknown } | string>);
   } catch {
     return [];
   }

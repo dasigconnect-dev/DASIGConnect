@@ -2664,37 +2664,6 @@
   text-transform: uppercase;
 }
 
-.val-edit-diff {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.val-edit-diff-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-.val-edit-diff-field {
-  color: var(--val-muted);
-  font-weight: 800;
-  min-width: 90px;
-}
-
-.val-edit-diff-from {
-  text-decoration: line-through;
-  color: var(--val-red);
-}
-
-.val-edit-diff-to {
-  color: var(--val-green);
-  font-weight: 700;
-}
-
 .val-modal-overlay {
   --val-bg: #eff3fa;
   --val-surface: #ffffff;
@@ -4121,40 +4090,6 @@
   word-break: break-word;
 }
 
-.val-edit-diff {
-  margin-top: 8px;
-  padding: 8px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.val-edit-diff-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.val-edit-diff-field {
-  font-weight: 700;
-  color: #475569;
-}
-
-.val-edit-diff-from {
-  color: #dc2626;
-  text-decoration: line-through;
-}
-
-.val-edit-diff-to {
-  color: #16a34a;
-  font-weight: 600;
-}
-
 /* ── Review-queue editor: fancy text + media + reschedule ── */
 .val-edit-caption-head {
   display: flex;
@@ -5264,55 +5199,72 @@
   color: var(--val-blue);
   border-color: var(--val-blue-bdr);
 }
-.val-change-values {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.val-change-values p {
+/* One-line change: old → new */
+.val-change-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
   margin: 0;
   padding: 10px 12px;
-  max-height: 160px;
-  overflow-y: auto;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.5;
-  color: var(--val-text);
+  overflow-wrap: anywhere;
+}
+.val-change-inline i {
+  font-size: 13px;
+  color: var(--val-muted);
+}
+
+/* Long text: only the changed words, with a little context */
+.val-change-diff {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--val-text-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.val-change-values p.is-before {
-  background: #fff8f8;
-  border-right: 1px solid var(--val-border);
+.val-change-inline del,
+.val-change-diff del {
+  color: var(--val-red);
+  background: var(--val-red-dim);
+  text-decoration-thickness: 1px;
+  border-radius: 3px;
 }
-.val-change-values p.is-after {
-  background: #f6fdf8;
+.val-change-inline ins,
+.val-change-diff ins {
+  color: var(--val-green);
+  background: var(--val-green-dim);
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 3px;
 }
-.val-change-values span {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.val-change-gap {
   color: var(--val-muted);
+  padding: 0 2px;
 }
-.val-change-values em {
-  color: var(--val-muted);
-}
-.val-change-check {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.val-change-check h4 {
+
+/* Live Event reminder — one line */
+.val-change-live {
   display: flex;
   align-items: center;
   gap: 6px;
   margin: 0;
   font-size: 13px;
-  font-weight: 700;
-  color: var(--val-text);
+  font-weight: 600;
+  color: var(--val-red);
 }
-.val-change-check h4 i { color: #4f46e5; }
+.val-change-live i { font-size: 15px; }
+
+.val-change-check {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .val-change-check-status {
   display: flex;
   align-items: center;
@@ -5324,11 +5276,6 @@
 .val-change-check-status.is-ok {
   color: var(--val-green);
 }
-.val-change-check-note {
-  margin: 0;
-  font-size: 12px;
-  color: var(--val-muted);
-}
 .val-review-changes-foot {
   display: flex;
   justify-content: flex-end;
@@ -5338,16 +5285,25 @@
 }
 
 @media (max-width: 640px) {
-  .val-change-values {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .val-change-values p.is-before {
-    border-right: 0;
-    border-bottom: 1px solid var(--val-border);
-  }
   .val-review-changes-foot .val-btn {
     flex: 1;
     min-height: 44px;
     justify-content: center;
   }
+}
+
+/* Review History: an edit's changes, same layout as Review & Save */
+.val-change-list--history {
+  margin-top: 8px;
+  gap: 8px;
+}
+.val-change-list--history .val-change-row {
+  background: var(--val-surface, #ffffff);
+}
+.val-change-list--history .val-change-head {
+  padding: 6px 12px;
+}
+.val-change-list--history .val-change-inline strong {
+  font-size: 13px;
+  color: var(--val-text);
 }

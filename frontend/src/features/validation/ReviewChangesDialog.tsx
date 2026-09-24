@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { proofreadText, type ProofreadIssue } from "../../api/aiApi";
 import ProofreadIssues from "../../components/proofread/ProofreadIssues";
+import type { DiffSegment } from "./editSafeguards";
+import WordDiffText from "./WordDiffText";
 
 /** One changed field, before → after, as shown before saving. */
 export interface EditChangeRow {
@@ -9,6 +11,8 @@ export interface EditChangeRow {
   label: string;
   before: string;
   after: string;
+  /** Word-level changes for long text (caption), shown instead of before → after. */
+  diff?: DiffSegment[];
   /** Put the field back to its last saved value. Omitted for rows that can't be undone here (media). */
   onUndo?: () => void;
 }
@@ -94,19 +98,16 @@ export default function ReviewChangesDialog({
           <p>
             {nothingChanged
               ? "Nothing has changed since the last save."
-              : `${changes.length} change${changes.length === 1 ? "" : "s"} to this post. The contributor will be told what you edited.`}
+              : `${changes.length} change${changes.length === 1 ? "" : "s"} · the contributor will be notified`}
           </p>
         </header>
 
         <div className="val-review-changes-body">
           {isLiveEvent && !nothingChanged && (
-            <div className="val-edit-callout is-error">
+            <p className="val-change-live">
               <i className="ti ti-bolt" aria-hidden="true" />
-              <span>
-                This is a Live Event — it publishes the moment it&apos;s approved, so the contributor
-                won&apos;t see your edits before they go live.
-              </span>
-            </div>
+              Live Event — goes live as soon as it&apos;s approved.
+            </p>
           )}
 
           {!nothingChanged && (
@@ -121,16 +122,15 @@ export default function ReviewChangesDialog({
                       </button>
                     )}
                   </div>
-                  <div className="val-change-values">
-                    <p className="is-before">
-                      <span>Before</span>
-                      {change.before || <em>empty</em>}
+                  {change.diff ? (
+                    <WordDiffText segments={change.diff} />
+                  ) : (
+                    <p className="val-change-inline">
+                      <del>{change.before || "empty"}</del>
+                      <i className="ti ti-arrow-right" aria-hidden="true" />
+                      <ins>{change.after || "empty"}</ins>
                     </p>
-                    <p className="is-after">
-                      <span>After</span>
-                      {change.after || <em>empty</em>}
-                    </p>
-                  </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -138,36 +138,36 @@ export default function ReviewChangesDialog({
 
           {captionChanged && (
             <section className="val-change-check" aria-live="polite">
-              <h4>
-                <i className="ti ti-sparkles" aria-hidden="true" /> Writing check
-              </h4>
               {checkState === "loading" && (
                 <p className="val-change-check-status">
-                  <i className="ti ti-loader-2 val-spin" aria-hidden="true" /> Checking your caption edit…
+                  <i className="ti ti-loader-2 val-spin" aria-hidden="true" /> Checking writing…
                 </p>
               )}
               {checkState === "error" && (
                 <p className="val-change-check-status">
-                  Couldn&apos;t check the writing{checkError === "rate-limit" ? " — hourly limit reached" : ""}.
-                  You can still save.
+                  <i className="ti ti-alert-circle" aria-hidden="true" />
+                  Writing check {checkError === "rate-limit" ? "limit reached" : "unavailable"} — you can still save.
                 </p>
               )}
               {checkState === "done" && openIssues.length === 0 && (
                 <p className="val-change-check-status is-ok">
-                  <i className="ti ti-circle-check" aria-hidden="true" /> No new mistakes found in your edit.
+                  <i className="ti ti-circle-check" aria-hidden="true" /> Writing check: no new mistakes
                 </p>
               )}
-              {checkState === "done" && (
-                <ProofreadIssues
-                  issues={issues}
-                  text={caption}
-                  onApply={onApplyCaptionFix}
-                  onDismiss={(issue) => setIssues((prev) => prev.filter((i) => i !== issue))}
-                />
+              {checkState === "done" && openIssues.length > 0 && (
+                <>
+                  <p className="val-change-check-status">
+                    <i className="ti ti-sparkles" aria-hidden="true" />
+                    Writing check · {openIssues.length} suggestion{openIssues.length === 1 ? "" : "s"}
+                  </p>
+                  <ProofreadIssues
+                    issues={issues}
+                    text={caption}
+                    onApply={onApplyCaptionFix}
+                    onDismiss={(issue) => setIssues((prev) => prev.filter((i) => i !== issue))}
+                  />
+                </>
               )}
-              <p className="val-change-check-note">
-                AI suggestions can be wrong about names and local words — nothing is changed unless you apply it.
-              </p>
             </section>
           )}
         </div>
