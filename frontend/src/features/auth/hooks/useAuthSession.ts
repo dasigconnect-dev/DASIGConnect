@@ -88,12 +88,18 @@ export function useAuthSession() {
     profileRequestRef.current = null;
   }
 
-  async function clearLocalAuthentication() {
+  /**
+   * Drops the stored session and every in-memory cache. `keepUser` leaves the
+   * current user in place while a replacement session is being verified (the
+   * session-expired modal): clearing it would make every signed-in route
+   * redirect to /login mid-re-login and strand the user there.
+   */
+  async function clearLocalAuthentication({ keepUser = false } = {}) {
     cancelPendingProfileRequest();
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
     setAuthToken(null);
-    setCurrentUser(null);
+    if (!keepUser) setCurrentUser(null);
     resetTourPreferencesCache();
     await clearAuthenticatedQueryCache();
     clearAppCaches();
@@ -227,12 +233,7 @@ export function useAuthSession() {
         void passwordReset.forgot.submit();
       } else if (isPasswordResetPath(location.pathname)) {
         void passwordReset.reset.submit();
-      } else if (
-        location.pathname === "/dashboard" &&
-        showSessionModal &&
-        !modalLoginLoading &&
-        !logoutLoading
-      ) {
+      } else if (showSessionModal && !modalLoginLoading && !logoutLoading) {
         void handleModalLogin();
       }
     };
@@ -337,7 +338,7 @@ export function useAuthSession() {
       const response = await login(email, modalPassword);
       if (authenticationFlowIdRef.current !== flowId) return;
       loginCompleted = true;
-      await clearLocalAuthentication();
+      await clearLocalAuthentication({ keepUser: true });
       const user = await completeSignIn(response.data.accessToken, email, flowId);
       if (!user) return;
       setShowSessionModal(false);
