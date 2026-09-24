@@ -60,9 +60,10 @@ public class ValidationService {
 
     /**
      * BR-VAL-03 rejection reason codes → the label the contributor sees.
-     * Only problems a revision can't fix: anything missing or fixable (content,
-     * format) goes through Request Revision instead, so INCOMPLETE_CONTENT and
-     * WRONG_FORMAT are no longer accepted. Rejections stored under those codes
+     * Rejecting declines the post as submitted (the contributor can still edit
+     * and resubmit — {@code SubmissionService.submit} accepts {@code rejected});
+     * anything that only needs fixing (content, format) goes through Request
+     * Revision instead, so INCOMPLETE_CONTENT and WRONG_FORMAT are no longer accepted. Rejections stored under those codes
      * before 2026-09-24 still display — the frontend keeps their labels.
      */
     static final Map<String, String> REJECTION_REASON_LABELS = Map.of(

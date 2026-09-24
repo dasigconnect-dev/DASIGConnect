@@ -346,7 +346,7 @@ export default function ValidationQueueScreen({
   const [remarks, setRemarks] = useState("");
   const [revisionFieldComments, setRevisionFieldComments] = useState<Record<string, string>>({});
   const [activeRevisionField, setActiveRevisionField] = useState<string | null>("caption");
-  // No default: rejecting is final, so the reviewer picks a reason on purpose.
+  // No default: the reason is what the contributor sees, so the reviewer picks it on purpose.
   const [reasonCode, setReasonCode] = useState<RejectionReasonCode | null>(null);
   const [notes, setNotes] = useState("");
   const [editMode, setEditMode] = useState(false);
@@ -2543,11 +2543,20 @@ export default function ValidationQueueScreen({
                 inert={!activeLock || undefined}
               >
                 <div className="val-action-status">
-                  <span className="val-action-lock-pill">
-                    <i className="ti ti-lock-check" />
-                    {activeLock
-                      ? `Review in progress by you until ${formatDateTime(activeLock.expiresAt)}`
-                      : "Preview — shown after you Start Review"}
+                  <span
+                    className="val-action-lock-pill"
+                    title={activeLock ? `Locked to you until ${formatDateTime(activeLock.expiresAt)}` : undefined}
+                  >
+                    <i className="ti ti-lock-check" aria-hidden="true" />
+                    <span className="val-action-lock-text">
+                      {activeLock
+                        ? `Locked to you until ${
+                            isSameLocalDay(activeLock.expiresAt, nowMs)
+                              ? formatTime(activeLock.expiresAt)
+                              : formatDateTime(activeLock.expiresAt)
+                          }`
+                        : "Preview — shown after you Start Review"}
+                    </span>
                   </span>
                 </div>
                 <div className="val-action-group" id="val-review-decision-group">
@@ -2808,7 +2817,7 @@ export default function ValidationQueueScreen({
           icon="ti-ban"
           tone="danger"
           title="Reject submission"
-          body="Rejecting is final — the contributor can't resubmit this post. Pick the reason they'll see."
+          body="Choose why this post can't be approved."
           confirmLabel={decisionBusy ? "Rejecting..." : "Reject Submission"}
           exiting={modalClosing}
           confirmBusy={decisionBusy}
@@ -2819,12 +2828,9 @@ export default function ValidationQueueScreen({
         >
           <div className="val-reject-revise-hint">
             <i className="ti ti-pencil-exclamation" aria-hidden="true" />
-            <span>
-              Something missing or fixable, like the caption, photos, or format? Send it back
-              instead so the contributor can correct it.
-            </span>
+            <span>Only needs fixes?</span>
             <button type="button" onClick={() => openDecisionModal("revise")}>
-              Request Revision
+              Request Revision instead
             </button>
           </div>
 
@@ -2851,14 +2857,13 @@ export default function ValidationQueueScreen({
 
           <label className="val-reject-note">
             <span>
-              Note to the contributor{" "}
-              <small>{reasonCode === "OTHER" ? "Required" : "Optional"}</small>
+              Note <small>{reasonCode === "OTHER" ? "(required)" : "(optional)"}</small>
             </span>
             <textarea
               className="val-modal-input"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              rows={3}
+              rows={2}
               placeholder={
                 reasonCode === "OTHER"
                   ? "Explain why this can't be posted…"
@@ -4022,6 +4027,13 @@ function formatTime(value?: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+/** True when `iso` falls on the same local calendar day as `nowMs`. */
+function isSameLocalDay(iso: string, nowMs: number) {
+  const a = new Date(iso);
+  const b = new Date(nowMs);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function formatDateTime(value?: string) {

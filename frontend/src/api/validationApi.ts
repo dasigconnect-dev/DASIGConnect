@@ -53,8 +53,8 @@ export interface RejectionPayload {
 }
 
 /**
- * Reasons a reviewer can reject with (BR-VAL-03) — only problems a revision
- * can't fix; anything missing or fixable goes through Request Revision.
+ * Reasons a reviewer can reject with (BR-VAL-03) — why the post is declined
+ * as submitted; anything that only needs fixing goes through Request Revision.
  * Must match ValidationService.REJECTION_REASON_LABELS.
  */
 export type RejectionReasonCode =

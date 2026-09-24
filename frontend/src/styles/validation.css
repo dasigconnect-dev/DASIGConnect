@@ -2340,13 +2340,17 @@
 .val-action-status {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
+/* Shrinks and truncates instead of running under the Unlock button */
 .val-action-lock-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   padding: 5px 12px;
   border-radius: 20px;
   font-size: 12px;
@@ -2355,6 +2359,14 @@
   background: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
+}
+.val-action-lock-pill > i {
+  flex-shrink: 0;
+}
+.val-action-lock-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .val-action-edit-pill {
@@ -2822,29 +2834,24 @@
 /* ── Reject dialog ── */
 .val-reject-revise-hint {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
-  margin: 14px 0 12px;
-  padding: 10px 12px;
+  gap: 6px 8px;
+  margin: 12px 0 10px;
+  padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--val-amber-bdr, #fde68a);
   background: var(--val-amber-dim, #fffbeb);
   color: #92400e;
   font-size: 13px;
-  line-height: 1.45;
   text-align: left;
 }
 .val-reject-revise-hint > i {
-  flex-shrink: 0;
-  margin-top: 1px;
   font-size: 16px;
 }
-.val-reject-revise-hint > span {
-  flex: 1 1 220px;
-}
 .val-reject-revise-hint > button {
-  min-height: 32px;
+  margin-left: auto;
+  min-height: 30px;
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid currentColor;
@@ -2862,19 +2869,20 @@
 .val-reason-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 12px;
   text-align: left;
 }
 .val-reason-option {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 6px 12px;
   border: 1px solid var(--val-border);
   border-radius: 10px;
   background: var(--val-surface);
+  color: var(--val-text);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -2884,6 +2892,7 @@
 .val-reason-option.selected {
   border-color: var(--val-red-bdr);
   background: var(--val-red-dim);
+  color: var(--val-red);
 }
 .val-reason-option:has(input:focus-visible) {
   outline: 2px solid var(--val-red);
@@ -2893,32 +2902,33 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  margin: 2px 0 0;
+  margin: 0;
   accent-color: var(--val-red);
   cursor: pointer;
-}
-.val-reason-option span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.val-reason-option strong {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--val-text);
-}
-.val-reason-option.selected strong {
-  color: var(--val-red);
-}
-.val-reason-option small {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--val-muted);
 }
 /* "Other" spans the full row so the odd count doesn't leave a gap */
 .val-reason-option:last-child:nth-child(odd) {
   grid-column: 1 / -1;
+}
+.val-reason-option > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.val-reason-option strong {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.val-reason-option small {
+  margin-top: 0;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--val-muted);
+}
+.val-reason-option.selected small {
+  color: var(--val-red);
+  opacity: 0.8;
 }
 
 .val-reject-note {
@@ -2932,8 +2942,10 @@
   font-weight: 650;
   color: var(--val-text);
 }
+/* Inline beside the label — overrides the dialog-wide `.val-modal small` block style */
 .val-reject-note small {
-  margin-left: 4px;
+  display: inline;
+  margin: 0 0 0 4px;
   font-size: 12px;
   font-weight: 500;
   color: var(--val-muted);

@@ -2,8 +2,9 @@ import type { RejectionReasonCode } from "../api/validationApi";
 
 /**
  * The reasons a reviewer can pick when rejecting (BR-VAL-03), in display
- * order. Only problems a revision can't fix — missing or fixable content goes
- * back to the contributor with Request Revision instead.
+ * order. Rejecting declines the post as submitted (the contributor can still
+ * edit and resubmit it); something that only needs fixing goes back with
+ * Request Revision instead.
  */
 export const REJECTION_REASONS: ReadonlyArray<{
   code: RejectionReasonCode;
@@ -13,37 +14,37 @@ export const REJECTION_REASONS: ReadonlyArray<{
   {
     code: "INAPPROPRIATE_CONTENT",
     label: "Inappropriate content",
-    description: "Offensive, misleading, or against DOST and DASIG guidelines.",
+    description: "Offensive or against guidelines",
   },
   {
     code: "OUT_OF_SCOPE",
     label: "Not a DASIG activity",
-    description: "Unrelated to DASIG's programs or the network's mission.",
+    description: "Outside DASIG's programs",
   },
   {
     code: "DUPLICATE_EVENT",
     label: "Duplicate",
-    description: "This event was already posted or is already in the queue.",
+    description: "Already posted or queued",
   },
   {
     code: "NO_LONGER_RELEVANT",
     label: "No longer timely",
-    description: "Posting it now would be outdated or misleading.",
+    description: "Outdated if posted now",
   },
   {
     code: "RIGHTS_OR_PRIVACY",
     label: "Rights or privacy issue",
-    description: "Media used without permission, or people shown without consent.",
+    description: "No permission or consent",
   },
   {
     code: "WRONG_INSTITUTION",
     label: "Belongs to another institution",
-    description: "The institution that ran the event should submit it.",
+    description: "Their institution should submit it",
   },
   {
     code: "OTHER",
     label: "Other",
-    description: "Explain the reason in the note below.",
+    description: "Explain in the note",
   },
 ];
 
