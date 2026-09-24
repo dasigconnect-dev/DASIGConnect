@@ -63,6 +63,9 @@
 - Administrators can inspect and retry dead media-processing jobs through additive system-health endpoints, with retries written to the audit log.
 - Hybrid ranking now requires both the global environment flag and the institution rollout flag; the new institution setting defaults off and is changed only through an administrator endpoint.
 - Regression coverage verifies expiration handling, evergreen retention, reuse penalties, versioned reclassification, bounded backfill, queue backpressure, institution-fair claim parameters, dead-letter recovery, rollout fallback, and existing worker behavior.
+- **Phase 7 prerequisite - Facebook History Domain Foundation:** Implemented on `feature/facebook-history-domain` without enabling historical ranking.
+- Migration `V109` establishes Page-scoped import jobs, canonical historical posts, ordered media links, engagement snapshots, and protected Media Repository provenance. No Facebook import call, UI change, or performance weight is activated in this prerequisite phase.
+- Historical performance remains excluded from recommendation eligibility and scoring until a later import phase supplies reliable normalized metrics and shadow evaluation confirms that relevance and diversity are preserved.
 
 ## 2. Verified Current Baseline
 

@@ -1365,6 +1365,11 @@ public class MediaAssetService {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
 
+        if (asset.isSystemManaged()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Imported media is system-managed and cannot be deleted from the Media Repository.");
+        }
+
         if (isAdmin(user)) {
             return asset;
         }

@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -202,6 +203,20 @@ class MediaAssetServiceTest {
         assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "contributor", institutionId)));
 
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
+    @Test
+    void delete_rejectsSystemManagedImportedAssetForOrdinaryDeletePath() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setSystemManaged(true);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.delete(assetId, true, user(UUID.randomUUID(), "admin", null)));
+
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
         verify(mediaAssetRepository, never()).save(any());
     }
 
