@@ -131,30 +131,6 @@ export default function LandingHero({ user }: LandingHeroProps) {
             content to the official DASIG Facebook Page.
           </p>
 
-          <div className="hero-actions-row">
-            {user ? (
-              <Link to="/dashboard" className="btn-editorial-primary" style={{ padding: '12px 26px', fontSize: '0.98rem' }}>
-                <i className="ti ti-layout-dashboard"></i>
-                Open Dashboard
-              </Link>
-            ) : (
-              <Link to="/login" className="btn-editorial-primary" style={{ padding: '12px 26px', fontSize: '0.98rem' }}>
-                <i className="ti ti-login"></i>
-                Access Portal
-              </Link>
-            )}
-
-            <button
-              type="button"
-              className="btn-editorial-secondary"
-              onClick={() => scrollToSection('why-and-what')}
-              style={{ padding: '12px 22px', fontSize: '0.95rem' }}
-            >
-              <i className="ti ti-arrow-down"></i>
-              Learn More
-            </button>
-          </div>
-
           {/* Compact Pillars Row */}
           <div className="hero-mini-pillars">
             <div className="hero-mini-pill">
@@ -178,6 +154,30 @@ export default function LandingHero({ user }: LandingHeroProps) {
                 <span className="mini-pill-desc">Meta Graph API v21.0</span>
               </div>
             </div>
+          </div>
+
+          <div className="hero-actions-row">
+            {user ? (
+              <Link to="/dashboard" className="btn-editorial-primary" style={{ padding: '12px 26px', fontSize: '0.98rem' }}>
+                <i className="ti ti-layout-dashboard"></i>
+                Open Dashboard
+              </Link>
+            ) : (
+              <Link to="/login" className="btn-editorial-primary" style={{ padding: '12px 26px', fontSize: '0.98rem' }}>
+                <i className="ti ti-login"></i>
+                Access Portal
+              </Link>
+            )}
+
+            <button
+              type="button"
+              className="btn-editorial-secondary"
+              onClick={() => scrollToSection('why-and-what')}
+              style={{ padding: '12px 22px', fontSize: '0.95rem' }}
+            >
+              <i className="ti ti-arrow-down"></i>
+              Learn More
+            </button>
           </div>
         </div>
 

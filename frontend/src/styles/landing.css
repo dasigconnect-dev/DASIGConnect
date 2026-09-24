@@ -108,39 +108,51 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 3px;
-  border: 1px solid var(--lp-light-border);
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  padding: 0;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-brand:hover .landing-brand-logo {
+  transform: scale(1.06);
 }
 
 .landing-brand-logo img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
 }
 
 .landing-brand-title {
-  font-family: var(--ff-body);
-  font-size: 1.22rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--ff-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--lp-ink);
   display: flex;
-  align-items: center;
-  gap: 3px;
+  align-items: baseline;
+  line-height: 1;
 }
 
 .landing-brand-title em {
   font-family: var(--ff-display);
   font-style: italic;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--lp-blue);
+  margin-left: 2px;
+  transition: color 0.2s ease;
+}
+
+.landing-brand:hover .landing-brand-title em {
+  color: var(--lp-blue-dark);
 }
 
 .landing-brand-badge {
@@ -328,13 +340,13 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   flex-wrap: wrap;
 }
 
-/* Compact Pillars Row under Hero CTA */
+/* Compact Pillars Row */
 .hero-mini-pillars {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-top: 40px;
-  padding-top: 28px;
+  margin-top: 32px;
+  padding-top: 24px;
   border-top: 1px solid var(--lp-light-border);
 }
 
@@ -652,7 +664,7 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 /* ==========================================================================
-   WHO IS DASIG: 3D Circular WebGL Gallery Full-Bleed (Edge-to-Edge, No Background)
+   WHAT IS DASIG: 3D Circular WebGL Gallery Full-Bleed (Edge-to-Edge, No Background)
    ========================================================================== */
 .who-gallery-fullbleed {
   width: 100%;

@@ -25,7 +25,6 @@ export default function LandingNavbar({ user, onOpenPrivacy }: LandingNavbarProp
             </div>
             <div className="landing-brand-title">
               DASIG<em>Connect</em>
-              <span className="landing-brand-badge">DOST Region 7</span>
             </div>
           </Link>
 
