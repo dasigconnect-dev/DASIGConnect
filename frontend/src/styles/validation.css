@@ -502,19 +502,6 @@
   color: #ffffff;
 }
 
-/* Base styling for the queue-badge pill (mobile topbar; breakpoint-specific
-   overrides for it live further below). */
-.val-mobile-queue-badge {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--val-border);
-  background: var(--val-surface-2);
-  color: var(--val-text-2);
-}
 
 .val-search {
   position: relative;
@@ -1137,73 +1124,189 @@
   padding: 0 !important;
 }
 
+/* Header: title + status pill; hide control on desktop */
 .val-details-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 11px 12px 11px 14px;
-  border-bottom: 1px solid var(--val-border);
-  background: var(--val-surface-2);
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--val-text-2);
+  padding: 14px 12px 12px 16px;
 }
 
-.val-details-head span {
-  display: inline-flex;
+.val-details-head-title {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.val-details-head h2 {
+  margin: 0;
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--val-text);
+}
+
+.val-details-head .val-status {
+  font-size: 11px;
+  padding: 2px 8px;
 }
 
 .val-details-hide {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   border: 1px solid var(--val-border);
   background: var(--val-surface);
   color: var(--val-muted);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .val-details-hide:hover {
   color: var(--val-blue);
   border-color: var(--val-blue-bdr);
   background: var(--val-blue-dim);
 }
-
-.val-details-list {
-  margin: 0;
-  padding: 6px 14px 12px;
+.val-details-hide:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 2px;
 }
 
-.val-details-list > div {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--val-border);
+/* Publishing — the lead fact, tinted by mode */
+.val-details-publish {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--val-blue-bdr);
+  background: var(--val-blue-dim);
 }
-.val-details-list > div:last-child {
-  border-bottom: 0;
+.val-details-publish.is-live {
+  border-color: var(--val-red-bdr);
+  background: var(--val-red-dim);
+}
+.val-details-publish.is-unset {
+  border-color: var(--val-amber-bdr);
+  background: var(--val-amber-dim);
 }
 
-.val-details-list dt {
-  font-size: 10.5px;
+.val-details-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--val-muted);
-  margin-bottom: 4px;
+  letter-spacing: 0.06em;
+  color: var(--val-blue);
+}
+.val-details-publish.is-live .val-details-mode { color: var(--val-red); }
+.val-details-publish.is-unset .val-details-mode { color: var(--val-amber); }
+.val-details-mode i { font-size: 14px; }
+
+.val-details-publish-when {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--val-text);
+  font-variant-numeric: tabular-nums;
 }
 
-.val-details-list dd {
-  margin: 0;
+.val-details-publish-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--val-text-2);
+}
+.val-details-publish-sub i {
+  color: var(--val-green);
+  font-size: 14px;
+}
+
+/* Failed tab only: retries + the error Facebook returned */
+.val-details-failure {
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--val-red-bdr);
+  background: var(--val-surface);
+}
+.val-details-failure-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 12.5px;
+  color: var(--val-muted);
+}
+.val-details-failure-stats strong {
+  color: var(--val-red);
+  font-size: 14px;
+}
+.val-details-failure-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
   font-size: 13px;
+  line-height: 1.45;
+  color: var(--val-red);
+}
+.val-details-failure-error i {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Fact rows: icon · label · value */
+.val-details-list {
+  margin: 0;
+  padding: 8px 16px 4px;
+}
+
+.val-details-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 9px 0;
+}
+.val-details-row + .val-details-row {
+  border-top: 1px solid var(--val-border);
+}
+.val-details-row > i {
+  grid-row: 1 / span 2;
+  margin-top: 1px;
+  font-size: 16px;
+  color: var(--val-muted);
+}
+.val-details-row dt {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--val-muted);
+}
+.val-details-row dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
   color: var(--val-text);
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.val-details-email {
+  overflow-wrap: anywhere;
 }
 
 .val-details-you {
@@ -1215,47 +1318,30 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  vertical-align: 1px;
   background: var(--val-blue-dim);
   color: var(--val-blue);
   border: 1px solid var(--val-blue-bdr);
 }
 
-.val-details-muted {
-  color: var(--val-muted);
-  font-size: 12px;
+/* Secondary sections: edits during review, moderator notes */
+.val-details-section {
+  padding: 12px 16px;
+  border-top: 1px solid var(--val-border);
 }
-
-.val-details-sub {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--val-muted);
-}
-
-.val-details-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
+.val-details-section h3 {
+  margin: 0 0 8px;
   font-size: 11px;
   font-weight: 800;
-  border: 1px solid var(--val-border);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-muted);
 }
-.val-details-mode.is-scheduled {
-  background: var(--val-blue-dim);
-  color: var(--val-blue);
-  border-color: var(--val-blue-bdr);
-}
-.val-details-mode.is-live {
-  background: var(--val-red-dim);
-  color: var(--val-red);
-  border-color: var(--val-red-bdr);
-}
-.val-details-mode.is-unset {
-  background: var(--val-amber-dim);
-  color: var(--val-amber);
-  border-color: var(--val-amber-bdr);
+
+.val-details-muted {
+  margin: 0;
+  color: var(--val-muted);
+  font-size: 12.5px;
 }
 
 .val-details-editors {
@@ -1264,24 +1350,49 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .val-details-editors li {
   display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.val-details-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--val-blue-dim);
+  border: 1px solid var(--val-blue-bdr);
+  color: var(--val-blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+.val-details-editor-text {
+  display: flex;
   flex-direction: column;
   gap: 1px;
-  font-size: 12.5px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--val-text);
+}
+
+/* Normal flow inside .val-review-toolbar-actions, beside Guide — it used to
+   float absolutely over the toolbar's top-right corner and cover Guide. */
+.val-review-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .val-details-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 30;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 20px;
   border: 1px solid #bfdbfe;
   background: rgba(255, 255, 255, 0.95);
@@ -1302,12 +1413,6 @@
   border-color: #60a5fa;
   transform: translateX(-2px);
   box-shadow: 0 4px 14px rgba(24, 119, 242, 0.22);
-}
-.val-details-btn.is-hidden {
-  opacity: 0;
-  transform: translateX(14px) scale(0.95);
-  pointer-events: none;
-  visibility: hidden;
 }
 .val-details-btn i {
   font-size: 14px;
@@ -1519,25 +1624,7 @@
   color: #094cb0;
 }
 
-.val-fb-more-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: transparent;
-  color: #65676b;
-  cursor: pointer;
-  font-size: 20px;
-  transition: background 0.15s ease, color 0.15s ease;
-}
 
-.val-fb-more-btn:hover {
-  background: #f0f2f5;
-  color: #050505;
-}
 
 .val-fb-body {
   padding: 4px 16px 12px;
@@ -1871,22 +1958,43 @@
   width: 100%;
   max-width: 620px;
   background: var(--val-surface);
+  border: 1px solid var(--val-border);
   border-radius: 14px;
-  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06);
-  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.05);
   box-sizing: border-box;
 }
 
 /* legacy edit head — no longer rendered, kept harmless */
 .val-edit-grid-head { display: none; }
 
-/* ── Tabbed edit form ── */
+/* Header: what this panel is + what saving does */
+.val-edit-head {
+  padding: 18px 20px 12px;
+}
+.val-edit-head h2 {
+  margin: 0;
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--val-text);
+}
+.val-edit-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--val-muted);
+}
+
+/* ── Section switcher: segmented control ── */
 .val-edit-tabs {
   display: flex;
-  gap: 2px;
-  padding: 6px 6px 0;
-  background: var(--val-surface-2, #f3f6fb);
-  border-bottom: 1px solid var(--val-border);
+  gap: 4px;
+  margin: 0 20px;
+  padding: 4px;
+  background: #f1f5f9;
+  border: 1px solid var(--val-border);
+  border-radius: 12px;
 }
 .val-edit-tab {
   flex: 1;
@@ -1894,93 +2002,147 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 8px;
+  min-height: 40px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 8px 8px 0 0;
+  border-radius: 9px;
   background: transparent;
   color: var(--val-muted);
-  font-size: 12.5px;
-  font-weight: 700;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  touch-action: manipulation;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
-.val-edit-tab i { font-size: 15px; }
-.val-edit-tab:hover { color: var(--val-text-2); }
+.val-edit-tab i { font-size: 16px; }
+.val-edit-tab:hover:not(.active) {
+  color: var(--val-text-2);
+  background: rgba(255, 255, 255, 0.6);
+}
 .val-edit-tab.active {
   background: var(--val-surface);
-  color: var(--val-accent, #2563eb);
-  box-shadow: 0 -1px 0 var(--val-accent, #2563eb) inset;
+  color: var(--val-blue);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.1), 0 0 0 1px var(--val-blue-bdr);
+}
+.val-edit-tab:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 2px;
 }
 .val-edit-tab em {
   font-style: normal;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 999px;
   background: var(--val-border);
   color: var(--val-text-2);
-  font-size: 10px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 18px;
   font-weight: 800;
+}
+.val-edit-tab.active em {
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
 }
 .val-edit-tab em.warn { background: #fee2e2; color: #b91c1c; }
 
 .val-edit-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px 20px;
+  gap: 20px;
+  padding: 20px;
 }
 .val-edit-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
+.val-edit-row--title {
+  grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr);
+}
 .val-edit-label-row {
   position: relative;
   z-index: 3;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
 }
-.val-edit-label-row > span {
-  color: var(--val-muted);
-  font-size: 10.5px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.val-edit-label-row > span:first-child {
+  color: var(--val-text);
+  font-size: 13px;
+  font-weight: 650;
 }
+
+/* Callouts: guidance (blue) and blocking problems (red) */
+.val-edit-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+  color: var(--val-text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.val-edit-callout > i {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 16px;
+  color: var(--val-blue);
+}
+.val-edit-callout.is-error {
+  border-color: var(--val-red-bdr);
+  background: var(--val-red-dim);
+  color: var(--val-red);
+}
+.val-edit-callout.is-error > i { color: var(--val-red); }
+.val-edit-callout--banner {
+  margin: 0 20px 12px;
+}
+
+/* Publishing mode: a labelled row with its explanation underneath */
 .val-edit-mode-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface-2);
 }
 .val-edit-mode-label {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  color: #374151;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+.val-edit-mode-label strong {
   font-size: 13.5px;
+  font-weight: 650;
+  color: var(--val-text);
 }
-.val-edit-mode-label i {
-  color: #9ca3af;
-  cursor: help;
-  font-size: 15px;
-}
-.val-edit-mode-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.val-edit-mode-label span {
   font-size: 12.5px;
+  line-height: 1.4;
   color: var(--val-muted);
-  background: #f8fafc;
-  border: 1px solid var(--val-border, #e2e8f0);
-  border-radius: 8px;
-  padding: 8px 10px;
+}
+.val-edit-mode-row > .val-details-mode {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--val-blue-bdr);
+  background: var(--val-surface);
+}
+.val-edit-mode-row > .val-details-mode.is-live {
+  color: var(--val-red);
+  border-color: var(--val-red-bdr);
 }
 .val-edit-gr-ok {
   display: flex;
@@ -2354,24 +2516,86 @@
 }
 
 .val-edit-field > span {
+  color: var(--val-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Secondary hint inside a label ("Optional · …") */
+.val-edit-field > span small {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--val-muted);
-  font-size: 10.5px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .val-edit-field input,
 .val-edit-field textarea,
 .val-edit-field select {
+  min-height: 44px;
+  box-sizing: border-box;
   border: 1px solid var(--val-border);
-  border-radius: 8px;
-  padding: 9px 11px;
+  border-radius: 10px;
+  padding: 10px 12px;
   font: inherit;
-  font-size: 13.5px;
-  color: var(--val-text-2);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--val-text);
   background: var(--val-surface);
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+.val-edit-field input:hover,
+.val-edit-field textarea:hover,
+.val-edit-field select:hover {
+  border-color: var(--val-border-2);
+}
+.val-edit-field input[aria-invalid="true"],
+.val-edit-field textarea[aria-invalid="true"] {
+  border-color: var(--val-red-bdr);
+}
+
+/* Caption: toolbar + textarea read as one control */
+.val-edit-caption-box {
+  position: relative;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.val-edit-caption-box:hover {
+  border-color: var(--val-border-2);
+}
+.val-edit-caption-box:focus-within {
+  border-color: var(--val-accent, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.val-edit-caption-box:has(textarea[aria-invalid="true"]) {
+  border-color: var(--val-red-bdr);
+}
+.val-edit-caption-box .val-edit-caption-tools {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  border-radius: 10px 10px 0 0;
+}
+.val-edit-field .val-edit-caption-box textarea,
+.val-edit-field .val-edit-caption-box textarea:hover,
+.val-edit-field .val-edit-caption-box textarea:focus {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0 0 10px 10px;
+  box-shadow: none;
+}
+
+.val-edit-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--val-muted);
+  font-variant-numeric: tabular-nums;
+}
+.val-edit-count.is-over {
+  color: var(--val-red);
 }
 
 .val-edit-field input:focus,
@@ -2417,7 +2641,7 @@
 }
 .val-edit-hashtags-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--val-muted);
 }
 .val-edit-hashtags-hint code {
@@ -2474,6 +2698,9 @@
   --val-surface: #ffffff;
   --val-surface-2: #f7f9fd;
   --val-border: #dde3ee;
+  --val-border-2: #c8d3e8;
+  --val-blue-dim: #eff6ff;
+  --val-blue-bdr: #bfdbfe;
   --val-text: #0c1d3d;
   --val-text-2: #334e6b;
   --val-muted: #6a7f9a;
@@ -2621,29 +2848,130 @@
 .val-modal small.ok { color: var(--val-green); }
 .val-modal small.err { color: var(--val-red); }
 
-.val-reason-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
+/* ── Reject dialog ── */
+.val-reject-revise-hint {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 14px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--val-amber-bdr, #fde68a);
+  background: var(--val-amber-dim, #fffbeb);
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
 }
-
-.val-reason-grid button {
-  border: 1px solid var(--val-border);
-  border-radius: 9999px;
-  background: var(--val-surface-2);
-  color: var(--val-text-2);
-  padding: 9px 16px;
+.val-reject-revise-hint > i {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 16px;
+}
+.val-reject-revise-hint > span {
+  flex: 1 1 220px;
+}
+.val-reject-revise-hint > button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: #ffffff;
+  color: #92400e;
   font: inherit;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 12.5px;
+  font-weight: 700;
   cursor: pointer;
 }
+.val-reject-revise-hint > button:hover {
+  background: #fef3c7;
+}
 
-.val-reason-grid button.selected {
-  background: var(--val-red-dim);
+.val-reason-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.val-reason-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.val-reason-option:hover {
+  border-color: var(--val-border-2, #c8d3e8);
+}
+.val-reason-option.selected {
   border-color: var(--val-red-bdr);
+  background: var(--val-red-dim);
+}
+.val-reason-option:has(input:focus-visible) {
+  outline: 2px solid var(--val-red);
+  outline-offset: 2px;
+}
+.val-reason-option input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--val-red);
+  cursor: pointer;
+}
+.val-reason-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.val-reason-option strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+.val-reason-option.selected strong {
   color: var(--val-red);
+}
+.val-reason-option small {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--val-muted);
+}
+/* "Other" spans the full row so the odd count doesn't leave a gap */
+.val-reason-option:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.val-reject-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.val-reject-note > span {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--val-text);
+}
+.val-reject-note small {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--val-muted);
+}
+
+@media (max-width: 560px) {
+  .val-reason-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Wide Modal for Revision Details */
@@ -3108,10 +3436,6 @@
 }
 
 /* ── Mobile Master-Detail Navigation ── */
-.val-mobile-topbar {
-  display: none;
-}
-
 @media (max-width: 860px) {
   .val-page {
     position: relative;
@@ -3164,8 +3488,10 @@
     max-height: none !important;
     opacity: 1 !important;
     transform: none !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
+    /* inherit, not visible/auto: a forced value escapes the review pane's
+       visibility:hidden and leaks this panel over the queue list. */
+    visibility: inherit !important;
+    pointer-events: inherit !important;
     position: static !important;
     margin: 0 !important;
     border: 1px solid var(--val-border) !important;
@@ -3217,23 +3543,9 @@
                 visibility 0.32s ease;
     will-change: transform, opacity;
     z-index: 2;
-  }
-
-  /* 2. Mobile Review Detail Panel */
-  .val-review-panel {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--val-bg);
-    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
-                opacity 0.28s ease,
-                visibility 0.32s ease;
-    will-change: transform, opacity;
-    z-index: 2;
+    /* The desktop fade-in's fill-mode would pin opacity/transform at their
+       end values and override the queue/review slide states below. */
+    animation: none;
   }
   .val-scroll {
     flex: 1 1 auto;
@@ -3270,60 +3582,8 @@
     pointer-events: auto;
   }
 
-  /* Mobile Top Navigation Bar */
-  .val-mobile-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 14px;
-    background: var(--val-surface);
-    border-bottom: 1px solid var(--val-border);
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  }
 
-  .val-mobile-back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--val-blue);
-    font-size: 13.5px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-  .val-mobile-back-btn:hover,
-  .val-mobile-back-btn:active {
-    background: transparent;
-    opacity: 0.75;
-    transform: translateX(-2px);
-  }
-  .val-mobile-back-btn:focus,
-  .val-mobile-back-btn:focus-visible {
-    outline: none;
-  }
-  .val-mobile-back-btn i {
-    font-size: 17px;
-  }
 
-  .val-mobile-queue-badge {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 4px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--val-border);
-    background: var(--val-surface-2);
-    color: var(--val-text-2);
-  }
 
   .val-scroll {
     flex: 1 1 auto;
@@ -3361,60 +3621,8 @@
     pointer-events: auto;
   }
 
-  /* Mobile Top Navigation Bar */
-  .val-mobile-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--val-surface);
-    border-bottom: 1px solid var(--val-border);
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  }
 
-  .val-mobile-back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--val-blue);
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-  .val-mobile-back-btn:hover,
-  .val-mobile-back-btn:active {
-    background: transparent;
-    opacity: 0.75;
-    transform: translateX(-2px);
-  }
-  .val-mobile-back-btn:focus,
-  .val-mobile-back-btn:focus-visible {
-    outline: none;
-  }
-  .val-mobile-back-btn i {
-    font-size: 16px;
-  }
 
-  .val-mobile-queue-badge {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 3px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--val-border);
-    background: var(--val-surface-2);
-    color: var(--val-text-2);
-  }
 
   .val-qi-mobile-action {
     display: flex;
@@ -3476,8 +3684,7 @@
   .val-slot-card {
     text-align: left;
   }
-  .val-detail-grid,
-  .val-reason-grid {
+  .val-detail-grid {
     grid-template-columns: 1fr;
   }
   .val-action-bar {
@@ -3627,13 +3834,28 @@
   .val-action-divider {
     display: none;
   }
-  .val-edit-tabs button {
-    padding: 6px 8px;
-    font-size: 12px;
+  .val-edit-tabs {
+    margin: 0 16px;
   }
-  .val-edit-row {
-    flex-direction: column;
-    gap: 10px;
+  .val-edit-tab {
+    gap: 5px;
+    padding: 0 6px;
+    font-size: 12.5px;
+  }
+  .val-edit-head {
+    padding: 16px 16px 10px;
+  }
+  .val-edit-callout--banner {
+    margin: 0 16px 10px;
+  }
+  .val-edit-body {
+    padding: 16px;
+    gap: 18px;
+  }
+  .val-edit-row,
+  .val-edit-row--title {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
   }
   .val-edit-field input,
   .val-edit-field textarea,
@@ -3671,11 +3893,6 @@
   .val-history-body {
     padding: 14px;
     gap: 12px;
-  }
-  .val-history-meta-grid {
-    grid-template-columns: 1fr;
-    padding: 10px 12px;
-    gap: 8px;
   }
   .val-libpick-backdrop {
     padding: 10px;
@@ -3737,32 +3954,8 @@
   gap: 16px;
 }
 
-.val-history-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
-  padding: 14px 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-}
 
-.val-history-meta-item span {
-  display: block;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #64748b;
-}
 
-.val-history-meta-item strong {
-  display: block;
-  font-size: 13px;
-  color: #0f172a;
-  margin-top: 2px;
-  word-break: break-all;
-}
 
 .val-history-section-title {
   display: flex;
@@ -3903,23 +4096,8 @@
   border-color: #ddd6fe;
 }
 
-.val-edit-media-note-hint {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 4px 0 10px;
-  font-size: 12px;
-  color: var(--val-text-2, #64748b);
-  line-height: 1.4;
-}
-
-.val-edit-media-note-hint i {
-  margin-top: 1px;
-  flex-shrink: 0;
-}
-
 .val-edit-field.val-edit-media-note {
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 .val-log-meta {
@@ -3992,16 +4170,32 @@
 .val-edit-add-media {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border: 1px dashed var(--val-border);
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid var(--val-blue-bdr);
   border-radius: 999px;
   background: var(--val-surface);
-  padding: 5px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--val-text-2);
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--val-blue);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.val-edit-add-media i { font-size: 16px; }
+.val-edit-media-sources {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* AI accent: same pill, sparkle-blue tint so it reads as a suggestion source */
+.val-edit-add-media.is-ai {
+  background: var(--val-blue-dim);
+}
+.val-edit-add-media:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 2px;
 }
 .val-edit-add-media:hover {
   border-color: var(--val-accent, #2563eb);
@@ -4217,12 +4411,6 @@
 }
 
 /* ═══ Review-queue "Add from Media Library" picker ════════════════════════════ */
-.val-edit-add-media-group {
-  display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 /* The modal is portalled to <body>, outside .val-page / .submission-screen, so
    the reused media-picker components (mlt-*, mac-*, mag-*, BrandedSelect) lose
    their design tokens. Re-declare the full set here so they render exactly as
@@ -4315,6 +4503,9 @@
   background: var(--val-blue);
   color: #fff;
   font-size: 17px;
+}
+.val-libpick-head-icon.is-ai {
+  background: linear-gradient(135deg, var(--val-blue), #4f46e5);
 }
 .val-libpick-head > div { flex: 1; min-width: 0; }
 .val-libpick-head h3 {
@@ -4559,8 +4750,7 @@
 }
 
 /* Shared modal header (media-item settings) */
-.val-preview-modal-head,
-.val-media-settings-modal .val-preview-modal-head {
+.val-preview-modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4581,8 +4771,8 @@
 }
 
 .val-media-settings-modal {
-  width: min(460px, 100%);
-  border-radius: 14px;
+  width: min(480px, 100%);
+  border-radius: 16px;
   border: 1px solid var(--val-border);
   background: var(--val-surface);
   box-shadow: 0 20px 70px rgba(12, 29, 61, 0.22);
@@ -4590,43 +4780,172 @@
   animation: valModalIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.val-media-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 14px 20px;
+  border-bottom: 1px solid var(--val-border);
+}
+.val-media-settings-thumb {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--val-surface-2);
+  border: 1px solid var(--val-border);
+  color: var(--val-muted);
+  font-size: 20px;
+}
+.val-media-settings-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.val-media-settings-titles {
+  flex: 1;
+  min-width: 0;
+}
+.val-media-settings-titles h3 {
+  margin: 0;
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--val-text);
+}
+.val-media-settings-titles p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--val-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.val-media-settings-head .val-details-hide {
+  width: 36px;
+  height: 36px;
+}
+
 .val-media-settings-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 16px;
-}
-.val-media-settings-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--val-text);
-  word-break: break-word;
+  gap: 16px;
+  padding: 18px 20px;
 }
 .val-media-settings-body .val-edit-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.val-media-settings-body .val-edit-field > span {
+.val-media-settings-body .val-edit-field > .val-media-settings-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--val-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.val-media-settings-label small {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--val-muted);
-  font-size: 10.5px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
 }
 .val-media-settings-body textarea {
-  border: 1px solid var(--val-border-2);
-  border-radius: 8px;
-  padding: 9px 11px;
+  min-height: 96px;
+  box-sizing: border-box;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  padding: 10px 12px;
   font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--val-text);
+  background: var(--val-surface);
   resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.val-media-settings-body textarea:hover {
+  border-color: var(--val-border-2);
+}
+.val-media-settings-body textarea:focus {
+  outline: none;
+  border-color: var(--val-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.val-media-settings-help {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--val-muted);
+}
+
+/* Watermark: a whole-row toggle with its consequence spelled out */
 .val-media-settings-wm {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--val-text-2);
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.val-media-settings-wm:hover {
+  border-color: var(--val-border-2);
+}
+.val-media-settings-wm:has(input:checked) {
+  border-color: var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+}
+.val-media-settings-wm input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--val-blue);
+  cursor: pointer;
+}
+.val-media-settings-wm span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.val-media-settings-wm strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--val-text);
+}
+.val-media-settings-wm small {
+  font-size: 12.5px;
+  color: var(--val-muted);
+}
+
+.val-media-settings-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--val-border);
+}
+.val-media-settings-foot .val-btn {
+  min-width: 96px;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .val-media-settings-body textarea {
+    font-size: 16px;
+  }
+  .val-media-settings-foot .val-btn {
+    width: 100%;
+    min-height: 44px;
+  }
 }
 
 /* Queue incremental infinite scroll sentinel */
@@ -4659,4 +4978,168 @@
   font-size: 11.5px;
   font-weight: 500;
   text-align: center;
+}
+
+/* ── Mobile review header ──
+   While a submission is open on a phone, the app header (menu, logo, role,
+   avatar) is hidden and this slim row, pinned above the scroll area, is the
+   only top bar: back to the
+   queue, where the app header returns, plus the guide. */
+.val-mobile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: max(2px, env(safe-area-inset-top, 0px)) 8px 2px 6px;
+  background: var(--val-surface);
+  border-bottom: 1px solid var(--val-border);
+  box-shadow: 0 1px 3px rgba(12, 29, 61, 0.05);
+}
+
+@media (max-width: 860px) {
+  body:has(.val-page.val-mobile-view--review) .dash-nav {
+    display: none;
+  }
+
+  .val-page.val-mobile-view--review {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
+.val-mobile-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--val-blue);
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+  touch-action: manipulation;
+  transition: background 0.15s ease;
+}
+
+.val-mobile-back-btn {
+  gap: 2px;
+  padding: 0 10px 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.val-mobile-back-btn i {
+  font-size: 20px;
+}
+
+.val-mobile-back-btn:active {
+  background: var(--val-blue-dim);
+}
+
+.val-mobile-back-btn:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 2px;
+}
+
+/* ── Details panel: notes + single entry point to the review history ── */
+.val-details-notes {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--val-border-2);
+  border-radius: 0 8px 8px 0;
+  background: var(--val-surface-2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--val-text-2);
+  white-space: pre-wrap;
+}
+
+.val-details-history-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-top: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.val-details-history-btn > .ti-history {
+  font-size: 16px;
+  color: var(--val-blue);
+}
+
+.val-details-history-btn > .ti-chevron-right {
+  margin-left: 4px;
+  font-size: 15px;
+  color: var(--val-muted);
+}
+
+.val-details-history-count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--val-surface);
+  border: 1px solid var(--val-border);
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--val-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.val-details-history-btn:hover {
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+}
+
+.val-details-history-btn:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: -2px;
+}
+
+/* Icon-only Guide: same bordered pill, no label (mobile review header) */
+.val-guide-btn.val-guide-btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.val-guide-btn.val-guide-btn--icon i {
+  font-size: 18px;
+}
+
+/* Phones: the queue header's Guide collapses to the same icon-only pill */
+@media (max-width: 860px) {
+  .val-page:not(.is-queue-expanded) .val-queue-header .val-guide-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .val-page:not(.is-queue-expanded) .val-queue-header .val-guide-btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .val-page:not(.is-queue-expanded) .val-queue-header .val-guide-btn i {
+    font-size: 18px;
+  }
 }
