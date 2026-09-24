@@ -109,7 +109,8 @@ export default function SpotlightTour({
 
     let calculatedTop = padded.bottom + CARD_MARGIN;
     let calculatedLeft = padded.left + (padded.width / 2) - (effectiveCardWidth / 2);
-    let arrowDir: "up" | "down" | "none" = "up";
+    // Every branch below assigns it; the compiler checks that none is missed.
+    let arrowDir: "up" | "down" | "none";
 
     if (isMobile) {
       // Mobile positioning: center horizontally across screen

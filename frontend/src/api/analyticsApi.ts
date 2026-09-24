@@ -47,6 +47,10 @@ export interface AiPerformanceDto {
   templateDraftsGenerated: number;
   templateDraftsSaved: number;
   templateDraftSaveRate: number;
+  proofreadChecks: number;
+  proofreadSuggestions: number;
+  proofreadFixesApplied: number;
+  proofreadApplyRate: number;
   insufficientData: boolean;
 }
 

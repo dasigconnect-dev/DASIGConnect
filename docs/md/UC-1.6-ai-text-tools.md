@@ -30,6 +30,16 @@
 4. The actor clicks a style; the selected text is replaced with its styled Unicode equivalent. Re-styling already-styled text reverts to plain first, then applies the new style.
 5. The actor may style other selections or use **Plain** to revert.
 
+## Main Flow — Writing Check (added 2026-09-24)
+
+1. The actor clicks **Check writing** in the caption's action row, beside Fancy text (composer and review-queue editor alike; hidden on read-only submissions). Unlike the AI caption, it doesn't need a saved draft.
+2. The caption is sent to `POST /api/v1/ai/proofread` (`ProofreadController` → `ProofreadService`, Claude via `ClaudeVisionClient.generateText`; 30 requests/hour/user, same in-memory limiter as the caption tool).
+3. Up to 10 findings appear under the caption, each tagged Spelling / Grammar / Clarity, shown as "~~wrong~~ → right" with a one-line reason. The prompt deliberately leaves Filipino/Cebuano/Taglish, names, acronyms, hashtags, emoji, and Fancy-text Unicode alone.
+4. The actor applies or ignores each finding individually. **Apply** replaces that one excerpt; nothing changes otherwise. A finding disappears once its text is no longer in the caption. With nothing to report it says "No spelling or grammar issues found."
+5. Failures are non-blocking: a toast ("Couldn't check the writing right now." / "Writing check limit reached for this hour.") and the caption is untouched.
+
+The server keeps only findings whose excerpt occurs in the caption and drops no-op fixes, duplicates, and unknown kinds (`ProofreadServiceTest`). The same endpoint powers the review queue's automatic check on Review & Save, which compares against the contributor's original — see [UC-2.4 A14](UC-2.4-approval-workflow.md). Shared frontend: `components/proofread/` (`CheckWritingButton`, `ProofreadResult`, `ProofreadIssues`), `hooks/useProofread.ts`, `styles/proofread.css`.
+
 ## Alternative Flows
 
 - **A1 — AI Request Timeout:** No Claude response within 30 s → the button shows a timeout notice ("AI request timed out. Retry or continue editing manually."), stays clickable for a retry, and auto-returns to idle after ~5 s. Endpoint returns `504`.
@@ -42,7 +52,7 @@
 
 ## Postcondition(s)
 
-The caption field reflects the actor's chosen AI-suggested caption (one caption, in the selected tone, generated per their prompt) and/or fancy-styled Unicode text, fully editable and ready for continued drafting (UC-1.5) or submission (UC-1.9). AI interaction outcomes are recorded in `ai_interaction_log`.
+The caption field reflects the actor's chosen AI-suggested caption (one caption, in the selected tone, generated per their prompt) and/or fancy-styled Unicode text, fully editable and ready for continued drafting (UC-1.5) or submission (UC-1.9), with any writing-check fixes the actor chose applied. AI interaction outcomes are recorded in `ai_interaction_log` — writing checks as `proofread` (`checked` with its finding count, `applied` per fix; V104).
 
 ---
 

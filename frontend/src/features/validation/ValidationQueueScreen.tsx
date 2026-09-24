@@ -42,7 +42,7 @@ import type { SubmissionMediaItem } from "../../types/media";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import type { CaptionTone } from "../../api/aiApi";
 import AiCaptionButton from "../submission/components/AiCaptionButton";
-import { extractHashtags } from "../submission/utils";
+import { CAPTION_CHAR_LIMIT, extractHashtags, tagsAppendedToCaption } from "../submission/utils";
 import FancyTextTool, { type FancyTextSelection } from "../submission/components/FancyTextTool";
 
 const AiCaptionSuggestion = lazy(() => import("../submission/components/AiCaptionSuggestion"));
@@ -59,6 +59,14 @@ import {
   REVISION_SUPPORTED_FIELDS,
 } from "../submission/utils/revisionComments";
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
+import ReviewAiSuggestionsModal from "./ReviewAiSuggestionsModal";
+import ReviewChangesDialog, { type EditChangeRow } from "./ReviewChangesDialog";
+import WordDiffText from "./WordDiffText";
+import CheckWritingButton from "../../components/proofread/CheckWritingButton";
+import ProofreadResult from "../../components/proofread/ProofreadResult";
+import { useProofread } from "../../hooks/useProofread";
+import { contributorOriginals, isoToLocalDateTime, wordDiff } from "./editSafeguards";
+import type { ProofreadIssue } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
@@ -80,7 +88,7 @@ import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 import "../../styles/validation.css";
-import { formatRejectionReason, REJECTION_REASON_LABELS } from "../../lib/rejectionReason";
+import { formatRejectionReason, REJECTION_REASONS } from "../../lib/rejectionReason";
 // Reused Submit Content authoring components (AI caption button, engagement
 // panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
 import "../../styles/submission.css";
@@ -91,7 +99,9 @@ import {
   validationReviewTourSteps,
   validationFailedTourSteps,
   validationEditTourSteps,
+  VALIDATION_TOUR_VIEWS,
 } from "../onboarding/tours/validationTour";
+import type { TourStep } from "../onboarding/types";
 
 interface ValidationQueueScreenProps {
   user: User;
@@ -112,6 +122,18 @@ type SortKey = ValidationQueueSort;
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
+
+/**
+ * Label for a queue card's action. Tapping a card only opens the submission —
+ * the review lock is taken later with Start Review — so the label says what
+ * opening it leads to, not "Start Review" on every card.
+ */
+function queueCardAction(status: string): { label: string; icon: string } {
+  const value = normalizeStatus(status);
+  if (value === "pending") return { label: "Review", icon: "ti-clipboard-check" };
+  if (value === "in_review") return { label: "Open", icon: "ti-lock" };
+  return { label: "View details", icon: "ti-eye" };
+}
 const SUBMISSION_DETAIL_STALE_TIME_MS = 60_000;
 
 const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
@@ -179,16 +201,16 @@ function savedAssetToMediaItem(asset: SavedMediaAsset): EditMediaItem {
 }
 
 function toEditForm(summary: SubmissionSummary): EditFormState {
-  const scheduled = summary.scheduledAt ? new Date(summary.scheduledAt) : null;
+  // Both halves in local time — a UTC date paired with local hours put
+  // early-morning slots on the previous day.
+  const scheduled = isoToLocalDateTime(summary.scheduledAt ?? "");
   return {
     eventTitle: summary.eventTitle || "",
     eventDate: summary.eventDate ? summary.eventDate.slice(0, 10) : "",
     caption: summary.caption || "",
     description: summary.description || "",
-    scheduledDate: scheduled ? scheduled.toISOString().slice(0, 10) : "",
-    scheduledTime: scheduled
-      ? `${String(scheduled.getHours()).padStart(2, "0")}:${String(scheduled.getMinutes()).padStart(2, "0")}`
-      : "",
+    scheduledDate: scheduled.date,
+    scheduledTime: scheduled.time,
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
     mediaAddNote: "",
@@ -237,10 +259,6 @@ function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): E
   ].filter((id) => !presentAssetIds.has(id));
   return { ...form, media, removedAssetIds };
 }
-
-const rejectionReasons: Array<{ code: RejectionReasonCode; label: string }> = (
-  Object.entries(REJECTION_REASON_LABELS) as Array<[RejectionReasonCode, string]>
-).map(([code, label]) => ({ code, label }));
 
 const statusLabel: Record<string, string> = {
   pending: "Pending",
@@ -328,8 +346,8 @@ export default function ValidationQueueScreen({
   const [remarks, setRemarks] = useState("");
   const [revisionFieldComments, setRevisionFieldComments] = useState<Record<string, string>>({});
   const [activeRevisionField, setActiveRevisionField] = useState<string | null>("caption");
-  const [reasonCode, setReasonCode] =
-    useState<RejectionReasonCode>("INCOMPLETE_CONTENT");
+  // No default: rejecting is final, so the reviewer picks a reason on purpose.
+  const [reasonCode, setReasonCode] = useState<RejectionReasonCode | null>(null);
   const [notes, setNotes] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -343,6 +361,10 @@ export default function ValidationQueueScreen({
   const isAdmin = user.role === "admin";
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
+  // Edit safeguards: review-before-save dialog (+ on-demand writing check, below).
+  const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
+  const proofread = useProofread(selectedId);
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
@@ -516,6 +538,32 @@ export default function ValidationQueueScreen({
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
 
+  // The review, failed, and edit guides are view-only: each step opens what it
+  // talks about (details panel, Review History, an edit tab) and the guide's
+  // click shield keeps anything from changing. The user's own view is put back
+  // when the guide ends.
+  const [tourDecisionsPreview, setTourDecisionsPreview] = useState(false);
+  const tourRestoreRef = useRef<{ details: boolean; editTab: typeof editTab } | null>(null);
+  function handleValidationTourStep(step: TourStep | null) {
+    const view = step?.id ? VALIDATION_TOUR_VIEWS[step.id] : undefined;
+    if (!view) {
+      const restore = tourRestoreRef.current;
+      if (restore) {
+        setShowDetails(restore.details);
+        setEditTab(restore.editTab);
+        setShowHistoryModal(false);
+        setTourDecisionsPreview(false);
+        tourRestoreRef.current = null;
+      }
+      return;
+    }
+    if (!tourRestoreRef.current) tourRestoreRef.current = { details: showDetails, editTab };
+    if (view.details) setShowDetails(true);
+    setShowHistoryModal(Boolean(view.history));
+    setTourDecisionsPreview(Boolean(view.decisions));
+    if (view.editTab) setEditTab(view.editTab);
+  }
+
   const {
     startTour: startQueueTour,
     tourProps: queueTourProps,
@@ -534,6 +582,7 @@ export default function ValidationQueueScreen({
     steps: validationReviewTourSteps,
     autoStartDelayMs: 600,
     canStart: Boolean(selected) && !failureInfo && !editMode && !queueTourProps.isOpen,
+    onStepChange: handleValidationTourStep,
   });
 
   const {
@@ -544,6 +593,7 @@ export default function ValidationQueueScreen({
     steps: validationFailedTourSteps,
     autoStartDelayMs: 600,
     canStart: Boolean(failureInfo) && !queueTourProps.isOpen,
+    onStepChange: handleValidationTourStep,
   });
 
   const {
@@ -554,6 +604,7 @@ export default function ValidationQueueScreen({
     steps: validationEditTourSteps,
     autoStartDelayMs: 500,
     canStart: Boolean(selected) && editMode && !reviewTourProps.isOpen && !queueTourProps.isOpen,
+    onStepChange: handleValidationTourStep,
   });
 
 
@@ -593,6 +644,10 @@ export default function ValidationQueueScreen({
     }
     if (modalExitTimer.current) window.clearTimeout(modalExitTimer.current);
     setModalClosing(false);
+    if (nextModal === "reject") {
+      setReasonCode(null);
+      setNotes("");
+    }
     if (nextModal === "revise") {
       setRemarks("Please revise all input fields marked with a comment icon.");
       setRevisionFieldComments({});
@@ -908,6 +963,8 @@ export default function ValidationQueueScreen({
     }
     setEditForm(toEditForm(full));
     setGuardRails(null);
+    setReviewChangesOpen(false);
+    proofread.reset();
     setCaptionSelection({ start: 0, end: 0 });
     setEditTab("details");
     setOverrideReason("");
@@ -961,6 +1018,99 @@ export default function ValidationQueueScreen({
     : "";
   const scheduleChanged = !editForm.fastTrack && editScheduledAtIso !== originalScheduledIso;
   const fastTrackChanged = editForm.fastTrack !== Boolean(selected?.fastTrack);
+
+  // ── Edit safeguards ─────────────────────────────────────────────────────
+  // What the contributor submitted, for fields already changed and saved this
+  // review cycle (from the review history); otherwise the saved value is still theirs.
+  const originals = useMemo(() => contributorOriginals(log), [log]);
+  const contributorTitle = originals.eventTitle ?? selected?.eventTitle ?? "";
+  const contributorEventDate = (originals.eventDate ?? selected?.eventDate ?? "").slice(0, 10);
+  const contributorCaption = originals.caption ?? selected?.caption ?? "";
+  const contributorScheduledAt = originals.scheduledAt ?? selected?.scheduledAt ?? "";
+
+  function restoreContributorSchedule() {
+    const { date, time } = isoToLocalDateTime(contributorScheduledAt);
+    setEditForm((f) => ({ ...f, scheduledDate: date, scheduledTime: time }));
+  }
+  const scheduleDiffersFromContributor =
+    Boolean(contributorScheduledAt) &&
+    editScheduledAtIso !== "" &&
+    new Date(contributorScheduledAt).getTime() !== new Date(editScheduledAtIso).getTime();
+
+  function applyCaptionFix(issue: ProofreadIssue) {
+    setEditForm((f) => ({ ...f, caption: proofread.apply(f.caption, issue) }));
+  }
+
+  /** Every change this save would make, against the last saved version. */
+  function describeEditChanges(): EditChangeRow[] {
+    if (!selected) return [];
+    const base = toEditForm(selected);
+    const rows: EditChangeRow[] = [];
+    if (editForm.eventTitle !== base.eventTitle) {
+      rows.push({
+        key: "title", label: "Event title", before: base.eventTitle, after: editForm.eventTitle,
+        onUndo: () => setEditForm((f) => ({ ...f, eventTitle: base.eventTitle })),
+      });
+    }
+    if (editForm.eventDate !== base.eventDate) {
+      rows.push({
+        key: "date", label: "Event date",
+        before: base.eventDate ? formatDate(base.eventDate) : "",
+        after: editForm.eventDate ? formatDate(editForm.eventDate) : "",
+        onUndo: () => setEditForm((f) => ({ ...f, eventDate: base.eventDate })),
+      });
+    }
+    if (editForm.caption !== base.caption) {
+      rows.push({
+        key: "caption", label: "Caption", before: base.caption, after: editForm.caption,
+        diff: wordDiff(base.caption, editForm.caption),
+        onUndo: () => setEditForm((f) => ({ ...f, caption: base.caption })),
+      });
+    }
+    if (fastTrackChanged) {
+      rows.push({
+        key: "mode", label: "Publishing mode",
+        before: base.fastTrack ? "Live Event" : "Scheduled",
+        after: editForm.fastTrack ? "Live Event" : "Scheduled",
+        onUndo: () => setEditForm((f) => ({ ...f, fastTrack: base.fastTrack })),
+      });
+    }
+    if (scheduleChanged) {
+      rows.push({
+        key: "schedule", label: "Publish slot",
+        before: selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "",
+        after: editScheduledAtIso ? formatDateTime(editScheduledAtIso) : "",
+        onUndo: () =>
+          setEditForm((f) => ({ ...f, scheduledDate: base.scheduledDate, scheduledTime: base.scheduledTime })),
+      });
+    }
+    const saved = base.media;
+    const savedIds = saved.map((m) => m.assetId);
+    const formIds = editForm.media.map((m) => m.assetId);
+    const added = formIds.filter((id) => id && !savedIds.includes(id)).length;
+    const removed = editForm.removedAssetIds.length;
+    const kept = formIds.filter((id) => id && savedIds.includes(id));
+    const reordered = kept.join() !== savedIds.filter((id) => kept.includes(id)).join();
+    const itemEdits = editForm.media.filter((m) => {
+      const before = saved.find((b) => b.assetId && b.assetId === m.assetId);
+      return before && (before.caption !== m.caption || before.skipWatermark !== m.skipWatermark);
+    }).length;
+    const mediaParts = [
+      added && `${added} added`,
+      removed && `${removed} removed`,
+      reordered && "order changed",
+      itemEdits && `${itemEdits} caption/watermark setting${itemEdits === 1 ? "" : "s"} changed`,
+    ].filter(Boolean);
+    if (mediaParts.length > 0) {
+      const count = (n: number) => `${n} item${n === 1 ? "" : "s"}`;
+      rows.push({
+        key: "media", label: "Media",
+        before: count(saved.length),
+        after: `${count(editForm.media.length)} — ${mediaParts.join(", ")}`,
+      });
+    }
+    return rows;
+  }
 
   useEffect(() => {
     let active = true;
@@ -1262,7 +1412,7 @@ export default function ValidationQueueScreen({
   }
 
   async function handleReject() {
-    if (!selected) return;
+    if (!selected || !reasonCode) return;
     if (reasonCode === "OTHER" && notes.trim().length === 0) {
       toast.error("Notes are required when the rejection reason is Other.");
       return;
@@ -1276,7 +1426,7 @@ export default function ValidationQueueScreen({
       toast.info("Submission rejected and contributor notified.");
       closeDecisionModal();
       setNotes("");
-      setReasonCode("INCOMPLETE_CONTENT");
+      setReasonCode(null);
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
@@ -1609,9 +1759,9 @@ export default function ValidationQueueScreen({
                     </div>
                     <div className="val-qi-mobile-action">
                       <span className="val-qi-mobile-btn">
-                        <i className="ti ti-lock" />
-                        <span>Start Review</span>
-                        <i className="ti ti-chevron-right" />
+                        <i className={`ti ${queueCardAction(item.status).icon}`} aria-hidden="true" />
+                        <span>{queueCardAction(item.status).label}</span>
+                        <i className="ti ti-chevron-right" aria-hidden="true" />
                       </span>
                     </div>
                   </button>
@@ -1653,32 +1803,32 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
-        <div className="val-mobile-topbar">
-          <button
-            type="button"
-            className="val-mobile-back-btn"
-            onClick={() => setMobileView("queue")}
-            aria-label="Back to queue list"
-          >
-            <i className="ti ti-arrow-left" />
-            <span>Back to Queue</span>
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {selected && (
-              <button
-                type="button"
-                className="val-guide-btn"
-                onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
-                title="Show the Content Submission guide"
-                aria-label="Show the Content Submission guide"
-              >
-                <i className="ti ti-help-circle" />
-                <span>Guide</span>
-              </button>
-            )}
+        {!isDesktop && selected && (
+          <div className="val-mobile-head">
+            <button
+              type="button"
+              className="val-mobile-back-btn"
+              onClick={() => setMobileView("queue")}
+              aria-label="Back to queue list"
+            >
+              <i className="ti ti-chevron-left" />
+              <span>Queue</span>
+            </button>
+            <button
+              type="button"
+              className="val-guide-btn val-guide-btn--icon"
+              onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
+              title="Show the Content Submission guide"
+              aria-label="Show the Content Submission guide"
+            >
+              <i className="ti ti-help-circle" />
+            </button>
           </div>
-        </div>
-        {(isPanelCollapsed || (isDesktop && selected)) && (
+        )}
+        {/* Desktop only: on phones the slim mobile header replaces it. Starting an
+            edit collapses the queue panel, which used to render this as an
+            empty band under that header. */}
+        {isDesktop && (isPanelCollapsed || selected) && (
           <div className="val-review-toolbar">
             <div>
               {isPanelCollapsed && (
@@ -1695,30 +1845,32 @@ export default function ValidationQueueScreen({
               )}
             </div>
             {isDesktop && selected && (
-              <button
-                type="button"
-                className="val-guide-btn"
-                onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
-                title="Show the Content Submission guide"
-                aria-label="Show the Content Submission guide"
-              >
-                <i className="ti ti-help-circle" />
-                <span>Guide</span>
-              </button>
+              <div className="val-review-toolbar-actions">
+                {!editMode && !selectedLoading && !showDetails && (
+                  <button
+                    type="button"
+                    className="val-details-btn"
+                    onClick={() => setShowDetails(true)}
+                    title="Show submission details"
+                    aria-label="Show submission details"
+                  >
+                    <i className="ti ti-layout-sidebar-right-expand" />
+                    <span>Details</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="val-guide-btn"
+                  onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
+                  title="Show the Content Submission guide"
+                  aria-label="Show the Content Submission guide"
+                >
+                  <i className="ti ti-help-circle" />
+                  <span>Guide</span>
+                </button>
+              </div>
             )}
           </div>
-        )}
-        {selected && !editMode && !selectedLoading && (
-          <button
-            type="button"
-            className={`val-details-btn ${showDetails ? "is-hidden" : ""}`}
-            onClick={() => setShowDetails(true)}
-            title="Show submission details"
-            aria-label="Show submission details"
-          >
-            <i className="ti ti-layout-sidebar-right-expand" />
-            <span>Details</span>
-          </button>
         )}
 
         {!selected && !selectedLoading && (
@@ -1770,7 +1922,6 @@ export default function ValidationQueueScreen({
                     watermarkConfig={watermarkConfig}
                     showWatermarkPreview={showWatermarkPreview}
                     onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
-                    onOpenHistory={() => setShowHistoryModal(true)}
                   />
 
                   {!editMode && (
@@ -1779,6 +1930,7 @@ export default function ValidationQueueScreen({
                       log={log}
                       currentUserEmail={user.email}
                       onHide={() => setShowDetails(false)}
+                      onOpenHistory={() => setShowHistoryModal(true)}
                       isOpen={showDetails}
                       retryCount={failureInfo?.retryCount}
                       lastAttemptAt={failureInfo?.lastAttemptAt}
@@ -1787,8 +1939,20 @@ export default function ValidationQueueScreen({
                   )}
 
                   {editMode && (
-                    <section className="val-edit-grid-panel">
-                      <div className="val-edit-tabs" role="tablist">
+                    <section className="val-edit-grid-panel" aria-labelledby="val-edit-title">
+                      <header className="val-edit-head">
+                        <h2 id="val-edit-title">Edit submission</h2>
+                        <p>Saving keeps it In Review — you still choose Approve afterwards.</p>
+                      </header>
+
+                      {editMissingFields.length > 0 && (
+                        <div className="val-edit-callout is-error val-edit-callout--banner" role="alert">
+                          <i className="ti ti-alert-circle" aria-hidden="true" />
+                          <span>Add {editMissingFields.join(", ")} before saving.</span>
+                        </div>
+                      )}
+
+                      <div className="val-edit-tabs" role="tablist" aria-label="Edit sections">
                         {(
                           [
                             ["details", "ti-file-text", "Details"],
@@ -1804,39 +1968,88 @@ export default function ValidationQueueScreen({
                             className={`val-edit-tab${editTab === key ? " active" : ""}`}
                             onClick={() => setEditTab(key)}
                           >
-                            <i className={`ti ${icon}`} />
+                            <i className={`ti ${icon}`} aria-hidden="true" />
                             <span>{label}</span>
                             {key === "media" && editForm.media.length > 0 && (
                               <em>{editForm.media.length}</em>
                             )}
-                            {key === "schedule" && hardBlocked && <em className="warn">!</em>}
+                            {key === "schedule" && hardBlocked && (
+                              <em className="warn" aria-label="Slot blocked">!</em>
+                            )}
                           </button>
                         ))}
                       </div>
 
                       {editTab === "details" && (
                         <div className="val-edit-body">
-                          <div className="val-edit-row">
-                            <label className="val-edit-field">
-                              <span>Event Title</span>
+                          <div className="val-edit-row val-edit-row--title">
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-event-title">Event title</label>
+                                {editForm.eventTitle !== contributorTitle && (
+                                  <button
+                                    type="button"
+                                    className="val-edit-restore"
+                                    onClick={() => setEditForm((f) => ({ ...f, eventTitle: contributorTitle }))}
+                                    title={`Contributor's version: ${contributorTitle}`}
+                                  >
+                                    <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore original
+                                  </button>
+                                )}
+                              </div>
                               <input
+                                id="val-edit-event-title"
                                 value={editForm.eventTitle}
+                                aria-invalid={!editForm.eventTitle.trim() || undefined}
                                 onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
                               />
-                            </label>
-                            <label className="val-edit-field">
-                              <span>Event Date</span>
+                            </div>
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-event-date">Event date</label>
+                                {editForm.eventDate !== contributorEventDate && (
+                                  <button
+                                    type="button"
+                                    className="val-edit-restore"
+                                    onClick={() => setEditForm((f) => ({ ...f, eventDate: contributorEventDate }))}
+                                    title="Restore the contributor's date"
+                                  >
+                                    <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore
+                                  </button>
+                                )}
+                              </div>
                               <input
+                                id="val-edit-event-date"
                                 type="date"
                                 value={editForm.eventDate}
+                                aria-invalid={!editForm.eventDate || undefined}
                                 onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
                               />
-                            </label>
+                            </div>
                           </div>
 
                           <div className="val-edit-field" id="val-edit-caption-group">
                             <div className="val-edit-label-row">
-                              <span>Caption</span>
+                              <span id="val-edit-caption-label">Caption</span>
+                              {editForm.caption !== contributorCaption && (
+                                <button
+                                  type="button"
+                                  className="val-edit-restore"
+                                  onClick={() => setEditForm((f) => ({ ...f, caption: contributorCaption }))}
+                                  title="Put back the caption the contributor submitted"
+                                >
+                                  <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore original
+                                </button>
+                              )}
+                              <span
+                                className={`val-edit-count${
+                                  Array.from(editForm.caption).length > CAPTION_CHAR_LIMIT ? " is-over" : ""
+                                }`}
+                              >
+                                {Array.from(editForm.caption).length.toLocaleString()} / {CAPTION_CHAR_LIMIT.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="val-edit-caption-box">
                               <div className="val-edit-caption-tools">
                                 <FancyTextTool
                                   caption={editForm.caption}
@@ -1855,22 +2068,36 @@ export default function ValidationQueueScreen({
                                   notice={aiCaption.notice}
                                   onSuggest={() => setCaptionPromptOpen(true)}
                                 />
+                                <CheckWritingButton
+                                  state={proofread.state}
+                                  disabled={!editForm.caption.trim()}
+                                  onCheck={() => void proofread.check(editForm.caption)}
+                                />
                               </div>
+                              <textarea
+                                ref={editCaptionRef}
+                                rows={7}
+                                aria-labelledby="val-edit-caption-label"
+                                aria-invalid={!editForm.caption.trim() || undefined}
+                                value={editForm.caption}
+                                onChange={(e) => {
+                                  setEditForm({ ...editForm, caption: e.target.value });
+                                  setCaptionSelection({ start: e.target.selectionStart, end: e.target.selectionEnd });
+                                }}
+                                onSelect={(e) =>
+                                  setCaptionSelection({
+                                    start: e.currentTarget.selectionStart,
+                                    end: e.currentTarget.selectionEnd,
+                                  })
+                                }
+                              />
                             </div>
-                            <textarea
-                              ref={editCaptionRef}
-                              rows={6}
-                              value={editForm.caption}
-                              onChange={(e) => {
-                                setEditForm({ ...editForm, caption: e.target.value });
-                                setCaptionSelection({ start: e.target.selectionStart, end: e.target.selectionEnd });
-                              }}
-                              onSelect={(e) =>
-                                setCaptionSelection({
-                                  start: e.currentTarget.selectionStart,
-                                  end: e.currentTarget.selectionEnd,
-                                })
-                              }
+                            <ProofreadResult
+                              state={proofread.state}
+                              issues={proofread.issues}
+                              text={editForm.caption}
+                              onApply={applyCaptionFix}
+                              onDismiss={proofread.dismiss}
                             />
                             {aiCaption.variants && (
                               <Suspense fallback={null}>
@@ -1889,7 +2116,7 @@ export default function ValidationQueueScreen({
                           </div>
 
                           <div className="val-edit-field">
-                            <span>Tags</span>
+                            <span>Hashtags</span>
                             {editCaptionHashtags.length > 0 ? (
                               <div className="val-edit-hashtags">
                                 {editCaptionHashtags.map((tag) => (
@@ -1908,22 +2135,31 @@ export default function ValidationQueueScreen({
                       {editTab === "media" && (
                         <div className="val-edit-body">
                           <div className="val-edit-label-row">
-                            <span>Attached Media</span>
-                            <div className="val-edit-add-media-group">
+                            <span>Attached media</span>
+                            <div className="val-edit-media-sources">
+                              <button
+                                type="button"
+                                className="val-edit-add-media is-ai"
+                                onClick={() => setAiSuggestionsOpen(true)}
+                              >
+                                <i className="ti ti-sparkles" aria-hidden="true" /> AI suggestions
+                              </button>
                               <button
                                 type="button"
                                 className="val-edit-add-media"
                                 onClick={() => setLibraryPickerOpen(true)}
                               >
-                                <i className="ti ti-library-photo" /> From Library
+                                <i className="ti ti-library-photo" aria-hidden="true" /> Add from Library
                               </button>
                             </div>
                           </div>
-                          <p className="val-edit-media-note-hint">
-                            <i className="ti ti-info-circle" /> Only vetted Media Library
-                            assets can be added during review. New media a contributor
-                            needs to supply should go back via Request Revision.
-                          </p>
+                          <div className="val-edit-callout">
+                            <i className="ti ti-info-circle" aria-hidden="true" />
+                            <span>
+                              Only vetted Media Library assets can be added during review. If the
+                              contributor needs to supply new media, use Request Revision instead.
+                            </span>
+                          </div>
                           <Suspense fallback={<PanelContentLoader text="Loading media tools" />}>
                             <MediaAssetsPicker
                               sourceTabs={false}
@@ -1954,8 +2190,7 @@ export default function ValidationQueueScreen({
                           ) && (
                             <label className="val-edit-field val-edit-media-note">
                               <span>
-                                Why is this media being added? (optional — recorded on the
-                                audit trail)
+                                Why are you adding this media? <small>Optional · saved to the review history</small>
                               </span>
                               <textarea
                                 rows={2}
@@ -1974,15 +2209,12 @@ export default function ValidationQueueScreen({
                         <div className="val-edit-body">
                           <div className="val-edit-mode-row">
                             <div className="val-edit-mode-label">
-                              Publishing Mode
-                              <i
-                                className="ti ti-info-circle"
-                                title={
-                                  isAdmin
-                                    ? "Fixed during review by default. Use this toggle to deliberately override it."
-                                    : "Fixed during review — only an Administrator can change the publishing mode."
-                                }
-                              />
+                              <strong>Publishing mode</strong>
+                              <span>
+                                {isAdmin
+                                  ? "Fixed during review. Changing it is an Administrator override."
+                                  : "Fixed during review — only an Administrator can change it."}
+                              </span>
                             </div>
                             {isAdmin ? (
                               <div className="sub-mode-toggle" role="group" aria-label="Publishing mode">
@@ -2014,9 +2246,11 @@ export default function ValidationQueueScreen({
                           </div>
 
                           {editForm.fastTrack ? (
-                            <div className="val-edit-mode-note">
-                              <i className="ti ti-info-circle" /> This is a Live Event submission — it publishes
-                              immediately on approval and has no scheduled slot.
+                            <div className="val-edit-callout">
+                              <i className="ti ti-bolt" aria-hidden="true" />
+                              <span>
+                                Live Event — it publishes the moment it&apos;s approved, so there&apos;s no slot to pick.
+                              </span>
                             </div>
                           ) : (
                             <>
@@ -2028,9 +2262,19 @@ export default function ValidationQueueScreen({
                               onSelect={applyRecommendedSlot}
                             />
                           </Suspense>
+                          {scheduleDiffersFromContributor && (
+                            <button
+                              type="button"
+                              className="val-edit-restore val-edit-restore--block"
+                              onClick={restoreContributorSchedule}
+                            >
+                              <i className="ti ti-arrow-back-up" aria-hidden="true" />
+                              Restore the contributor&apos;s slot ({formatDateTime(contributorScheduledAt)})
+                            </button>
+                          )}
                           <div className="val-edit-row">
                             <label className="val-edit-field">
-                              <span>Preferred Date</span>
+                              <span>Publish date</span>
                               <input
                                 type="date"
                                 value={editForm.scheduledDate}
@@ -2038,7 +2282,7 @@ export default function ValidationQueueScreen({
                               />
                             </label>
                             <label className="val-edit-field">
-                              <span>Preferred Time</span>
+                              <span>Publish time</span>
                               <input
                                 type="time"
                                 value={editForm.scheduledTime}
@@ -2077,7 +2321,9 @@ export default function ValidationQueueScreen({
 
                           {hardBlocked && isAdmin && (
                             <label className="val-edit-field">
-                              <span>Override reason (required — bypassing a guard rail is audited)</span>
+                              <span>
+                                Override reason <small>Required · at least 10 characters · audited</small>
+                              </span>
                               <textarea
                                 rows={3}
                                 value={overrideReason}
@@ -2205,7 +2451,7 @@ export default function ValidationQueueScreen({
                   )}
                 </div>
               </footer>
-            ) : isTerminalStatus ? (
+            ) : isTerminalStatus && !tourDecisionsPreview ? (
               <footer className="val-action-bar val-action-bar--readonly" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-hint">
@@ -2238,19 +2484,27 @@ export default function ValidationQueueScreen({
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={!canSaveEdit}
-                    onClick={() => void handleSaveEdit()}
+                    onClick={() => setReviewChangesOpen(true)}
                   >
                     <i className="ti ti-device-floppy" />
-                    <span>{editSaving ? "Saving..." : "Save Changes"}</span>
+                    <span>{editSaving ? "Saving..." : "Review & Save"}</span>
                   </button>
                 </div>
               </footer>
-            ) : activeLock ? (
-              <footer className="val-action-bar" id="val-review-actions">
+            ) : activeLock || tourDecisionsPreview ? (
+              // During the guide's "Make a decision" step this renders without a
+              // lock, as an inert preview: nothing here can be clicked or focused.
+              <footer
+                className="val-action-bar"
+                id="val-review-actions"
+                inert={!activeLock || undefined}
+              >
                 <div className="val-action-status">
                   <span className="val-action-lock-pill">
                     <i className="ti ti-lock-check" />
-                    Review in progress by you until {formatDateTime(activeLock.expiresAt)}
+                    {activeLock
+                      ? `Review in progress by you until ${formatDateTime(activeLock.expiresAt)}`
+                      : "Preview — shown after you Start Review"}
                   </span>
                 </div>
                 <div className="val-action-group" id="val-review-decision-group">
@@ -2481,36 +2735,64 @@ export default function ValidationQueueScreen({
           icon="ti-ban"
           tone="danger"
           title="Reject submission"
-          body="Choose the rejection reason that will be recorded in the validation audit log."
+          body="Rejecting is final — the contributor can't resubmit this post. Pick the reason they'll see."
           confirmLabel={decisionBusy ? "Rejecting..." : "Reject Submission"}
           exiting={modalClosing}
           confirmBusy={decisionBusy}
+          confirmDisabled={!reasonCode || (reasonCode === "OTHER" && !notes.trim())}
           onCancel={closeDecisionModal}
           onConfirm={() => void handleReject()}
+          dialogClassName="val-modal--wide"
         >
-          <div className="val-reason-grid">
-            {rejectionReasons.map((reason) => (
-              <button
-                className={reasonCode === reason.code ? "selected" : ""}
+          <div className="val-reject-revise-hint">
+            <i className="ti ti-pencil-exclamation" aria-hidden="true" />
+            <span>
+              Something missing or fixable, like the caption, photos, or format? Send it back
+              instead so the contributor can correct it.
+            </span>
+            <button type="button" onClick={() => openDecisionModal("revise")}>
+              Request Revision
+            </button>
+          </div>
+
+          <div className="val-reason-list" role="radiogroup" aria-label="Rejection reason">
+            {REJECTION_REASONS.map((reason) => (
+              <label
                 key={reason.code}
-                type="button"
-                onClick={() => setReasonCode(reason.code)}
+                className={`val-reason-option${reasonCode === reason.code ? " selected" : ""}`}
               >
-                {reason.label}
-              </button>
+                <input
+                  type="radio"
+                  name="val-reject-reason"
+                  value={reason.code}
+                  checked={reasonCode === reason.code}
+                  onChange={() => setReasonCode(reason.code)}
+                />
+                <span>
+                  <strong>{reason.label}</strong>
+                  <small>{reason.description}</small>
+                </span>
+              </label>
             ))}
           </div>
-          <textarea
-            className="val-modal-input"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={4}
-            placeholder={
-              reasonCode === "OTHER"
-                ? "Required for Other..."
-                : "Optional notes..."
-            }
-          />
+
+          <label className="val-reject-note">
+            <span>
+              Note to the contributor{" "}
+              <small>{reasonCode === "OTHER" ? "Required" : "Optional"}</small>
+            </span>
+            <textarea
+              className="val-modal-input"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+              placeholder={
+                reasonCode === "OTHER"
+                  ? "Explain why this can't be posted…"
+                  : "Add context, e.g. a link to the post it duplicates…"
+              }
+            />
+          </label>
         </DecisionDialog>
       )}
 
@@ -2567,6 +2849,36 @@ export default function ValidationQueueScreen({
         />
       )}
 
+      {editMode && reviewChangesOpen && selected && (
+        <ReviewChangesDialog
+          changes={describeEditChanges()}
+          caption={editForm.caption}
+          originalCaption={contributorCaption}
+          captionChanged={editForm.caption !== (selected.caption ?? "")}
+          submissionId={selected.id}
+          isLiveEvent={editForm.fastTrack}
+          saving={editSaving}
+          onApplyCaptionFix={applyCaptionFix}
+          onSave={() => void handleSaveEdit()}
+          onClose={() => setReviewChangesOpen(false)}
+        />
+      )}
+
+      {editMode && aiSuggestionsOpen && selected && (
+        <ReviewAiSuggestionsModal
+          submissionId={selected.id}
+          excludeIds={editForm.media
+            .map((m) => m.assetId)
+            .filter((x): x is string => Boolean(x))}
+          eventTitle={editForm.eventTitle}
+          caption={editForm.caption}
+          category={selected.category ?? ""}
+          tags={editCaptionHashtags.map((h) => h.slice(1))}
+          onAdd={addLibraryAssets}
+          onClose={() => setAiSuggestionsOpen(false)}
+        />
+      )}
+
       {editMode && captionPromptOpen && (
         <Suspense fallback={null}>
           <AiCaptionPromptDialog
@@ -2593,10 +2905,10 @@ export default function ValidationQueueScreen({
         );
       })()}
 
-      <SpotlightTour {...queueTourProps} />
-      <SpotlightTour {...reviewTourProps} />
-      <SpotlightTour {...failedTourProps} />
-      <SpotlightTour {...editTourProps} />
+      <SpotlightTour {...queueTourProps} viewOnly />
+      <SpotlightTour {...reviewTourProps} viewOnly />
+      <SpotlightTour {...failedTourProps} viewOnly />
+      <SpotlightTour {...editTourProps} viewOnly />
     </div>
   );
 }
@@ -2610,27 +2922,56 @@ function MediaItemSettingsModal({
   onChange: (patch: Partial<EditMediaItem>) => void;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const captionLength = Array.from(item.caption).length;
+
+  // Changes apply as you type (same as before) — Done just closes.
   return createPortal(
-    <div className="val-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="val-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="val-media-settings-title" onClick={onClose}>
       <div className="val-media-settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="val-preview-modal-head">
-          <span><i className="ti ti-photo-edit" /> Media settings</span>
+        <header className="val-media-settings-head">
+          <span className="val-media-settings-thumb" aria-hidden="true">
+            {item.isImage && item.previewUrl ? (
+              <img src={item.previewUrl} alt="" />
+            ) : (
+              <i className={`ti ${item.isImage ? "ti-photo" : "ti-video"}`} />
+            )}
+          </span>
+          <div className="val-media-settings-titles">
+            <h3 id="val-media-settings-title">Media caption</h3>
+            <p title={item.fileName}>{item.fileName}</p>
+          </div>
           <button type="button" className="val-details-hide" onClick={onClose} aria-label="Close">
             <i className="ti ti-x" />
           </button>
-        </div>
+        </header>
+
         <div className="val-media-settings-body">
-          <div className="val-media-settings-name">{item.fileName}</div>
           <label className="val-edit-field">
-            <span>Caption for this item</span>
+            <span className="val-media-settings-label">
+              Caption
+              <small>{captionLength} / 500</small>
+            </span>
             <textarea
-              rows={3}
+              rows={4}
               maxLength={500}
-              placeholder="Optional caption"
+              placeholder="Describe what's in this photo or video…"
               value={item.caption}
               onChange={(e) => onChange({ caption: e.target.value })}
+              autoFocus
             />
+            <em className="val-media-settings-help">
+              Optional. Shown with this item on Facebook; the post caption is separate.
+            </em>
           </label>
+
           {item.isImage && (
             <label className="val-media-settings-wm">
               <input
@@ -2638,10 +2979,19 @@ function MediaItemSettingsModal({
                 checked={item.skipWatermark}
                 onChange={(e) => onChange({ skipWatermark: e.target.checked })}
               />
-              Skip watermark on this image
+              <span>
+                <strong>Skip watermark</strong>
+                <small>Publish this image without the DASIG watermark.</small>
+              </span>
             </label>
           )}
         </div>
+
+        <footer className="val-media-settings-foot">
+          <button type="button" className="val-btn val-btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </footer>
       </div>
     </div>,
     document.body,
@@ -2696,20 +3046,72 @@ function PanelContentLoader({ text = "Loading submission details..." }: { text?:
   );
 }
 
+const EDIT_DIFF_FIELD_LABELS: Record<string, string> = {
+  eventTitle: "Event title",
+  eventDate: "Event date",
+  caption: "Caption",
+  description: "Moderator notes",
+  category: "Category",
+  tags: "Tags",
+  scheduledAt: "Publish slot",
+  media: "Media",
+};
+
+/** Long free text gets a word-level diff; everything else one "old → new" line. */
+const WORD_DIFF_FIELDS = new Set(["caption", "description"]);
+
+/** A stored diff value as display text (dates and slots formatted). */
+function editDiffValue(field: string, value: unknown): string {
+  const text = value == null ? "" : String(value);
+  if (!text) return "";
+  if (field === "eventDate") return formatDate(text);
+  if (field === "scheduledAt") return formatDateTime(text);
+  return text;
+}
+
+/**
+ * One review edit's changes in the Review History, laid out like Review & Save:
+ * the caption as changed words only (grouped, with context), short fields as
+ * "old → new". Media edits are stored without before/after, so they read as
+ * a one-line summary.
+ */
 function EditDiffView({ diffJson }: { diffJson: string }) {
   const entries = parseEditDiff(diffJson);
   if (entries.length === 0) return null;
   return (
-    <div className="val-edit-diff">
-      {entries.map(([field, change]) => (
-        <div key={field} className="val-edit-diff-row">
-          <span className="val-edit-diff-field">{formatAction(field)}</span>
-          <span className="val-edit-diff-from">{String(change.from) || "—"}</span>
-          <i className="ti ti-arrow-right"></i>
-          <span className="val-edit-diff-to">{String(change.to) || "—"}</span>
-        </div>
-      ))}
-    </div>
+    <ul className="val-change-list val-change-list--history">
+      {entries.map(([field, change]) => {
+        const label = EDIT_DIFF_FIELD_LABELS[field] ?? formatAction(field);
+        if (!change || typeof change !== "object") {
+          return (
+            <li key={field} className="val-change-row">
+              <p className="val-change-inline">
+                <strong>{label}</strong>
+                <span>{change === "library_asset_added" ? "Library media added" : "updated"}</span>
+              </p>
+            </li>
+          );
+        }
+        const before = editDiffValue(field, change.from);
+        const after = editDiffValue(field, change.to);
+        return (
+          <li key={field} className="val-change-row">
+            <div className="val-change-head">
+              <strong>{label}</strong>
+            </div>
+            {WORD_DIFF_FIELDS.has(field) ? (
+              <WordDiffText segments={wordDiff(before, after)} />
+            ) : (
+              <p className="val-change-inline">
+                <del>{before || "empty"}</del>
+                <i className="ti ti-arrow-right" aria-hidden="true" />
+                <ins>{after || "empty"}</ins>
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -2799,6 +3201,7 @@ function SubmissionDetailsPanel({
   log,
   currentUserEmail,
   onHide,
+  onOpenHistory,
   isOpen = true,
   retryCount,
   lastAttemptAt,
@@ -2808,6 +3211,7 @@ function SubmissionDetailsPanel({
   log: ValidationLog[];
   currentUserEmail: string;
   onHide: () => void;
+  onOpenHistory: () => void;
   isOpen?: boolean;
   /** Failed-tab only — a regular submission's review has no retry history. */
   retryCount?: number;
@@ -2819,6 +3223,11 @@ function SubmissionDetailsPanel({
   const missingSlot = !isLive && !slot;
   const submittedAt = submission.submittedAt || submission.createdAt;
   const modeClass = isLive ? "is-live" : missingSlot ? "is-unset" : "is-scheduled";
+
+  const status = normalizeStatus(submission.status ?? "");
+  const historyCount = log.filter(
+    (entry) => entry.action !== "lock_acquired" && entry.action !== "lock_released",
+  ).length;
 
   const isYou = (email?: string | null) =>
     Boolean(email) && email!.toLowerCase() === currentUserEmail.toLowerCase();
@@ -2838,6 +3247,8 @@ function SubmissionDetailsPanel({
     }
   }
 
+  const initialOf = (email?: string | null) => (email?.trim()[0] ?? "?").toUpperCase();
+
   return (
     <aside
       className={`val-details-panel ${isOpen ? "is-open" : "is-collapsed"}`}
@@ -2845,10 +3256,13 @@ function SubmissionDetailsPanel({
       aria-hidden={!isOpen}
     >
       <div className="val-details-panel-inner">
-        <div className="val-details-head">
-          <span>
-            <i className="ti ti-info-circle" /> Submission details
-          </span>
+        <header className="val-details-head">
+          <div className="val-details-head-title">
+            <h2>Submission details</h2>
+            <span className={`val-status ${status}`}>
+              {statusLabel[status] || status.replace(/_/g, " ") || "Unknown"}
+            </span>
+          </div>
           <button
             type="button"
             className="val-details-hide"
@@ -2858,100 +3272,119 @@ function SubmissionDetailsPanel({
           >
             <i className="ti ti-layout-sidebar-right-collapse" />
           </button>
-        </div>
+        </header>
 
-      <dl className="val-details-list">
-        <div>
-          <dt>Submitted by</dt>
-          <dd>
-            {submission.contributorEmail || "—"}
-            {isYou(submission.contributorEmail) && <span className="val-details-you">You</span>}
-          </dd>
-        </div>
-
-        <div>
-          <dt>Institution</dt>
-          <dd>{submission.institutionName || "—"}</dd>
-        </div>
-
-        <div>
-          <dt>Submitted</dt>
-          <dd>{submittedAt ? `${formatDate(submittedAt)} at ${formatTime(submittedAt)}` : "—"}</dd>
-        </div>
-
-        <div>
-          <dt>Publishing</dt>
-          <dd>
-            <span className={`val-details-mode ${modeClass}`}>
-              <i
-                className={`ti ${
-                  isLive ? "ti-bolt" : missingSlot ? "ti-calendar-x" : "ti-calendar-clock"
-                }`}
-              />
-              {isLive ? "Live Event" : missingSlot ? "No slot" : "Scheduled"}
+        {/* When it publishes is the fact a reviewer acts on — lead with it. */}
+        <section className={`val-details-publish ${modeClass}`} aria-label="Publishing">
+          <span className="val-details-mode">
+            <i
+              className={`ti ${
+                isLive ? "ti-bolt" : missingSlot ? "ti-calendar-x" : "ti-calendar-clock"
+              }`}
+              aria-hidden="true"
+            />
+            {isLive ? "Live Event" : missingSlot ? "No slot" : "Scheduled"}
+          </span>
+          <strong className="val-details-publish-when">
+            {isLive
+              ? "Publishes on approval"
+              : missingSlot
+                ? "No publish slot selected"
+                : `${formatDate(slot)} · ${formatTime(slot)}`}
+          </strong>
+          {isLive && submission.liveEventName && (
+            <span className="val-details-publish-sub">{submission.liveEventName}</span>
+          )}
+          {submission.publishedAt && (
+            <span className="val-details-publish-sub">
+              <i className="ti ti-circle-check" aria-hidden="true" />
+              Published {formatDate(submission.publishedAt)} at {formatTime(submission.publishedAt)}
             </span>
-            <span className="val-details-sub">
-              {isLive
-                ? "Publishes immediately on approval"
-                : missingSlot
-                  ? "No publish slot selected"
-                  : `${formatDate(slot)} at ${formatTime(slot)}`}
-            </span>
-            {isLive && submission.liveEventName && (
-              <span className="val-details-sub">Event: {submission.liveEventName}</span>
-            )}
-            {submission.publishedAt && (
-              <span className="val-details-sub">
-                Published {formatDate(submission.publishedAt)} at {formatTime(submission.publishedAt)}
+          )}
+        </section>
+
+        {retryCount !== undefined && (
+          <section className="val-details-failure" aria-label="Publishing attempts">
+            <div className="val-details-failure-stats">
+              <span>
+                <strong>{retryCount}</strong> {retryCount === 1 ? "retry" : "retries"}
               </span>
+              <span>
+                Last attempt {lastAttemptAt ? formatDateTime(lastAttemptAt) : "not recorded"}
+              </span>
+            </div>
+            {lastError && (
+              <p className="val-details-failure-error">
+                <i className="ti ti-alert-triangle" aria-hidden="true" />
+                {humanizeFacebookError(lastError)}
+              </p>
             )}
-          </dd>
-        </div>
-
-        {retryCount !== undefined && (
-          <div>
-            <dt>Retry attempts</dt>
-            <dd>{retryCount}</dd>
-          </div>
+          </section>
         )}
 
-        {retryCount !== undefined && (
-          <div>
-            <dt>Last attempt</dt>
-            <dd>{lastAttemptAt ? formatDateTime(lastAttemptAt) : "No attempts recorded"}</dd>
+        <dl className="val-details-list">
+          <div className="val-details-row">
+            <i className="ti ti-user" aria-hidden="true" />
+            <dt>Submitted by</dt>
+            <dd>
+              <span className="val-details-email">{submission.contributorEmail || "—"}</span>
+              {isYou(submission.contributorEmail) && <span className="val-details-you">You</span>}
+            </dd>
           </div>
-        )}
-
-        {lastError && (
-          <div>
-            <dt>Last error</dt>
-            <dd>{humanizeFacebookError(lastError)}</dd>
+          <div className="val-details-row">
+            <i className="ti ti-building" aria-hidden="true" />
+            <dt>Institution</dt>
+            <dd>{submission.institutionName || "—"}</dd>
           </div>
-        )}
+          <div className="val-details-row">
+            <i className="ti ti-calendar-event" aria-hidden="true" />
+            <dt>Event date</dt>
+            <dd>{submission.eventDate ? formatDate(submission.eventDate) : "—"}</dd>
+          </div>
+          <div className="val-details-row">
+            <i className="ti ti-send" aria-hidden="true" />
+            <dt>Submitted</dt>
+            <dd>{submittedAt ? `${formatDate(submittedAt)} at ${formatTime(submittedAt)}` : "—"}</dd>
+          </div>
+        </dl>
 
-        <div>
-          <dt>Edits during review</dt>
-          <dd>
-            {editors.length === 0 ? (
-              <span className="val-details-muted">None yet</span>
-            ) : (
-              <ul className="val-details-editors">
-                {editors.map((e) => (
-                  <li key={e.email}>
-                    <span>
+        <section className="val-details-section" aria-label="Edits during review">
+          <h3>Edits during review</h3>
+          {editors.length === 0 ? (
+            <p className="val-details-muted">No one has edited this post yet.</p>
+          ) : (
+            <ul className="val-details-editors">
+              {editors.map((e) => (
+                <li key={e.email}>
+                  <span className="val-details-avatar" aria-hidden="true">{initialOf(e.email)}</span>
+                  <span className="val-details-editor-text">
+                    <span className="val-details-email">
                       {e.email}
                       {isYou(e.email) && <span className="val-details-you">You</span>}
                     </span>
                     <span className="val-details-muted">
                       {e.count} edit{e.count > 1 ? "s" : ""} · {formatDateTime(e.lastAt)}
                     </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </dd>
-        </div>
-      </dl>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {submission.description && (
+          <section className="val-details-section" aria-label="Moderator notes">
+            <h3>Moderator notes</h3>
+            <p className="val-details-notes">{submission.description}</p>
+          </section>
+        )}
+
+        <button type="button" className="val-details-history-btn" onClick={onOpenHistory}>
+          <i className="ti ti-history" aria-hidden="true" />
+          <span>Review history</span>
+          <span className="val-details-history-count">{historyCount}</span>
+          <i className="ti ti-chevron-right" aria-hidden="true" />
+        </button>
       </div>
     </aside>
   );
@@ -2967,7 +3400,6 @@ function FacebookPostPreviewCard({
   watermarkConfig,
   showWatermarkPreview = true,
   onToggleWatermark,
-  onOpenHistory,
 }: {
   submission: SubmissionSummary;
   editMode: boolean;
@@ -2978,16 +3410,16 @@ function FacebookPostPreviewCard({
   watermarkConfig?: WatermarkConfiguration | null;
   showWatermarkPreview?: boolean;
   onToggleWatermark?: () => void;
-  onOpenHistory?: () => void;
 }) {
   const selectedMedia = mediaAssets[mediaIndex];
   const pageName = submission.institutionName || "DasigConnect";
   const displayCaption = editMode ? editForm.caption : (submission.caption || submission.eventTitle);
-  const displayTags: string[] = editMode
-    ? extractHashtags(editForm.caption)
-    : (submission.tags || []);
-
-  const formattedTags: string[] = displayTags.map((t: string) => (t.startsWith("#") ? t : `#${t}`));
+  // Only tags publishing adds after the caption — the caption's own hashtags
+  // are already in its text. An edit saves no separate tags (they live in the
+  // caption), so edit mode adds none.
+  const formattedTags: string[] = editMode
+    ? []
+    : tagsAppendedToCaption(submission.tags || [], displayCaption || "");
 
   return (
     <article className="val-fb-card" aria-label="Facebook Post Preview">
@@ -3029,17 +3461,6 @@ function FacebookPostPreviewCard({
             >
               <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
               <span>{showWatermarkPreview ? "Watermark: ON" : "Watermark: OFF"}</span>
-            </button>
-          )}
-          {onOpenHistory && (
-            <button
-              type="button"
-              className="val-fb-more-btn"
-              onClick={onOpenHistory}
-              title="View History & Audit Details (•••)"
-              aria-label="View history and audit details"
-            >
-              <i className="ti ti-dots" />
             </button>
           )}
         </div>
@@ -3225,7 +3646,7 @@ function ValidationHistoryModal({
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "var(--val-text)" }}>
-                Submission History & Details
+                Review History
               </h3>
               <span style={{ fontSize: "12px", color: "var(--val-muted)" }}>
                 {shortId(submission.id)} · {submission.institutionName || "Unknown Institution"}
@@ -3245,42 +3666,6 @@ function ValidationHistoryModal({
 
         {/* Body */}
         <div className="val-history-body">
-          {/* Metadata Grid */}
-          <div className="val-history-meta-grid">
-            <div className="val-history-meta-item">
-              <span>Submitted By</span>
-              <strong>{submission.contributorEmail || "—"}</strong>
-            </div>
-            <div className="val-history-meta-item">
-              <span>Event Date</span>
-              <strong>{formatDate(submission.eventDate)}</strong>
-            </div>
-            {submission.scheduledAt && (
-              <div className="val-history-meta-item">
-                <span>Scheduled Slot</span>
-                <strong>{formatDate(submission.scheduledAt)} at {formatTime(submission.scheduledAt)}</strong>
-              </div>
-            )}
-            <div className="val-history-meta-item">
-              <span>Status</span>
-              <strong style={{ color: "var(--val-blue, #1877f2)", textTransform: "capitalize" }}>
-                {statusLabel[normalizeStatus(submission.status)] || normalizeStatus(submission.status).replace(/_/g, " ") || "Unknown"}
-              </strong>
-            </div>
-          </div>
-
-          {/* Moderator / Contributor Notes */}
-          {submission.description && (
-            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--val-border)" }}>
-              <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "var(--val-muted)" }}>
-                Moderator Notes
-              </span>
-              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--val-text-2)", whiteSpace: "pre-wrap" }}>
-                {submission.description}
-              </p>
-            </div>
-          )}
-
           {/* Timeline Events */}
           <div>
             <div className="val-history-section-title">
@@ -3406,6 +3791,7 @@ function DecisionDialog({
   confirmLabel,
   exiting,
   confirmBusy,
+  confirmDisabled = false,
   onCancel,
   onConfirm,
   dialogClassName,
@@ -3418,6 +3804,8 @@ function DecisionDialog({
   confirmLabel: string;
   exiting: boolean;
   confirmBusy: boolean;
+  /** Keep the confirm button disabled until the dialog's input is complete. */
+  confirmDisabled?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   dialogClassName?: string;
@@ -3447,7 +3835,7 @@ function DecisionDialog({
             type="button"
             className={tone}
             onClick={onConfirm}
-            disabled={confirmBusy}
+            disabled={confirmBusy || confirmDisabled}
             aria-busy={confirmBusy}
           >
             {confirmBusy && <i className="ti ti-loader-2 val-spin"></i>}
@@ -3460,9 +3848,9 @@ function DecisionDialog({
   );
 }
 
-function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: unknown }]> {
+function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: unknown } | string]> {
   try {
-    return Object.entries(JSON.parse(diffJson) as Record<string, { from: unknown; to: unknown }>);
+    return Object.entries(JSON.parse(diffJson) as Record<string, { from: unknown; to: unknown } | string>);
   } catch {
     return [];
   }

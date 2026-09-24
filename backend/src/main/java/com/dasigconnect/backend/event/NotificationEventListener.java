@@ -162,6 +162,31 @@ public class NotificationEventListener {
                     NotificationEventType.submission_edited_in_review.name(),
                     "DASIGConnect — Your submission was edited during review",
                     msg + "\n\nView the before/after: " + frontendBaseUrl + link);
+            notifyAdminsOfSubstantiveEdit(s, severity, event.editorId(), link);
+        }
+    }
+
+    /**
+     * A10 governance: a substantive review edit (FLAGGED / ADDED_MEDIA) is also
+     * surfaced to Administrators in-app, so a reviewer rewriting other people's
+     * posts is visible beyond the contributor. The editor is skipped when they
+     * are an admin themselves. In-app only — the contributor already gets the email.
+     */
+    private void notifyAdminsOfSubstantiveEdit(
+            Submission s, ReviewEditSeverity severity, java.util.UUID editorId, String link) {
+        String editor = editorId == null ? "A reviewer"
+                : userRepository.findById(editorId).map(User::getEmail).orElse("A reviewer");
+        String change = severity == ReviewEditSeverity.ADDED_MEDIA
+                ? "added Media Library media the contributor didn't submit to"
+                : "made substantive edits to";
+        String adminMsg = editor + " " + change + " '" + s.getEventTitle()
+                + "' during review. Open it to see the before/after.";
+        for (User admin : admins()) {
+            if (editorId != null && editorId.equals(admin.getId())) {
+                continue;
+            }
+            notificationService.createNotification(
+                    admin, NotificationEventType.submission_edited_in_review, adminMsg, link);
         }
     }
 

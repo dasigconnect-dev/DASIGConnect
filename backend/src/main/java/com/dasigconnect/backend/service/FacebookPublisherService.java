@@ -665,22 +665,37 @@ public class FacebookPublisherService {
      * Builds the Facebook post message by appending manually selected tags as hashtags.
      * Tags stored as comma-separated (e.g. "Science,Research,DOST") are appended
      * as "#Science #Research #DOST" on a new line after the caption.
-     * Hashtags already present in the caption (starting with #) are preserved as-is.
+     * Hashtags already present in the caption (starting with #) are preserved as-is,
+     * and a tag the caption already contains is not appended again — tags are
+     * usually derived from the caption's own hashtags, so appending all of them
+     * published every hashtag twice.
      */
-    private static String buildPostMessage(Submission submission) {
+    static String buildPostMessage(Submission submission) {
         String caption = submission.getCaption() != null ? submission.getCaption().trim() : "";
         String rawTags = submission.getTags();
         if (rawTags == null || rawTags.isBlank()) return caption;
 
+        java.util.Set<String> captionHashtags = new java.util.HashSet<>();
+        java.util.regex.Matcher matcher = CAPTION_HASHTAG.matcher(caption);
+        while (matcher.find()) {
+            captionHashtags.add(matcher.group().toLowerCase(java.util.Locale.ROOT));
+        }
+
         String hashtags = java.util.Arrays.stream(rawTags.split(","))
                 .map(String::trim)
                 .filter(t -> !t.isBlank())
-                .map(t -> "#" + t.replace(" ", ""))
+                .map(t -> "#" + t.replace(" ", "").replaceFirst("^#+", ""))
+                .filter(t -> t.length() > 1)
+                .filter(t -> captionHashtags.add(t.toLowerCase(java.util.Locale.ROOT)))
                 .collect(java.util.stream.Collectors.joining(" "));
 
         if (hashtags.isBlank()) return caption;
         return caption.isBlank() ? hashtags : caption + "\n\n" + hashtags;
     }
+
+    /** Same shape the frontend's extractHashtags() matches: '#' + letters, digits, underscore. */
+    private static final java.util.regex.Pattern CAPTION_HASHTAG =
+            java.util.regex.Pattern.compile("#[A-Za-z0-9_]+");
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);

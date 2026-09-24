@@ -58,10 +58,21 @@ public class ValidationService {
     private static final int MAX_QUEUE_PAGE_SIZE = 50;
     private static final ZoneId DASHBOARD_ZONE = ZoneId.of("Asia/Manila");
 
-    // BR-VAL-03 rejection reason codes
-    private static final Set<String> VALID_REJECTION_CODES = Set.of(
-            "INCOMPLETE_CONTENT", "INAPPROPRIATE_CONTENT", "WRONG_FORMAT",
-            "DUPLICATE_EVENT", "WRONG_INSTITUTION", "OTHER");
+    /**
+     * BR-VAL-03 rejection reason codes → the label the contributor sees.
+     * Only problems a revision can't fix: anything missing or fixable (content,
+     * format) goes through Request Revision instead, so INCOMPLETE_CONTENT and
+     * WRONG_FORMAT are no longer accepted. Rejections stored under those codes
+     * before 2026-09-24 still display — the frontend keeps their labels.
+     */
+    static final Map<String, String> REJECTION_REASON_LABELS = Map.of(
+            "INAPPROPRIATE_CONTENT", "Inappropriate content",
+            "OUT_OF_SCOPE", "Not a DASIG activity",
+            "DUPLICATE_EVENT", "Duplicate",
+            "NO_LONGER_RELEVANT", "No longer timely",
+            "RIGHTS_OR_PRIVACY", "Rights or privacy issue",
+            "WRONG_INSTITUTION", "Belongs to another institution",
+            "OTHER", "Other");
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -355,7 +366,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
         if (edited) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
                 submission.isFastTrack(), edited, submissionId, caller.userId());
@@ -512,7 +524,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
     }
@@ -544,10 +557,12 @@ public class ValidationService {
         logAction(submission, validator, ValidationAction.rejected, null, fullReason,
                 selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
-        eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
+        eventPublisher.publishEvent(
+                new SubmissionRejectedEvent(submission, readableRejectionReason(reasonCode, notes)));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
     }
@@ -561,16 +576,23 @@ public class ValidationService {
         }
     }
 
-    private void validateRejectionCode(String reasonCode, String notes) {
-        if (reasonCode == null || !VALID_REJECTION_CODES.contains(reasonCode)) {
+    static void validateRejectionCode(String reasonCode, String notes) {
+        if (reasonCode == null || !REJECTION_REASON_LABELS.containsKey(reasonCode)) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Invalid rejection reason code. Valid codes: "
-                            + String.join(", ", VALID_REJECTION_CODES));
+                            + String.join(", ", REJECTION_REASON_LABELS.keySet())
+                            + ". Missing or fixable content should be sent back with Request Revision.");
         }
         if ("OTHER".equals(reasonCode) && (notes == null || notes.trim().isEmpty())) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Notes are required when rejection reason is OTHER.");
         }
+    }
+
+    /** "Duplicate — already posted on 12 Sep", for the contributor's email. */
+    static String readableRejectionReason(String reasonCode, String notes) {
+        String label = REJECTION_REASON_LABELS.getOrDefault(reasonCode, reasonCode);
+        return notes != null && !notes.trim().isEmpty() ? label + " — " + notes.trim() : label;
     }
 
     private String buildRejectionReason(String reasonCode, String notes) {

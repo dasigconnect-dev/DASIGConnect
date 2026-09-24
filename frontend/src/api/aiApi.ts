@@ -239,3 +239,52 @@ export function logCaptionInteraction(
     .post("/ai/caption/log", { submissionId, actionTaken, toneSelected })
     .catch(() => {});
 }
+
+// ─── Proofreading (review-queue edit safeguards) ─────────────────────────────
+
+export interface ProofreadIssue {
+  kind: "spelling" | "grammar" | "clarity" | "meaning";
+  /** Exact text the finding refers to — always a substring of the checked text. */
+  excerpt: string;
+  /** Replacement for `excerpt`; empty for a "meaning" finding (no safe automatic fix). */
+  suggestion: string;
+  explanation: string;
+}
+
+/**
+ * Advisory proofreading. With `originalText`, only mistakes the edit
+ * introduced are reported, plus any changed name/date/number ("meaning").
+ * Throws Error("rate-limit") on 429, Error("timeout") on timeout.
+ */
+export async function proofreadText(
+  text: string,
+  originalText?: string,
+  signal?: AbortSignal,
+  submissionId?: string | null,
+): Promise<ProofreadIssue[]> {
+  let res;
+  try {
+    res = await api.post<ApiEnvelope<{ issues: ProofreadIssue[] }>>(
+      "/ai/proofread",
+      {
+        text,
+        ...(originalText?.trim() ? { originalText } : {}),
+        ...(submissionId ? { submissionId } : {}),
+      },
+      { signal, validateStatus: () => true },
+    );
+  } catch (error) {
+    if (isRequestDeadlineError(error)) throw new Error("timeout", { cause: error });
+    throw error;
+  }
+  if (res.status === 429) throw new Error("rate-limit");
+  if (res.status === 504) throw new Error("timeout");
+  if (res.status !== 200) throw new Error("unavailable");
+  const body = "data" in res.data ? res.data.data : (res.data as unknown as { issues: ProofreadIssue[] });
+  return body?.issues ?? [];
+}
+
+/** AI Feature Adoption: one suggested writing fix was applied. Fire-and-forget. */
+export function logProofreadFixApplied(submissionId?: string | null): void {
+  api.post("/ai/proofread/applied", { submissionId: submissionId ?? null }).catch(() => {});
+}

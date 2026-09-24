@@ -365,6 +365,8 @@ public class AnalyticsRepository {
      *   <li>Album Auto-Match: submissions that kept an album the AI proposed /
      *       submissions it proposed one for (one outcome per submission).</li>
      *   <li>Template from Top Posts: drafts saved / drafts generated.</li>
+     *   <li>Writing check: fixes applied / fixes suggested (each {@code checked}
+     *       row stores its finding count in {@code suggested_value}).</li>
      * </ul>
      * Tag classification isn't reported: its composer UI was cut from scope, so
      * no tag events are recorded any more.
@@ -387,7 +389,15 @@ public class AnalyticsRepository {
                 COUNT(*) FILTER (WHERE ail.interaction_type = 'template_draft'
                     AND ail.action_taken = 'generated') AS template_generated,
                 COUNT(*) FILTER (WHERE ail.interaction_type = 'template_draft'
-                    AND ail.action_taken = 'saved') AS template_saved
+                    AND ail.action_taken = 'saved') AS template_saved,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'proofread'
+                    AND ail.action_taken = 'checked') AS proofread_checks,
+                COALESCE(SUM(CAST(ail.suggested_value AS integer)) FILTER (
+                    WHERE ail.interaction_type = 'proofread'
+                    AND ail.action_taken = 'checked'
+                    AND ail.suggested_value ~ '^[0-9]+$'), 0) AS proofread_suggested,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'proofread'
+                    AND ail.action_taken = 'applied') AS proofread_applied
             FROM ai_interaction_log ail
             LEFT JOIN submissions s ON s.id = ail.submission_id
             WHERE ail.created_at >= :start
@@ -403,7 +413,10 @@ public class AnalyticsRepository {
                         rs.getLong("album_outcomes"),
                         rs.getLong("album_kept"),
                         rs.getLong("template_generated"),
-                        rs.getLong("template_saved")));
+                        rs.getLong("template_saved"),
+                        rs.getLong("proofread_checks"),
+                        rs.getLong("proofread_suggested"),
+                        rs.getLong("proofread_applied")));
     }
 
     public FacebookEngagementStats facebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
@@ -890,7 +903,8 @@ public class AnalyticsRepository {
     public record CompletenessStats(long completeCount, long totalCount) {}
     public record PublishedPostStats(long totalCount, long automatedCount, long manualCount, long adminDirectCount) {}
     public record AiStats(long captionGenerated, long captionAccepted, long mediaShown, long mediaUsed,
-                          long albumOutcomes, long albumKept, long templateGenerated, long templateSaved) {}
+                          long albumOutcomes, long albumKept, long templateGenerated, long templateSaved,
+                          long proofreadChecks, long proofreadSuggested, long proofreadApplied) {}
     public record OperationalStats(long workflowCount, long deadlineRiskCount, long overrideCount,
                                    long attemptCount, long successCount, long onTimeCount,
                                    long adminActionCount) {}
