@@ -223,22 +223,23 @@ export function reorderSubmissionMedia(
   mediaAssetIds: string[],
   mediaCaptions?: Record<string, string>,
   skipWatermarks?: Record<string, boolean>,
+  signal?: AbortSignal,
 ) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
     mediaCaptions,
     skipWatermarks,
-  });
+  }, { signal });
 }
 
-export function attachAsset(id: string, mediaAssetId: string) {
+export function attachAsset(id: string, mediaAssetId: string, signal?: AbortSignal) {
   return api.post<SubmissionSummary>(`/submissions/${id}/assets`, {
     mediaAssetId,
-  });
+  }, { signal });
 }
 
-export function detachAsset(id: string, mediaAssetId: string) {
-  return api.delete(`/submissions/${id}/assets/${mediaAssetId}`);
+export function detachAsset(id: string, mediaAssetId: string, signal?: AbortSignal) {
+  return api.delete(`/submissions/${id}/assets/${mediaAssetId}`, { signal });
 }
 
 export async function uploadSubmissionMedia(id: string, files: File[], signal?: AbortSignal) {

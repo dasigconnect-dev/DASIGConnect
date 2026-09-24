@@ -16,7 +16,14 @@
 - Text-only recommendation behavior remains available and unchanged at the API boundary.
 - Hybrid requests blend selected-media semantic context with the current text query.
 - Fresh uploads receive bounded visual-only retries while asynchronous embeddings become ready.
-- The existing delayed draft/media autosave remains intact for this slice; replacement with a dedicated serialized media mutation queue remains Phase 1 work and must not be combined without its concurrency tests.
+- **Phase 1 - Safe Media Autosave:** Implemented on `feature/ai-media-phase1-autosave`.
+- Saved drafts now serialize narrow upload, library-attach, detach, and final-order mutations without running a complete draft save per file.
+- Device uploads reconcile temporary picker items to server assets while preserving order, captions, watermark flags, and the established UI.
+- Removal during an in-flight upload either prevents registration or compensates by detaching the registered asset.
+- Conflict responses for already-attached library assets are reconciled through the server snapshot instead of duplicating the attachment.
+- Ambiguous upload failures re-read the draft and match newly registered assets by original filename and size before allowing a retry, preventing duplicate uploads after lost responses.
+- The existing full `saveDraft()` path remains the compatibility fallback after automatic media persistence fails.
+- Composer end-to-end coverage verifies upload, library attachment, detach, in-flight removal, transient failure fallback, ordinary autosave, submission, and revision behavior.
 
 ## 2. Verified Current Baseline
 
