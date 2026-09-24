@@ -56,7 +56,7 @@ export default function LandingDasigWho() {
 
             <h2 className="huge-title">
               <TextType
-                text={"Who is\nDASIG?"}
+                text={"What is\nDASIG?"}
                 typingSpeed={50}
                 pauseDuration={3000}
                 deletingSpeed={25}
