@@ -60,6 +60,10 @@ import {
 } from "../submission/utils/revisionComments";
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import ReviewAiSuggestionsModal from "./ReviewAiSuggestionsModal";
+import ReviewChangesDialog, { type EditChangeRow } from "./ReviewChangesDialog";
+import ProofreadIssues from "./ProofreadIssues";
+import { applyProofreadFix, contributorOriginals, isoToLocalDateTime } from "./editSafeguards";
+import { proofreadText, type ProofreadIssue } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
@@ -194,16 +198,16 @@ function savedAssetToMediaItem(asset: SavedMediaAsset): EditMediaItem {
 }
 
 function toEditForm(summary: SubmissionSummary): EditFormState {
-  const scheduled = summary.scheduledAt ? new Date(summary.scheduledAt) : null;
+  // Both halves in local time — a UTC date paired with local hours put
+  // early-morning slots on the previous day.
+  const scheduled = isoToLocalDateTime(summary.scheduledAt ?? "");
   return {
     eventTitle: summary.eventTitle || "",
     eventDate: summary.eventDate ? summary.eventDate.slice(0, 10) : "",
     caption: summary.caption || "",
     description: summary.description || "",
-    scheduledDate: scheduled ? scheduled.toISOString().slice(0, 10) : "",
-    scheduledTime: scheduled
-      ? `${String(scheduled.getHours()).padStart(2, "0")}:${String(scheduled.getMinutes()).padStart(2, "0")}`
-      : "",
+    scheduledDate: scheduled.date,
+    scheduledTime: scheduled.time,
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
     mediaAddNote: "",
@@ -355,6 +359,10 @@ export default function ValidationQueueScreen({
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
+  // Edit safeguards: review-before-save dialog + on-demand writing check.
+  const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
+  const [proofIssues, setProofIssues] = useState<ProofreadIssue[]>([]);
+  const [proofState, setProofState] = useState<"idle" | "loading" | "done" | "error">("idle");
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
@@ -953,6 +961,9 @@ export default function ValidationQueueScreen({
     }
     setEditForm(toEditForm(full));
     setGuardRails(null);
+    setReviewChangesOpen(false);
+    setProofIssues([]);
+    setProofState("idle");
     setCaptionSelection({ start: 0, end: 0 });
     setEditTab("details");
     setOverrideReason("");
@@ -1006,6 +1017,114 @@ export default function ValidationQueueScreen({
     : "";
   const scheduleChanged = !editForm.fastTrack && editScheduledAtIso !== originalScheduledIso;
   const fastTrackChanged = editForm.fastTrack !== Boolean(selected?.fastTrack);
+
+  // ── Edit safeguards ─────────────────────────────────────────────────────
+  // What the contributor submitted, for fields already changed and saved this
+  // review cycle (from the review history); otherwise the saved value is still theirs.
+  const originals = useMemo(() => contributorOriginals(log), [log]);
+  const contributorTitle = originals.eventTitle ?? selected?.eventTitle ?? "";
+  const contributorEventDate = (originals.eventDate ?? selected?.eventDate ?? "").slice(0, 10);
+  const contributorCaption = originals.caption ?? selected?.caption ?? "";
+  const contributorScheduledAt = originals.scheduledAt ?? selected?.scheduledAt ?? "";
+
+  function restoreContributorSchedule() {
+    const { date, time } = isoToLocalDateTime(contributorScheduledAt);
+    setEditForm((f) => ({ ...f, scheduledDate: date, scheduledTime: time }));
+  }
+  const scheduleDiffersFromContributor =
+    Boolean(contributorScheduledAt) &&
+    editScheduledAtIso !== "" &&
+    new Date(contributorScheduledAt).getTime() !== new Date(editScheduledAtIso).getTime();
+
+  async function handleCheckWriting() {
+    if (!editForm.caption.trim()) return;
+    setProofState("loading");
+    try {
+      setProofIssues(await proofreadText(editForm.caption));
+      setProofState("done");
+    } catch (error) {
+      setProofState("error");
+      toast.error(
+        error instanceof Error && error.message === "rate-limit"
+          ? "Writing check limit reached for this hour."
+          : "Couldn't check the writing right now.",
+      );
+    }
+  }
+
+  function applyCaptionFix(issue: ProofreadIssue) {
+    setEditForm((f) => ({ ...f, caption: applyProofreadFix(f.caption, issue) }));
+  }
+
+  /** Every change this save would make, against the last saved version. */
+  function describeEditChanges(): EditChangeRow[] {
+    if (!selected) return [];
+    const base = toEditForm(selected);
+    const rows: EditChangeRow[] = [];
+    if (editForm.eventTitle !== base.eventTitle) {
+      rows.push({
+        key: "title", label: "Event title", before: base.eventTitle, after: editForm.eventTitle,
+        onUndo: () => setEditForm((f) => ({ ...f, eventTitle: base.eventTitle })),
+      });
+    }
+    if (editForm.eventDate !== base.eventDate) {
+      rows.push({
+        key: "date", label: "Event date",
+        before: base.eventDate ? formatDate(base.eventDate) : "",
+        after: editForm.eventDate ? formatDate(editForm.eventDate) : "",
+        onUndo: () => setEditForm((f) => ({ ...f, eventDate: base.eventDate })),
+      });
+    }
+    if (editForm.caption !== base.caption) {
+      rows.push({
+        key: "caption", label: "Caption", before: base.caption, after: editForm.caption,
+        onUndo: () => setEditForm((f) => ({ ...f, caption: base.caption })),
+      });
+    }
+    if (fastTrackChanged) {
+      rows.push({
+        key: "mode", label: "Publishing mode",
+        before: base.fastTrack ? "Live Event" : "Scheduled",
+        after: editForm.fastTrack ? "Live Event" : "Scheduled",
+        onUndo: () => setEditForm((f) => ({ ...f, fastTrack: base.fastTrack })),
+      });
+    }
+    if (scheduleChanged) {
+      rows.push({
+        key: "schedule", label: "Publish slot",
+        before: selected.scheduledAt ? formatDateTime(selected.scheduledAt) : "",
+        after: editScheduledAtIso ? formatDateTime(editScheduledAtIso) : "",
+        onUndo: () =>
+          setEditForm((f) => ({ ...f, scheduledDate: base.scheduledDate, scheduledTime: base.scheduledTime })),
+      });
+    }
+    const saved = base.media;
+    const savedIds = saved.map((m) => m.assetId);
+    const formIds = editForm.media.map((m) => m.assetId);
+    const added = formIds.filter((id) => id && !savedIds.includes(id)).length;
+    const removed = editForm.removedAssetIds.length;
+    const kept = formIds.filter((id) => id && savedIds.includes(id));
+    const reordered = kept.join() !== savedIds.filter((id) => kept.includes(id)).join();
+    const itemEdits = editForm.media.filter((m) => {
+      const before = saved.find((b) => b.assetId && b.assetId === m.assetId);
+      return before && (before.caption !== m.caption || before.skipWatermark !== m.skipWatermark);
+    }).length;
+    const mediaParts = [
+      added && `${added} added`,
+      removed && `${removed} removed`,
+      reordered && "order changed",
+      itemEdits && `${itemEdits} caption/watermark setting${itemEdits === 1 ? "" : "s"} changed`,
+    ].filter(Boolean);
+    if (mediaParts.length > 0) {
+      const count = (n: number) => `${n} item${n === 1 ? "" : "s"}`;
+      rows.push({
+        key: "media", label: "Media",
+        before: count(saved.length),
+        after: `${count(editForm.media.length)} — ${mediaParts.join(", ")}`,
+      });
+    }
+    return rows;
+  }
 
   useEffect(() => {
     let active = true;
@@ -1878,28 +1997,64 @@ export default function ValidationQueueScreen({
                       {editTab === "details" && (
                         <div className="val-edit-body">
                           <div className="val-edit-row val-edit-row--title">
-                            <label className="val-edit-field">
-                              <span>Event title</span>
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-event-title">Event title</label>
+                                {editForm.eventTitle !== contributorTitle && (
+                                  <button
+                                    type="button"
+                                    className="val-edit-restore"
+                                    onClick={() => setEditForm((f) => ({ ...f, eventTitle: contributorTitle }))}
+                                    title={`Contributor's version: ${contributorTitle}`}
+                                  >
+                                    <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore original
+                                  </button>
+                                )}
+                              </div>
                               <input
+                                id="val-edit-event-title"
                                 value={editForm.eventTitle}
                                 aria-invalid={!editForm.eventTitle.trim() || undefined}
                                 onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
                               />
-                            </label>
-                            <label className="val-edit-field">
-                              <span>Event date</span>
+                            </div>
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-event-date">Event date</label>
+                                {editForm.eventDate !== contributorEventDate && (
+                                  <button
+                                    type="button"
+                                    className="val-edit-restore"
+                                    onClick={() => setEditForm((f) => ({ ...f, eventDate: contributorEventDate }))}
+                                    title="Restore the contributor's date"
+                                  >
+                                    <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore
+                                  </button>
+                                )}
+                              </div>
                               <input
+                                id="val-edit-event-date"
                                 type="date"
                                 value={editForm.eventDate}
                                 aria-invalid={!editForm.eventDate || undefined}
                                 onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
                               />
-                            </label>
+                            </div>
                           </div>
 
                           <div className="val-edit-field" id="val-edit-caption-group">
                             <div className="val-edit-label-row">
                               <span id="val-edit-caption-label">Caption</span>
+                              {editForm.caption !== contributorCaption && (
+                                <button
+                                  type="button"
+                                  className="val-edit-restore"
+                                  onClick={() => setEditForm((f) => ({ ...f, caption: contributorCaption }))}
+                                  title="Put back the caption the contributor submitted"
+                                >
+                                  <i className="ti ti-arrow-back-up" aria-hidden="true" /> Restore original
+                                </button>
+                              )}
                               <span
                                 className={`val-edit-count${
                                   Array.from(editForm.caption).length > CAPTION_CHAR_LIMIT ? " is-over" : ""
@@ -1927,6 +2082,19 @@ export default function ValidationQueueScreen({
                                   notice={aiCaption.notice}
                                   onSuggest={() => setCaptionPromptOpen(true)}
                                 />
+                                <button
+                                  type="button"
+                                  className="val-edit-check-btn"
+                                  onClick={() => void handleCheckWriting()}
+                                  disabled={proofState === "loading" || !editForm.caption.trim()}
+                                  title="Check spelling and grammar — suggestions only"
+                                >
+                                  <i
+                                    className={`ti ${proofState === "loading" ? "ti-loader-2 val-spin" : "ti-text-spellcheck"}`}
+                                    aria-hidden="true"
+                                  />
+                                  <span>{proofState === "loading" ? "Checking…" : "Check writing"}</span>
+                                </button>
                               </div>
                               <textarea
                                 ref={editCaptionRef}
@@ -1946,6 +2114,22 @@ export default function ValidationQueueScreen({
                                 }
                               />
                             </div>
+                            {proofState === "done" && (
+                              <div className="val-edit-proof" aria-live="polite">
+                                {proofIssues.some((issue) => editForm.caption.includes(issue.excerpt)) ? (
+                                  <ProofreadIssues
+                                    issues={proofIssues}
+                                    text={editForm.caption}
+                                    onApply={applyCaptionFix}
+                                    onDismiss={(issue) => setProofIssues((prev) => prev.filter((i) => i !== issue))}
+                                  />
+                                ) : (
+                                  <p className="val-change-check-status is-ok">
+                                    <i className="ti ti-circle-check" aria-hidden="true" /> No spelling or grammar issues found.
+                                  </p>
+                                )}
+                              </div>
+                            )}
                             {aiCaption.variants && (
                               <Suspense fallback={null}>
                                 <AiCaptionSuggestion
@@ -2109,6 +2293,16 @@ export default function ValidationQueueScreen({
                               onSelect={applyRecommendedSlot}
                             />
                           </Suspense>
+                          {scheduleDiffersFromContributor && (
+                            <button
+                              type="button"
+                              className="val-edit-restore val-edit-restore--block"
+                              onClick={restoreContributorSchedule}
+                            >
+                              <i className="ti ti-arrow-back-up" aria-hidden="true" />
+                              Restore the contributor&apos;s slot ({formatDateTime(contributorScheduledAt)})
+                            </button>
+                          )}
                           <div className="val-edit-row">
                             <label className="val-edit-field">
                               <span>Publish date</span>
@@ -2321,10 +2515,10 @@ export default function ValidationQueueScreen({
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={!canSaveEdit}
-                    onClick={() => void handleSaveEdit()}
+                    onClick={() => setReviewChangesOpen(true)}
                   >
                     <i className="ti ti-device-floppy" />
-                    <span>{editSaving ? "Saving..." : "Save Changes"}</span>
+                    <span>{editSaving ? "Saving..." : "Review & Save"}</span>
                   </button>
                 </div>
               </footer>
@@ -2683,6 +2877,20 @@ export default function ValidationQueueScreen({
             .filter((x): x is string => Boolean(x))}
           onAdd={addLibraryAssets}
           onClose={() => setLibraryPickerOpen(false)}
+        />
+      )}
+
+      {editMode && reviewChangesOpen && selected && (
+        <ReviewChangesDialog
+          changes={describeEditChanges()}
+          caption={editForm.caption}
+          originalCaption={contributorCaption}
+          captionChanged={editForm.caption !== (selected.caption ?? "")}
+          isLiveEvent={editForm.fastTrack}
+          saving={editSaving}
+          onApplyCaptionFix={applyCaptionFix}
+          onSave={() => void handleSaveEdit()}
+          onClose={() => setReviewChangesOpen(false)}
         />
       )}
 

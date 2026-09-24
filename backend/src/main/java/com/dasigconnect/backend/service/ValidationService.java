@@ -335,7 +335,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
         if (edited) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
                 submission.isFastTrack(), edited, submissionId, caller.userId());
@@ -492,7 +493,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
     }
@@ -528,7 +530,8 @@ public class ValidationService {
                 new SubmissionRejectedEvent(submission, readableRejectionReason(reasonCode, notes)));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
     }

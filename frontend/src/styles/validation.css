@@ -2066,14 +2066,16 @@
   z-index: 3;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
 }
-.val-edit-label-row > span:first-child {
+.val-edit-label-row > :first-child {
   color: var(--val-text);
   font-size: 13px;
   font-weight: 650;
+}
+.val-edit-label-row > :last-child:not(:first-child) {
+  margin-left: auto;
 }
 
 /* Callouts: guidance (blue) and blocking problems (red) */
@@ -5141,5 +5143,339 @@
 
   .val-page:not(.is-queue-expanded) .val-queue-header .val-guide-btn i {
     font-size: 18px;
+  }
+}
+
+/* ══ Edit safeguards: restore original, writing check, review-before-save ══ */
+
+/* "Restore original" — a quiet text action beside a field's label */
+.val-edit-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--val-blue);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.val-edit-restore:hover {
+  background: var(--val-blue-dim);
+}
+.val-edit-restore:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 1px;
+}
+.val-edit-restore i { font-size: 15px; }
+.val-edit-label-row > .val-edit-restore:not(:last-child) {
+  margin-left: auto;
+}
+.val-edit-label-row > .val-edit-restore + .val-edit-count {
+  margin-left: 0;
+}
+.val-edit-restore--block {
+  align-self: flex-start;
+  margin-bottom: -8px;
+}
+
+/* "Check writing" — matches the caption toolbar's pill buttons */
+.val-edit-check-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.val-edit-check-btn:hover:not(:disabled) {
+  border-color: var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+}
+.val-edit-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.val-edit-check-btn i { font-size: 14px; }
+
+.val-edit-proof {
+  margin-top: 4px;
+}
+
+/* Proofreading findings */
+.val-proof-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.val-proof-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--val-border);
+  border-left: 3px solid var(--val-amber);
+  border-radius: 10px;
+  background: var(--val-surface);
+}
+.val-proof-item.is-meaning {
+  border-left-color: var(--val-red);
+}
+.val-proof-main {
+  min-width: 0;
+}
+.val-proof-kind {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--val-amber);
+}
+.val-proof-item.is-meaning .val-proof-kind {
+  color: var(--val-red);
+}
+.val-proof-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.val-proof-change del {
+  color: var(--val-red);
+  text-decoration-thickness: 1px;
+}
+.val-proof-change ins {
+  color: var(--val-green);
+  font-weight: 650;
+  text-decoration: none;
+}
+.val-proof-change i {
+  font-size: 13px;
+  color: var(--val-muted);
+}
+.val-proof-why {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--val-muted);
+}
+.val-proof-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.val-proof-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.val-proof-actions button.is-apply {
+  border-color: var(--val-blue);
+  background: var(--val-blue);
+  color: #ffffff;
+}
+.val-proof-actions button:focus-visible {
+  outline: 2px solid var(--val-blue);
+  outline-offset: 2px;
+}
+
+/* Review-before-save dialog */
+.val-review-changes {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: min(88vh, 820px);
+  border-radius: 16px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  box-shadow: 0 20px 70px rgba(12, 29, 61, 0.22);
+  overflow: hidden;
+  animation: valModalIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.val-review-changes-head {
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--val-border);
+}
+.val-review-changes-head h3 {
+  margin: 0;
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--val-text);
+}
+.val-review-changes-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--val-muted);
+}
+.val-review-changes-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.val-change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.val-change-row {
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.val-change-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--val-surface-2);
+  border-bottom: 1px solid var(--val-border);
+}
+.val-change-head strong {
+  font-size: 13px;
+  color: var(--val-text);
+}
+.val-change-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--val-border);
+  border-radius: 999px;
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.val-change-head button:hover:not(:disabled) {
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+}
+.val-change-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.val-change-values p {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--val-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.val-change-values p.is-before {
+  background: #fff8f8;
+  border-right: 1px solid var(--val-border);
+}
+.val-change-values p.is-after {
+  background: #f6fdf8;
+}
+.val-change-values span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--val-muted);
+}
+.val-change-values em {
+  color: var(--val-muted);
+}
+.val-change-check {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.val-change-check h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+.val-change-check h4 i { color: #4f46e5; }
+.val-change-check-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--val-muted);
+}
+.val-change-check-status.is-ok {
+  color: var(--val-green);
+}
+.val-change-check-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+.val-review-changes-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--val-border);
+}
+
+@media (max-width: 640px) {
+  .val-change-values {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .val-change-values p.is-before {
+    border-right: 0;
+    border-bottom: 1px solid var(--val-border);
+  }
+  .val-proof-item {
+    flex-direction: column;
+  }
+  .val-review-changes-foot .val-btn {
+    flex: 1;
+    min-height: 44px;
+    justify-content: center;
   }
 }

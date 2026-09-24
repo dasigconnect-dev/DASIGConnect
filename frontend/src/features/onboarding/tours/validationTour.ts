@@ -193,8 +193,8 @@ export const validationEditTourSteps: TourStep[] = [
   {
     id: "edit-save",
     target: "#val-edit-actions",
-    title: "Save your edits",
-    description: "Saving keeps the post In Review so you can check the updated preview before you approve. The contributor is notified that their post was edited.",
+    title: "Review & save",
+    description: "Before anything is saved you see every change side by side, can undo any of them, and get an AI check of your caption edit for new typos or changed names and dates. Saving keeps the post In Review; the contributor is told what you changed. \"Restore original\" beside a field puts back what the contributor submitted.",
     icon: "ti ti-device-floppy",
     placement: "top",
   },

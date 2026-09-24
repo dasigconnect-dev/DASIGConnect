@@ -231,4 +231,48 @@ class NotificationEventListenerTest {
         verify(notificationService).createNotification(
                 eq(superAdmin), eq(NotificationEventType.embedding_failure_digest), contains("3 media asset(s)"), any());
     }
+
+    @Test
+    void onSubmissionEditedDuringReview_flagged_alertsOtherAdminsInAppOnly() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Robotics Expo");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+        User editingAdmin = new User();
+        editingAdmin.setId(UUID.randomUUID());
+        editingAdmin.setEmail("editor@dasig.ph");
+        User otherAdmin = new User();
+        otherAdmin.setId(UUID.randomUUID());
+        when(userRepository.findByRole(UserRole.admin)).thenReturn(java.util.List.of(editingAdmin, otherAdmin));
+        when(userRepository.findById(editingAdmin.getId())).thenReturn(java.util.Optional.of(editingAdmin));
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.FLAGGED, null, editingAdmin.getId()));
+
+        verify(notificationService).createNotification(
+                eq(otherAdmin), eq(NotificationEventType.submission_edited_in_review),
+                contains("editor@dasig.ph"), any());
+        verify(notificationService, Mockito.never()).createNotification(
+                eq(editingAdmin), any(), any(), any());
+        verify(emailDeliveryService, Mockito.never()).send(
+                eq(otherAdmin), any(), any(), any());
+    }
+
+    @Test
+    void onSubmissionEditedDuringReview_quiet_doesNotAlertAdmins() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Career Fair");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+        User admin = new User();
+        admin.setId(UUID.randomUUID());
+        when(userRepository.findByRole(UserRole.admin)).thenReturn(java.util.List.of(admin));
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.QUIET, null, UUID.randomUUID()));
+
+        verify(notificationService, Mockito.never()).createNotification(eq(admin), any(), any(), any());
+    }
 }
