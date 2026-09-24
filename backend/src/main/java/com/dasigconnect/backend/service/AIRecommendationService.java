@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -69,6 +71,7 @@ public class AIRecommendationService {
     private final AiInteractionLogRepository aiInteractionLogRepository;
     private final VoyageAIClient voyageAIClient;
     private final MediaAlbumRepository mediaAlbumRepository;
+    private final boolean visualSuggestionsEnabled;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -77,7 +80,8 @@ public class AIRecommendationService {
             AssetTagRepository assetTagRepository,
             AiInteractionLogRepository aiInteractionLogRepository,
             VoyageAIClient voyageAIClient,
-            MediaAlbumRepository mediaAlbumRepository) {
+            MediaAlbumRepository mediaAlbumRepository,
+            @Value("${app.ai.media-suggestions.visual-enabled:true}") boolean visualSuggestionsEnabled) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -86,6 +90,7 @@ public class AIRecommendationService {
         this.aiInteractionLogRepository = aiInteractionLogRepository;
         this.voyageAIClient = voyageAIClient;
         this.mediaAlbumRepository = mediaAlbumRepository;
+        this.visualSuggestionsEnabled = visualSuggestionsEnabled;
     }
 
     /**
@@ -140,10 +145,14 @@ public class AIRecommendationService {
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
         Map<UUID, List<TagSignal>> attachedTagMap = loadTagSignalMap(attachedAssets.stream().map(MediaAsset::getId).toList());
 
-        Map<UUID, Double> visualScores = loadAttachedCandidateScores(
-                institutionId, attachedIds, MediaAssetEmbeddingType.IMAGE, submissionId);
-        Map<UUID, Double> selectedMediaSemanticScores = loadAttachedCandidateScores(
-                institutionId, attachedIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
+        Map<UUID, Double> visualScores = visualSuggestionsEnabled
+                ? loadAttachedCandidateScores(
+                        institutionId, attachedIds, MediaAssetEmbeddingType.IMAGE, submissionId)
+                : Map.of();
+        Map<UUID, Double> selectedMediaSemanticScores = visualSuggestionsEnabled
+                ? loadAttachedCandidateScores(
+                        institutionId, attachedIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
+                : Map.of();
         Map<UUID, Double> textSemanticScores = loadTextSemanticCandidateScores(
                 institutionId, attachedAssets, attachedTagMap, dto, submissionId);
         Map<UUID, Double> semanticScores = combineSemanticScores(
@@ -154,7 +163,7 @@ public class AIRecommendationService {
                 .filter(id -> !visualScores.containsKey(id))
                 .forEach(candidateIds::add);
         if (candidateIds.isEmpty()) {
-            return fallbackSuggestions(institutionId, attachedIds, dto);
+            return fallbackOrEmpty(institutionId, attachedIds, dto);
         }
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
@@ -179,9 +188,13 @@ public class AIRecommendationService {
                 .toList();
 
         if (rankedResults.isEmpty()) {
-            log.info("No suggest-media candidates remained after excluding attached assets for submission {}; using metadata fallback.",
-                    submissionId);
-            return fallbackSuggestions(institutionId, attachedIds, dto);
+            if (hasTextContext(dto)) {
+                log.info("No suggest-media candidates remained for submission {}; using metadata fallback.",
+                        submissionId);
+            } else {
+                log.info("No visual media candidates are ready for submission {}.", submissionId);
+            }
+            return fallbackOrEmpty(institutionId, attachedIds, dto);
         }
 
         return rankedResults;
@@ -613,10 +626,10 @@ public class AIRecommendationService {
     }
 
     private List<MediaSuggestResultDto> fallbackSuggestions(UUID institutionId, Set<UUID> attachedIds, MediaSuggestRequestDto dto) {
-        List<MediaAsset> candidates = mediaAssetRepository.findReadyByInstitution(institutionId)
+        List<MediaAsset> candidates = mediaAssetRepository
+                .findVisibleReadyByInstitution(institutionId, PageRequest.of(0, 30))
                 .stream()
                 .filter(asset -> !attachedIds.contains(asset.getId()))
-                .limit(30)
                 .toList();
         if (candidates.isEmpty()) {
             return List.of();
@@ -637,6 +650,18 @@ public class AIRecommendationService {
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
                 .toList();
+    }
+
+    private List<MediaSuggestResultDto> fallbackOrEmpty(
+            UUID institutionId, Set<UUID> attachedIds, MediaSuggestRequestDto dto) {
+        // In a visual-only request, an empty vector result commonly means the
+        // selected images are not attached yet or their embeddings are still processing. Returning generic
+        // metadata matches would stop the frontend's bounded visual retry and
+        // make those images appear to influence results when they did not.
+        if (!hasTextContext(dto)) {
+            return List.of();
+        }
+        return fallbackSuggestions(institutionId, attachedIds, dto);
     }
 
     private static String selectedMediaContext(MediaAsset asset, Collection<TagSignal> tags) {

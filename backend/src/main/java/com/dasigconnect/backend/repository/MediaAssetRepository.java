@@ -162,6 +162,27 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         """)
     List<MediaAsset> findReadyByInstitution(@Param("institutionId") UUID institutionId);
 
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.institution.id = :institutionId
+          AND m.deletedAt IS NULL
+          AND m.status = com.dasigconnect.backend.model.entity.MediaAssetStatus.READY
+          AND (
+              NOT EXISTS (
+                  SELECT link.id FROM SubmissionMediaAsset link
+                  WHERE link.mediaAsset.id = m.id
+              )
+              OR EXISTS (
+                  SELECT visibleLink.id FROM SubmissionMediaAsset visibleLink
+                  WHERE visibleLink.mediaAsset.id = m.id
+                    AND visibleLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+        ORDER BY m.createdAt DESC
+        """)
+    List<MediaAsset> findVisibleReadyByInstitution(
+            @Param("institutionId") UUID institutionId, Pageable pageable);
+
     // Excludes STAGED rows (draft uploads not yet bound to an institution) so they
     // never surface in the admin network-wide Media Repository view.
     @Query("SELECT m FROM MediaAsset m WHERE m.deletedAt IS NULL AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED ORDER BY m.createdAt DESC")

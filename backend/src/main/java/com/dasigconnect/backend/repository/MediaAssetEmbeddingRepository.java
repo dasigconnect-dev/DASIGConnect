@@ -59,6 +59,19 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
           AND ma.deleted_at IS NULL
           AND ma.status = 'READY'
           AND mae.embedding_type = :embeddingType
+          AND (
+              NOT EXISTS (
+                  SELECT 1 FROM submission_media_assets any_link
+                  WHERE any_link.media_asset_id = ma.id
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id
+                    AND visible_submission.status <> 'draft'
+              )
+          )
         ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
         LIMIT :limit
         """, nativeQuery = true)
@@ -78,8 +91,12 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         WITH query_embeddings AS (
             SELECT mae.asset_id, mae.embedding
             FROM media_asset_embeddings mae
+            JOIN media_assets query_asset ON query_asset.id = mae.asset_id
             WHERE mae.asset_id IN (:queryAssetIds)
               AND mae.embedding_type = :embeddingType
+              AND query_asset.institution_id = :institutionId
+              AND query_asset.deleted_at IS NULL
+              AND query_asset.status = 'READY'
         ), nearest AS (
             SELECT q.asset_id AS query_asset_id,
                    candidate.asset_id,
@@ -95,6 +112,20 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                   AND candidate_asset.status = 'READY'
                   AND candidate_embedding.embedding_type = :embeddingType
                   AND candidate_embedding.asset_id NOT IN (SELECT asset_id FROM query_embeddings)
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1 FROM submission_media_assets any_link
+                          WHERE any_link.media_asset_id = candidate_asset.id
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM submission_media_assets visible_link
+                          JOIN submissions visible_submission
+                            ON visible_submission.id = visible_link.submission_id
+                          WHERE visible_link.media_asset_id = candidate_asset.id
+                            AND visible_submission.status <> 'draft'
+                      )
+                  )
                 ORDER BY candidate_embedding.embedding <=> q.embedding
                 LIMIT :perImageLimit
             ) candidate

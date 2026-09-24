@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -120,7 +121,8 @@ class AIRecommendationServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{attachedId.toString(), 0.92}));
         when(mediaAssetRepository.findActiveByIds(List.of(attachedId))).thenReturn(List.of(attached));
         when(assetTagRepository.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
-        when(mediaAssetRepository.findReadyByInstitution(institutionId)).thenReturn(List.of(attached, fallback));
+        when(mediaAssetRepository.findVisibleReadyByInstitution(eq(institutionId), any()))
+                .thenReturn(List.of(attached, fallback));
 
         AIRecommendationService service = new AIRecommendationService(
                 submissionRepository,
@@ -130,7 +132,8 @@ class AIRecommendationServiceTest {
                 assetTagRepository,
                 aiInteractionLogRepository,
                 voyageAIClient,
-                mock(MediaAlbumRepository.class)
+                mock(MediaAlbumRepository.class),
+                true
         );
 
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
@@ -221,7 +224,8 @@ class AIRecommendationServiceTest {
                 assetTagRepository,
                 mock(AiInteractionLogRepository.class),
                 voyageAIClient,
-                mock(MediaAlbumRepository.class)
+                mock(MediaAlbumRepository.class),
+                true
         );
 
         List<MediaSuggestResultDto> results = service.suggestMedia(
@@ -235,6 +239,104 @@ class AIRecommendationServiceTest {
         assertTrue(results.getFirst().getMatchReasons().stream()
                 .anyMatch(reason -> reason.toLowerCase().contains("visual")));
         verify(voyageAIClient, never()).embedQuery(anyString());
+    }
+
+    @Test
+    void suggestMedia_visualOnlyWhileEmbeddingsArePending_doesNotReturnGenericFallback() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset attached = asset(UUID.randomUUID(), "new-upload.jpg", "Event");
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        VoyageAIClient voyage = mock(VoyageAIClient.class);
+
+        Institution institution = new Institution();
+        institution.setId(institutionId);
+        User contributor = new User();
+        contributor.setId(contributorId);
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        submission.setInstitution(institution);
+        submission.setContributor(contributor);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of());
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.SEMANTIC), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of());
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class), true);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertTrue(results.isEmpty());
+        verify(mediaAssets, never()).findVisibleReadyByInstitution(eq(institutionId), any());
+        verify(voyage, never()).embedQuery(anyString());
+    }
+
+    @Test
+    void suggestMedia_visualFlagDisabled_preservesTextRecommendationPath() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        UUID candidateId = UUID.randomUUID();
+        MediaAsset attached = asset(UUID.randomUUID(), "selected.jpg", "Event");
+        MediaAsset candidate = asset(candidateId, "candidate.jpg", "Event");
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        VoyageAIClient voyage = mock(VoyageAIClient.class);
+
+        Institution institution = new Institution();
+        institution.setId(institutionId);
+        User contributor = new User();
+        contributor.setId(contributorId);
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        submission.setInstitution(institution);
+        submission.setContributor(contributor);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(voyage.embedQuery(anyString())).thenReturn("[0.1,0.2]");
+        when(embeddings.findTopSimilarWithScore(
+                institutionId, MediaAssetEmbeddingType.SEMANTIC, "[0.1,0.2]", 30))
+                .thenReturn(List.<Object[]>of(new Object[]{candidateId.toString(), 0.82}));
+        when(mediaAssets.findActiveByIds(List.of(candidateId))).thenReturn(List.of(candidate));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class), false);
+        MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
+        dto.setEventTitle("Campus innovation event");
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                dto,
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(1, results.size());
+        assertEquals(candidateId, results.getFirst().getId());
+        verify(embeddings, never()).findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30));
     }
 
     @Test
@@ -366,7 +468,8 @@ class AIRecommendationServiceTest {
                 assetTagRepository,
                 mock(AiInteractionLogRepository.class),
                 voyageAIClient,
-                mediaAlbumRepository
+                mediaAlbumRepository,
+                true
         );
 
         JwtUserDetails contributorPrincipal = new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId);

@@ -40,6 +40,14 @@
 - Database-only context jobs can run without AI provider credentials, while provider-dependent jobs remain unclaimed until credentials are configured.
 - Context generation remains internal and asynchronous, so uploads, draft saves, and established UI behavior are unchanged and never wait for context completion.
 - Regression coverage verifies multi-image aggregation, incomplete-state handling, provider-independent context processing, bounded claims, and stable context queue versioning.
+- **Phase 4 - Visual Activation:** Implemented on `feature/ai-media-phase4-visual-activation`.
+- Visual-only suggestions activate from any persisted selected image and reuse all available attached IMAGE and SEMANTIC embeddings without spending text-embedding tokens.
+- Selected-image embedding queries now independently require the submission institution, active READY assets, and institution-scoped candidate results.
+- Visual and text vector candidates, plus metadata fallback candidates, now follow the established Media Repository rule that excludes assets private to unsubmitted drafts.
+- Visual-only requests return an empty result while attachment or embedding work is pending, allowing the existing bounded frontend retry to refresh with genuine visual matches instead of settling on generic metadata.
+- Attached assets remain excluded, while text and metadata fallback behavior remains available when text context exists.
+- `AI_MEDIA_VISUAL_SUGGESTIONS_ENABLED` provides a deployment rollback path to the established text recommendation behavior without a code rollback or UI change.
+- Regression coverage verifies all-selected-image retrieval, no text-token use for visual-only requests, pending-embedding behavior, role authorization, and feature-flag fallback.
 
 ## 2. Verified Current Baseline
 
