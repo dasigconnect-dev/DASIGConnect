@@ -74,7 +74,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1, 5, 8, 2));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
 
@@ -108,7 +108,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1, 5, 8, 2));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
 
@@ -130,7 +130,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         // captions 10 generated / 7 applied; media 8 shown / 6 added; album 4 outcomes / 3 kept; templates 2 / 1
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1, 5, 8, 2));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
 
@@ -151,7 +151,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1, 5, 8, 2));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
         when(analyticsRepository.contributorBreakdown(any(), any(), any()))

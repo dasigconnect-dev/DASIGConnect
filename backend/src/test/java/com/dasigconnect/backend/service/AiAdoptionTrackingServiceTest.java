@@ -110,4 +110,28 @@ class AiAdoptionTrackingServiceTest {
         verify(repository).save(captor.capture());
         return captor.getValue();
     }
+
+    @Test
+    void recordsAProofreadCheckWithItsFindingCount() {
+        UUID submissionId = UUID.randomUUID();
+
+        service.recordProofreadCheck(submissionId, null, 3);
+
+        ArgumentCaptor<AiInteractionLog> saved = ArgumentCaptor.forClass(AiInteractionLog.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getInteractionType()).isEqualTo("proofread");
+        assertThat(saved.getValue().getActionTaken()).isEqualTo("checked");
+        assertThat(saved.getValue().getSuggestedValue()).isEqualTo("3");
+        assertThat(saved.getValue().getSubmissionId()).isEqualTo(submissionId);
+    }
+
+    @Test
+    void recordsAnAppliedProofreadFix() {
+        service.recordProofreadFixApplied(null, null);
+
+        ArgumentCaptor<AiInteractionLog> saved = ArgumentCaptor.forClass(AiInteractionLog.class);
+        verify(repository).save(saved.capture());
+        assertThat(saved.getValue().getInteractionType()).isEqualTo("proofread");
+        assertThat(saved.getValue().getActionTaken()).isEqualTo("applied");
+    }
 }

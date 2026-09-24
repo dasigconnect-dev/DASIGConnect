@@ -260,12 +260,17 @@ export async function proofreadText(
   text: string,
   originalText?: string,
   signal?: AbortSignal,
+  submissionId?: string | null,
 ): Promise<ProofreadIssue[]> {
   let res;
   try {
     res = await api.post<ApiEnvelope<{ issues: ProofreadIssue[] }>>(
       "/ai/proofread",
-      { text, ...(originalText?.trim() ? { originalText } : {}) },
+      {
+        text,
+        ...(originalText?.trim() ? { originalText } : {}),
+        ...(submissionId ? { submissionId } : {}),
+      },
       { signal, validateStatus: () => true },
     );
   } catch (error) {
@@ -277,4 +282,9 @@ export async function proofreadText(
   if (res.status !== 200) throw new Error("unavailable");
   const body = "data" in res.data ? res.data.data : (res.data as unknown as { issues: ProofreadIssue[] });
   return body?.issues ?? [];
+}
+
+/** AI Feature Adoption: one suggested writing fix was applied. Fire-and-forget. */
+export function logProofreadFixApplied(submissionId?: string | null): void {
+  api.post("/ai/proofread/applied", { submissionId: submissionId ?? null }).catch(() => {});
 }

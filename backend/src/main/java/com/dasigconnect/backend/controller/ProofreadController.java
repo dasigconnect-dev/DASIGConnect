@@ -1,10 +1,13 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.model.dto.ai.ProofreadAppliedRequestDto;
+import com.dasigconnect.backend.model.dto.ai.ProofreadIssueDto;
 import com.dasigconnect.backend.model.dto.ai.ProofreadRequestDto;
 import com.dasigconnect.backend.model.dto.ai.ProofreadResponseDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.AiAdoptionTrackingService;
 import com.dasigconnect.backend.service.ProofreadService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -34,12 +38,14 @@ public class ProofreadController {
     private static final int RATE_LIMIT_PER_HOUR = 30;
 
     private final ProofreadService proofreadService;
+    private final AiAdoptionTrackingService adoptionTracking;
 
     /** In-memory per-user sliding-window rate limiter (same approach as CaptionController). */
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<Instant>> userRequests = new ConcurrentHashMap<>();
 
-    public ProofreadController(ProofreadService proofreadService) {
+    public ProofreadController(ProofreadService proofreadService, AiAdoptionTrackingService adoptionTracking) {
         this.proofreadService = proofreadService;
+        this.adoptionTracking = adoptionTracking;
     }
 
     @PostMapping("/proofread")
@@ -55,8 +61,13 @@ public class ProofreadController {
                     .build();
         }
         try {
-            return ResponseEntity.ok(ApiResponse.success(
-                    new ProofreadResponseDto(proofreadService.proofread(dto.getText(), dto.getOriginalText()))));
+            List<ProofreadIssueDto> issues = proofreadService.proofread(dto.getText(), dto.getOriginalText());
+            try {
+                adoptionTracking.recordProofreadCheck(dto.getSubmissionId(), user.institutionId(), issues.size());
+            } catch (RuntimeException ignored) {
+                // Tracking must never fail the check itself.
+            }
+            return ResponseEntity.ok(ApiResponse.success(new ProofreadResponseDto(issues)));
         } catch (ClaudeVisionClient.ClaudeApiException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {
@@ -64,6 +75,20 @@ public class ProofreadController {
             }
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, msg);
         }
+    }
+
+    /** AI Feature Adoption: the user applied one suggested fix. Fire-and-forget from the client. */
+    @PostMapping("/proofread/applied")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<Void> fixApplied(
+            @RequestBody ProofreadAppliedRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        try {
+            adoptionTracking.recordProofreadFixApplied(dto.submissionId(), user.institutionId());
+        } catch (RuntimeException ignored) {
+            // Best effort — a lost tracking row is not worth an error for the user.
+        }
+        return ResponseEntity.noContent().build();
     }
 
     /** Records a request and returns null, or returns the reset epoch-second when the user is over the limit. */

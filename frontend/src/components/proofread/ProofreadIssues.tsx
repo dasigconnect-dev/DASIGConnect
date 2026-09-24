@@ -1,4 +1,5 @@
 import type { ProofreadIssue } from "../../api/aiApi";
+import "../../styles/proofread.css";
 
 const KIND_LABELS: Record<ProofreadIssue["kind"], string> = {
   spelling: "Spelling",
@@ -28,12 +29,12 @@ export default function ProofreadIssues({
   const visible = issues.filter((issue) => text.includes(issue.excerpt));
   if (visible.length === 0) return null;
   return (
-    <ul className="val-proof-list">
+    <ul className="proof-list">
       {visible.map((issue) => (
-        <li key={`${issue.kind}:${issue.excerpt}`} className={`val-proof-item is-${issue.kind}`}>
-          <div className="val-proof-main">
-            <span className="val-proof-kind">{KIND_LABELS[issue.kind]}</span>
-            <p className="val-proof-change">
+        <li key={`${issue.kind}:${issue.excerpt}`} className={`proof-item is-${issue.kind}`}>
+          <div className="proof-main">
+            <span className="proof-kind">{KIND_LABELS[issue.kind]}</span>
+            <p className="proof-change">
               <del>{issue.excerpt}</del>
               {issue.suggestion && (
                 <>
@@ -42,9 +43,9 @@ export default function ProofreadIssues({
                 </>
               )}
             </p>
-            {issue.explanation && <p className="val-proof-why">{issue.explanation}</p>}
+            {issue.explanation && <p className="proof-why">{issue.explanation}</p>}
           </div>
-          <div className="val-proof-actions">
+          <div className="proof-actions">
             {issue.suggestion && (
               <button type="button" className="is-apply" onClick={() => onApply(issue)}>
                 Apply

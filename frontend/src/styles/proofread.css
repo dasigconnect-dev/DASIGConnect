@@ -1,0 +1,178 @@
+/* ============================================================
+   Caption writing check — shared by the composer and the review
+   editor. Own tokens, so it renders the same inside either
+   screen or a portalled dialog.
+   ============================================================ */
+.proof-check-btn,
+.proof-result,
+.proof-list,
+.proof-status {
+  --proof-border: #dde3ee;
+  --proof-surface: #ffffff;
+  --proof-text: #0c1d3d;
+  --proof-text-2: #334e6b;
+  --proof-muted: #6a7f9a;
+  --proof-blue: #1877f2;
+  --proof-blue-dim: #eff6ff;
+  --proof-blue-bdr: #bfdbfe;
+  --proof-amber: #b45309;
+  --proof-red: #dc2626;
+  --proof-green: #15803d;
+}
+
+/* "Check writing" — same shape as the caption toolbar's other pills */
+.proof-check-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--proof-border);
+  background: var(--proof-surface);
+  color: var(--proof-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.proof-check-btn:hover:not(:disabled) {
+  border-color: var(--proof-blue-bdr);
+  background: var(--proof-blue-dim);
+  color: var(--proof-blue);
+}
+.proof-check-btn:focus-visible {
+  outline: 2px solid var(--proof-blue);
+  outline-offset: 2px;
+}
+.proof-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.proof-check-btn i { font-size: 14px; }
+
+.proof-spin {
+  display: inline-block;
+  animation: proof-spin 0.8s linear infinite;
+}
+@keyframes proof-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proof-spin { animation: none; }
+}
+
+.proof-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.proof-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--proof-muted);
+}
+.proof-status.is-ok { color: var(--proof-green); }
+.proof-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--proof-muted);
+}
+
+/* Findings */
+.proof-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.proof-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--proof-border);
+  border-left: 3px solid var(--proof-amber);
+  border-radius: 10px;
+  background: var(--proof-surface);
+}
+.proof-item.is-meaning { border-left-color: var(--proof-red); }
+.proof-main { min-width: 0; }
+.proof-kind {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--proof-amber);
+}
+.proof-item.is-meaning .proof-kind { color: var(--proof-red); }
+.proof-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--proof-text);
+  overflow-wrap: anywhere;
+}
+.proof-change del {
+  color: var(--proof-red);
+  text-decoration-thickness: 1px;
+}
+.proof-change ins {
+  color: var(--proof-green);
+  font-weight: 650;
+  text-decoration: none;
+}
+.proof-change i {
+  font-size: 13px;
+  color: var(--proof-muted);
+}
+.proof-why {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--proof-muted);
+}
+.proof-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.proof-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--proof-border);
+  background: var(--proof-surface);
+  color: var(--proof-text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.proof-actions button.is-apply {
+  border-color: var(--proof-blue);
+  background: var(--proof-blue);
+  color: #ffffff;
+}
+.proof-actions button:focus-visible {
+  outline: 2px solid var(--proof-blue);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .proof-item { flex-direction: column; }
+}

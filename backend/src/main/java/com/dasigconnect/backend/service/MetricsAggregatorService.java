@@ -281,7 +281,8 @@ public class MetricsAggregatorService {
     }
 
     private AiPerformanceDto aiPerformance(AiStats ai) {
-        long totalEvents = ai.captionGenerated() + ai.mediaShown() + ai.albumOutcomes() + ai.templateGenerated();
+        long totalEvents = ai.captionGenerated() + ai.mediaShown() + ai.albumOutcomes() + ai.templateGenerated()
+                + ai.proofreadChecks();
         return new AiPerformanceDto(
                 ai.captionGenerated(),
                 ai.captionAccepted(),
@@ -295,6 +296,10 @@ public class MetricsAggregatorService {
                 ai.templateGenerated(),
                 ai.templateSaved(),
                 adoptionRate(ai.templateSaved(), ai.templateGenerated()),
+                ai.proofreadChecks(),
+                ai.proofreadSuggested(),
+                ai.proofreadApplied(),
+                adoptionRate(ai.proofreadApplied(), ai.proofreadSuggested()),
                 totalEvents < 20);
     }
 

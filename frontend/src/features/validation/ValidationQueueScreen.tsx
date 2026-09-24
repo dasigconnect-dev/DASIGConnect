@@ -61,9 +61,11 @@ import {
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import ReviewAiSuggestionsModal from "./ReviewAiSuggestionsModal";
 import ReviewChangesDialog, { type EditChangeRow } from "./ReviewChangesDialog";
-import ProofreadIssues from "./ProofreadIssues";
-import { applyProofreadFix, contributorOriginals, isoToLocalDateTime } from "./editSafeguards";
-import { proofreadText, type ProofreadIssue } from "../../api/aiApi";
+import CheckWritingButton from "../../components/proofread/CheckWritingButton";
+import ProofreadResult from "../../components/proofread/ProofreadResult";
+import { useProofread } from "../../hooks/useProofread";
+import { contributorOriginals, isoToLocalDateTime } from "./editSafeguards";
+import type { ProofreadIssue } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
@@ -359,10 +361,9 @@ export default function ValidationQueueScreen({
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(false);
-  // Edit safeguards: review-before-save dialog + on-demand writing check.
+  // Edit safeguards: review-before-save dialog (+ on-demand writing check, below).
   const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
-  const [proofIssues, setProofIssues] = useState<ProofreadIssue[]>([]);
-  const [proofState, setProofState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const proofread = useProofread(selectedId);
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
@@ -962,8 +963,7 @@ export default function ValidationQueueScreen({
     setEditForm(toEditForm(full));
     setGuardRails(null);
     setReviewChangesOpen(false);
-    setProofIssues([]);
-    setProofState("idle");
+    proofread.reset();
     setCaptionSelection({ start: 0, end: 0 });
     setEditTab("details");
     setOverrideReason("");
@@ -1036,24 +1036,8 @@ export default function ValidationQueueScreen({
     editScheduledAtIso !== "" &&
     new Date(contributorScheduledAt).getTime() !== new Date(editScheduledAtIso).getTime();
 
-  async function handleCheckWriting() {
-    if (!editForm.caption.trim()) return;
-    setProofState("loading");
-    try {
-      setProofIssues(await proofreadText(editForm.caption));
-      setProofState("done");
-    } catch (error) {
-      setProofState("error");
-      toast.error(
-        error instanceof Error && error.message === "rate-limit"
-          ? "Writing check limit reached for this hour."
-          : "Couldn't check the writing right now.",
-      );
-    }
-  }
-
   function applyCaptionFix(issue: ProofreadIssue) {
-    setEditForm((f) => ({ ...f, caption: applyProofreadFix(f.caption, issue) }));
+    setEditForm((f) => ({ ...f, caption: proofread.apply(f.caption, issue) }));
   }
 
   /** Every change this save would make, against the last saved version. */
@@ -2082,19 +2066,11 @@ export default function ValidationQueueScreen({
                                   notice={aiCaption.notice}
                                   onSuggest={() => setCaptionPromptOpen(true)}
                                 />
-                                <button
-                                  type="button"
-                                  className="val-edit-check-btn"
-                                  onClick={() => void handleCheckWriting()}
-                                  disabled={proofState === "loading" || !editForm.caption.trim()}
-                                  title="Check spelling and grammar — suggestions only"
-                                >
-                                  <i
-                                    className={`ti ${proofState === "loading" ? "ti-loader-2 val-spin" : "ti-text-spellcheck"}`}
-                                    aria-hidden="true"
-                                  />
-                                  <span>{proofState === "loading" ? "Checking…" : "Check writing"}</span>
-                                </button>
+                                <CheckWritingButton
+                                  state={proofread.state}
+                                  disabled={!editForm.caption.trim()}
+                                  onCheck={() => void proofread.check(editForm.caption)}
+                                />
                               </div>
                               <textarea
                                 ref={editCaptionRef}
@@ -2114,22 +2090,13 @@ export default function ValidationQueueScreen({
                                 }
                               />
                             </div>
-                            {proofState === "done" && (
-                              <div className="val-edit-proof" aria-live="polite">
-                                {proofIssues.some((issue) => editForm.caption.includes(issue.excerpt)) ? (
-                                  <ProofreadIssues
-                                    issues={proofIssues}
-                                    text={editForm.caption}
-                                    onApply={applyCaptionFix}
-                                    onDismiss={(issue) => setProofIssues((prev) => prev.filter((i) => i !== issue))}
-                                  />
-                                ) : (
-                                  <p className="val-change-check-status is-ok">
-                                    <i className="ti ti-circle-check" aria-hidden="true" /> No spelling or grammar issues found.
-                                  </p>
-                                )}
-                              </div>
-                            )}
+                            <ProofreadResult
+                              state={proofread.state}
+                              issues={proofread.issues}
+                              text={editForm.caption}
+                              onApply={applyCaptionFix}
+                              onDismiss={proofread.dismiss}
+                            />
                             {aiCaption.variants && (
                               <Suspense fallback={null}>
                                 <AiCaptionSuggestion
@@ -2886,6 +2853,7 @@ export default function ValidationQueueScreen({
           caption={editForm.caption}
           originalCaption={contributorCaption}
           captionChanged={editForm.caption !== (selected.caption ?? "")}
+          submissionId={selected.id}
           isLiveEvent={editForm.fastTrack}
           saving={editSaving}
           onApplyCaptionFix={applyCaptionFix}

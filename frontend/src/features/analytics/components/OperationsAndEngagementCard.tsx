@@ -149,6 +149,13 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
                   {ai.templateDraftsSaved} of {ai.templateDraftsGenerated} drafts saved
                 </span>
               </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Writing Check</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.proofreadApplyRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.proofreadFixesApplied} of {ai.proofreadSuggestions} fixes applied · {ai.proofreadChecks} checks
+                </span>
+              </div>
             </div>
           </div>
         )}

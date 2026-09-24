@@ -1,4 +1,3 @@
-import type { ProofreadIssue } from "../../api/aiApi";
 import type { ValidationLog } from "../../api/validationApi";
 
 /** Review-cycle boundaries: a new cycle starts after any of these. */
@@ -52,11 +51,4 @@ export function isoToLocalDateTime(iso: string): { date: string; time: string } 
     date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
     time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
   };
-}
-
-/** Replaces the first occurrence of the issue's excerpt with its suggestion. */
-export function applyProofreadFix(text: string, issue: ProofreadIssue): string {
-  const at = text.indexOf(issue.excerpt);
-  if (at < 0 || !issue.suggestion) return text;
-  return text.slice(0, at) + issue.suggestion + text.slice(at + issue.excerpt.length);
 }

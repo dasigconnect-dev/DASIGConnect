@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { proofreadText, type ProofreadIssue } from "../../api/aiApi";
-import ProofreadIssues from "./ProofreadIssues";
+import ProofreadIssues from "../../components/proofread/ProofreadIssues";
 
 /** One changed field, before → after, as shown before saving. */
 export interface EditChangeRow {
@@ -26,6 +26,7 @@ export default function ReviewChangesDialog({
   caption,
   originalCaption,
   captionChanged,
+  submissionId,
   isLiveEvent,
   saving,
   onApplyCaptionFix,
@@ -36,6 +37,7 @@ export default function ReviewChangesDialog({
   caption: string;
   originalCaption: string;
   captionChanged: boolean;
+  submissionId: string;
   isLiveEvent: boolean;
   saving: boolean;
   onApplyCaptionFix: (issue: ProofreadIssue) => void;
@@ -52,7 +54,7 @@ export default function ReviewChangesDialog({
   useEffect(() => {
     if (!captionChanged) return;
     const controller = new AbortController();
-    proofreadText(caption, originalCaption, controller.signal)
+    proofreadText(caption, originalCaption, controller.signal, submissionId)
       .then((found) => {
         setIssues(found);
         setCheckState("done");
