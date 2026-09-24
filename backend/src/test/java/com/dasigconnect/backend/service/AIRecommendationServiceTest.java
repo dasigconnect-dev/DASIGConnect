@@ -85,6 +85,41 @@ class AIRecommendationServiceTest {
     }
 
     @Test
+    void temporalEligibility_excludesExpiredButPreservesUnknownAndEvergreenAssets() {
+        Instant now = Instant.parse("2026-09-25T00:00:00Z");
+        MediaAsset expired = new MediaAsset();
+        expired.setTemporalClassification("expired");
+        MediaAsset pastDate = new MediaAsset();
+        pastDate.setTemporalClassification("time_bound");
+        pastDate.setPossibleExpiration("2026-09-20");
+        MediaAsset unknownLegacy = new MediaAsset();
+        unknownLegacy.setPossibleExpiration("after the annual event");
+        MediaAsset evergreen = new MediaAsset();
+        evergreen.setTemporalClassification("evergreen");
+
+        assertTrue(!AIRecommendationService.isTemporallyEligible(expired, now));
+        assertTrue(!AIRecommendationService.isTemporallyEligible(pastDate, now));
+        assertTrue(AIRecommendationService.isTemporallyEligible(unknownLegacy, now));
+        assertTrue(AIRecommendationService.isTemporallyEligible(evergreen, now));
+    }
+
+    @Test
+    void freshnessAndUsage_preserveOldEvergreenMediaAndPenalizeRecentOveruse() {
+        Instant now = Instant.now();
+        MediaAsset evergreen = new MediaAsset();
+        evergreen.setTemporalClassification("evergreen");
+        setCreatedAt(evergreen, now.minusSeconds(800L * 24 * 60 * 60));
+        MediaAsset oldUnknown = new MediaAsset();
+        setCreatedAt(oldUnknown, now.minusSeconds(800L * 24 * 60 * 60));
+
+        assertEquals(1.0, AIRecommendationService.freshnessScore(evergreen));
+        assertTrue(AIRecommendationService.freshnessScore(evergreen)
+                > AIRecommendationService.freshnessScore(oldUnknown));
+        assertTrue(AIRecommendationService.usageDiversityScore(0, null, now)
+                > AIRecommendationService.usageDiversityScore(5, now.minusSeconds(24 * 60 * 60), now));
+    }
+
+    @Test
     void suggestMedia_fallsBackWhenSemanticCandidatesAreAlreadyAttached() {
         UUID institutionId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
@@ -232,7 +267,7 @@ class AIRecommendationServiceTest {
                 mock(MediaAlbumRepository.class),
                 mock(SubmissionMediaContextRepository.class),
                 true,
-                false,
+                true,
                 true
         );
 
@@ -244,6 +279,7 @@ class AIRecommendationServiceTest {
 
         assertEquals(1, results.size());
         assertEquals(candidateId, results.getFirst().getId());
+        assertEquals("legacy-v1", results.getFirst().getRankingVersion());
         assertTrue(results.getFirst().getMatchReasons().stream()
                 .anyMatch(reason -> reason.toLowerCase().contains("visual")));
         verify(voyageAIClient, never()).embedQuery(anyString());
@@ -626,6 +662,7 @@ class AIRecommendationServiceTest {
     private static Submission submission(UUID submissionId, UUID institutionId, UUID contributorId) {
         Institution institution = new Institution();
         institution.setId(institutionId);
+        institution.setAiMediaHybridRankingEnabled(true);
         User contributor = new User();
         contributor.setId(contributorId);
         Submission submission = new Submission();

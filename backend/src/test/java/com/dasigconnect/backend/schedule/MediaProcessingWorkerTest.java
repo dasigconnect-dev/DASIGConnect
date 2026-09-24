@@ -49,7 +49,7 @@ class MediaProcessingWorkerTest {
         when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
                 org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(classification.processAsset(assetId, asset.getStorageUrl())).thenReturn(true);
+        when(classification.processAsset(assetId, asset.getStorageUrl(), "media-ai-v1")).thenReturn(true);
 
         worker(true).processBatch();
 
@@ -71,7 +71,8 @@ class MediaProcessingWorkerTest {
         when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
                 org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(classification.processAsset(assetId, asset.getStorageUrl())).thenReturn(false);
+        when(job.getProcessingVersion()).thenReturn("media-ai-v1");
+        when(classification.processAsset(assetId, asset.getStorageUrl(), "media-ai-v1")).thenReturn(false);
 
         worker(true).processBatch();
 
@@ -101,6 +102,7 @@ class MediaProcessingWorkerTest {
 
         verify(context).rebuild(submissionId);
         verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
-        verify(classification, never()).processAsset(org.mockito.ArgumentMatchers.any(), anyString());
+        verify(classification, never()).processAsset(
+                org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

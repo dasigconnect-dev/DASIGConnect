@@ -44,6 +44,9 @@ public class Institution {
     @Column(name = "is_protected", nullable = false)
     private boolean isProtected = false;
 
+    @Column(name = "ai_media_hybrid_ranking_enabled", nullable = false)
+    private boolean aiMediaHybridRankingEnabled = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -135,6 +138,14 @@ public class Institution {
 
     public void setProtected(boolean isProtected) {
         this.isProtected = isProtected;
+    }
+
+    public boolean isAiMediaHybridRankingEnabled() {
+        return aiMediaHybridRankingEnabled;
+    }
+
+    public void setAiMediaHybridRankingEnabled(boolean enabled) {
+        this.aiMediaHybridRankingEnabled = enabled;
     }
 
     public Instant getCreatedAt() {

@@ -42,6 +42,7 @@ public class InstitutionDto {
     private boolean hasLogo;
     private Instant logoUpdatedAt;
     private boolean isProtected;
+    private boolean aiMediaHybridRankingEnabled;
 
     // ── Constructors ──────────────────────────────────────────────────────────
     public InstitutionDto() {
@@ -54,6 +55,12 @@ public class InstitutionDto {
 
     public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
             InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt, boolean isProtected) {
+        this(id, name, institutionCode, emailDomain, status, hasLogo, logoUpdatedAt, isProtected, false);
+    }
+
+    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
+            InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt, boolean isProtected,
+            boolean aiMediaHybridRankingEnabled) {
         this.id = id;
         this.name = name;
         this.institutionCode = institutionCode;
@@ -62,6 +69,7 @@ public class InstitutionDto {
         this.hasLogo = hasLogo;
         this.logoUpdatedAt = logoUpdatedAt;
         this.isProtected = isProtected;
+        this.aiMediaHybridRankingEnabled = aiMediaHybridRankingEnabled;
     }
 
     // ── Static Factory ────────────────────────────────────────────────────────
@@ -86,7 +94,8 @@ public class InstitutionDto {
                 institution.getStatus(),
                 institution.getLogoData() != null && institution.getLogoData().length > 0,
                 institution.getLogoUpdatedAt(),
-                institution.isProtected()
+                institution.isProtected(),
+                institution.isAiMediaHybridRankingEnabled()
         );
     }
 
@@ -153,6 +162,14 @@ public class InstitutionDto {
 
     public void setProtected(boolean isProtected) {
         this.isProtected = isProtected;
+    }
+
+    public boolean isAiMediaHybridRankingEnabled() {
+        return aiMediaHybridRankingEnabled;
+    }
+
+    public void setAiMediaHybridRankingEnabled(boolean enabled) {
+        this.aiMediaHybridRankingEnabled = enabled;
     }
 
     @Override

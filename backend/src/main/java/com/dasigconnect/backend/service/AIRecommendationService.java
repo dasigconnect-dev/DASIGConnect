@@ -2,6 +2,9 @@ package com.dasigconnect.backend.service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -187,22 +190,25 @@ public class AIRecommendationService {
                 .stream()
                 .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
+        Map<UUID, UsageSignal> usageMap = loadUsageSignalMap(candidateIds);
         SubmissionMediaContext mediaContext = submissionMediaContextRepository.findById(submissionId)
                 .filter(context -> institutionId.equals(context.getInstitutionId()))
                 .orElse(null);
         List<RankedAsset> legacyRanking = rankCandidates(
                 candidateIds, assetMap, attachedIds, semanticScores, visualScores,
-                dto, tagMap, attachedAssets, mediaContext, false);
-        List<RankedAsset> hybridRanking = hybridRankingEnabled || hybridShadowEnabled
+                dto, tagMap, usageMap, attachedAssets, mediaContext, false);
+        boolean hybridEnabledForInstitution = hybridRankingEnabled
+                && submission.getInstitution().isAiMediaHybridRankingEnabled();
+        List<RankedAsset> hybridRanking = hybridEnabledForInstitution || hybridShadowEnabled
                 ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores, visualScores,
-                        dto, tagMap, attachedAssets, mediaContext, true)
+                        dto, tagMap, usageMap, attachedAssets, mediaContext, true)
                 : List.of();
         if (hybridShadowEnabled) {
             logShadowComparison(submissionId, legacyRanking, hybridRanking);
         }
 
-        List<RankedAsset> selectedRanking = hybridRankingEnabled ? hybridRanking : legacyRanking;
-        String rankingVersion = hybridRankingEnabled ? HYBRID_RANKING_VERSION : LEGACY_RANKING_VERSION;
+        List<RankedAsset> selectedRanking = hybridEnabledForInstitution ? hybridRanking : legacyRanking;
+        String rankingVersion = hybridEnabledForInstitution ? HYBRID_RANKING_VERSION : LEGACY_RANKING_VERSION;
         List<MediaSuggestResultDto> rankedResults = selectedRanking.stream()
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(
@@ -230,12 +236,14 @@ public class AIRecommendationService {
             Map<UUID, Double> visualScores,
             MediaSuggestRequestDto dto,
             Map<UUID, List<TagSignal>> tagMap,
+            Map<UUID, UsageSignal> usageMap,
             List<MediaAsset> attachedAssets,
             SubmissionMediaContext mediaContext,
             boolean hybrid) {
         List<RankedAsset> ranked = candidateIds.stream()
                 .filter(assetMap::containsKey)
                 .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
                 .map(id -> hybrid
                         ? rankAssetHybrid(
                                 assetMap.get(id),
@@ -243,6 +251,7 @@ public class AIRecommendationService {
                                 visualScores.getOrDefault(id, 0.0),
                                 dto,
                                 tagMap.getOrDefault(id, List.of()),
+                                usageMap.getOrDefault(id, UsageSignal.NEVER_USED),
                                 attachedAssets,
                                 mediaContext)
                         : rankAsset(
@@ -660,6 +669,7 @@ public class AIRecommendationService {
             double visualScore,
             MediaSuggestRequestDto dto,
             Collection<TagSignal> assetTags,
+            UsageSignal usage,
             List<MediaAsset> attachedAssets,
             SubmissionMediaContext mediaContext) {
         Set<String> candidateTerms = structuredAssetTerms(asset, assetTags);
@@ -676,6 +686,7 @@ public class AIRecommendationService {
             metadataScore = Math.max(metadataScore, 0.90);
         }
         double freshnessScore = freshnessScore(asset);
+        double usageScore = usageDiversityScore(usage.count(), usage.lastUsedAt(), Instant.now());
         double qualityScore = qualityScore(asset);
         double sequenceScore = sequenceComplementScore(asset, attachedAssets);
 
@@ -685,6 +696,7 @@ public class AIRecommendationService {
         addSignal(signals, contextScore, 0.14, !contextTerms.isEmpty());
         addSignal(signals, metadataScore, 0.10, !postTerms.isEmpty());
         addSignal(signals, freshnessScore, 0.04, true);
+        addSignal(signals, usageScore, 0.04, true);
         addSignal(signals, qualityScore, 0.05, qualityScore >= 0.0);
         addSignal(signals, sequenceScore, 0.05, sequenceScore >= 0.0);
 
@@ -712,6 +724,9 @@ public class AIRecommendationService {
         if (sequenceScore >= 0.60) {
             reasons.add("Adds a complementary scene or composition to the selected sequence.");
         }
+        if (usage.count() == 0) {
+            reasons.add("Adds variety because this asset has not been used in another submission.");
+        }
         if (reasons.isEmpty()) {
             reasons.add("Ranked from available visual and media context signals.");
         }
@@ -737,13 +752,43 @@ public class AIRecommendationService {
         }
     }
 
-    private static double freshnessScore(MediaAsset asset) {
+    static double freshnessScore(MediaAsset asset) {
+        if ("evergreen".equals(normalize(asset.getTemporalClassification()))) return 1.0;
         if (asset.getCreatedAt() == null) return 0.50;
         long ageDays = Math.max(0, Duration.between(asset.getCreatedAt(), Instant.now()).toDays());
         if (ageDays <= 30) return 1.0;
         if (ageDays <= 90) return 0.75;
         if (ageDays <= 365) return 0.45;
         return 0.20;
+    }
+
+    static double usageDiversityScore(long usageCount, Instant lastUsedAt, Instant now) {
+        if (usageCount == 0) return 1.0;
+        long daysSinceUse = lastUsedAt == null
+                ? Long.MAX_VALUE
+                : Math.max(0, Duration.between(lastUsedAt, now).toDays());
+        if (daysSinceUse <= 7 && usageCount >= 3) return 0.20;
+        if (usageCount >= 10) return 0.35;
+        if (daysSinceUse <= 30 || usageCount >= 3) return 0.60;
+        return 0.85;
+    }
+
+    static boolean isTemporallyEligible(MediaAsset asset, Instant now) {
+        if (asset == null) return false;
+        if ("expired".equals(normalize(asset.getTemporalClassification()))) return false;
+        String expiration = normalize(asset.getPossibleExpiration());
+        if (expiration.isBlank()) return true;
+        try {
+            return Instant.parse(expiration).isAfter(now);
+        } catch (Exception ignored) {
+            try {
+                return LocalDate.parse(expiration).plusDays(1)
+                        .atStartOfDay(ZoneOffset.UTC).toInstant().isAfter(now);
+            } catch (Exception ignoredDate) {
+                // Free-form or uncertain legacy values remain eligible.
+                return true;
+            }
+        }
     }
 
     private static double qualityScore(MediaAsset asset) {
@@ -915,11 +960,23 @@ public class AIRecommendationService {
         return result;
     }
 
+    private Map<UUID, UsageSignal> loadUsageSignalMap(List<UUID> assetIds) {
+        if (assetIds.isEmpty()) return Map.of();
+        Map<UUID, UsageSignal> result = new HashMap<>();
+        for (Object[] row : submissionMediaAssetRepository.findUsageStatsByMediaAssetIds(assetIds)) {
+            UUID assetId = toUuid(row[0]);
+            long count = row[1] instanceof Number number ? number.longValue() : 0L;
+            result.put(assetId, new UsageSignal(count, toInstant(row[2])));
+        }
+        return result;
+    }
+
     private List<MediaSuggestResultDto> fallbackSuggestions(UUID institutionId, Set<UUID> attachedIds, MediaSuggestRequestDto dto) {
         List<MediaAsset> candidates = mediaAssetRepository
                 .findVisibleReadyByInstitution(institutionId, PageRequest.of(0, 30))
                 .stream()
                 .filter(asset -> !attachedIds.contains(asset.getId()))
+                .filter(asset -> isTemporallyEligible(asset, Instant.now()))
                 .toList();
         if (candidates.isEmpty()) {
             return List.of();
@@ -1047,6 +1104,13 @@ public class AIRecommendationService {
         return UUID.fromString(String.valueOf(value));
     }
 
+    private static Instant toInstant(Object value) {
+        if (value instanceof Instant instant) return instant;
+        if (value instanceof OffsetDateTime dateTime) return dateTime.toInstant();
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toInstant();
+        return null;
+    }
+
     private record OptionalVector(String value) {
 
     }
@@ -1064,5 +1128,9 @@ public class AIRecommendationService {
 
     private record WeightedSignal(double value, double weight) {
 
+    }
+
+    private record UsageSignal(long count, Instant lastUsedAt) {
+        private static final UsageSignal NEVER_USED = new UsageSignal(0, null);
     }
 }

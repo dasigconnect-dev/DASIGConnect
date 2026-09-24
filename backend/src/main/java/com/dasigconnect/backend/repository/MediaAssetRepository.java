@@ -167,6 +167,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE m.institution.id = :institutionId
           AND m.deletedAt IS NULL
           AND m.status = com.dasigconnect.backend.model.entity.MediaAssetStatus.READY
+          AND LOWER(COALESCE(m.temporalClassification, '')) <> 'expired'
           AND (
               NOT EXISTS (
                   SELECT link.id FROM SubmissionMediaAsset link
@@ -366,6 +367,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           AND deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 5
         """, nativeQuery = true)
@@ -374,48 +376,36 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query(value = "SELECT embedding::text FROM media_assets WHERE id = :id AND deleted_at IS NULL AND status = 'READY' AND embedding IS NOT NULL", nativeQuery = true)
     Optional<String> findEmbeddingById(@Param("id") UUID id);
 
-    @Query(value = """
-        SELECT
-          id,
-          institution_id,
-          uploader_id,
-          asset_code,
-          storage_url,
-          media_album_id,
-          file_name,
-          display_title,
-          file_type,
-          file_size_bytes,
-          ai_category,
-          ai_confidence,
-          ai_description,
-          asset_type,
-          visible_objects,
-          specific_subjects,
-          visual_style,
-          dominant_colors,
-          content_hash,
-          possible_use_cases,
-          ai_tags,
-          excluded_categories,
-          ai_classified_at,
-          ai_classification_model,
-          embedding_generated_at,
-          embedding_model,
-          reclassified_at,
-          status,
-          deleted_at,
-          deleted_by_user_id,
-          purged_at,
-          created_at
-        FROM media_assets
-        WHERE deleted_at IS NULL
-          AND status IS DISTINCT FROM 'STAGED'
-          AND (status IS NULL OR status IN ('PROCESSING', 'FAILED') OR embedding IS NULL)
-        ORDER BY created_at ASC
-        LIMIT 10
-        """, nativeQuery = true)
-    List<MediaAsset> findNeedingEmbedding();
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND (
+              m.status IS NULL
+              OR m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          )
+          AND (
+              m.status IN (
+                  com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING,
+                  com.dasigconnect.backend.model.entity.MediaAssetStatus.FAILED
+              )
+              OR m.aiProcessingVersion IS NULL
+              OR m.aiProcessingVersion <> :processingVersion
+          )
+          AND NOT EXISTS (
+              SELECT job.id FROM MediaProcessingJob job
+              WHERE job.assetId = m.id
+                AND job.processingVersion = :processingVersion
+                AND job.status IN (
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.PENDING,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.PROCESSING,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.RETRY,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.DEAD
+                )
+          )
+        ORDER BY m.createdAt ASC, m.id ASC
+        """)
+    List<MediaAsset> findNeedingProcessingVersion(
+            @Param("processingVersion") String processingVersion, Pageable pageable);
 
     /**
      * Returns id + cosine similarity score for top nearest neighbours.
@@ -427,6 +417,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           AND deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 30
         """, nativeQuery = true)
@@ -447,6 +438,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           AND deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 60
         """, nativeQuery = true)
@@ -462,6 +454,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 60
         """, nativeQuery = true)
