@@ -27,7 +27,7 @@ import AppErrorBoundary from "../components/common/AppErrorBoundary";
 import NotFoundPage from "../components/common/NotFoundPage";
 import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
-import ProtectedRoute from "../components/common/ProtectedRoute";
+import { RequireAdmin, RequireReviewer, RequireSignedIn } from "../components/common/RouteGates";
 import { useToast } from "../context/ToastContext";
 import {
   getUserDisplayName,
@@ -960,6 +960,7 @@ function App() {
             )
           }
         >
+          {/* Any signed-in role — this layout route already sends signed-out users to /login. */}
           <Route
             path="/dashboard"
             element={<DashboardScreen user={currentUser!} />}
@@ -968,124 +969,46 @@ function App() {
             path="/dashboard/recent-activity"
             element={<RecentActivityScreen user={currentUser!} />}
           />
-          <Route
-            path="/institution-management"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
-                <InstitutionManagementScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/admin-management"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
-                <AdminManagementScreen
-                  user={currentUser!}
-                  onProfileUpdated={refreshCurrentUserProfile}
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/user-management"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
-                <UserManagementScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/system-health"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
-                <SystemHealthScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/audit-log"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
-                <AuditLogScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/queue"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
-                <ValidationQueueScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/calendar"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-                <CalendarScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/media-repository"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-                <MediaRepositoryScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-                <NotificationsScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/analytics"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
-                <AnalyticsDashboardPage user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/submissions"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-                <SubmissionScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/submissions" element={<SubmissionScreen user={currentUser!} />} />
+          <Route path="/calendar" element={<CalendarScreen user={currentUser!} />} />
+          <Route path="/media-repository" element={<MediaRepositoryScreen user={currentUser!} />} />
+          <Route path="/notifications" element={<NotificationsScreen user={currentUser!} />} />
+          <Route path="/analytics" element={<AnalyticsDashboardPage user={currentUser!} />} />
           <Route
             path="/settings"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-                <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
-              </ProtectedRoute>
+              <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
             }
           />
+
+          {/* Moderator + Admin */}
+          <Route element={<RequireReviewer user={currentUser} />}>
+            <Route path="/queue" element={<ValidationQueueScreen user={currentUser!} />} />
+            <Route
+              path="/institution-management"
+              element={<InstitutionManagementScreen user={currentUser!} />}
+            />
+          </Route>
+
+          {/* Admin only */}
+          <Route element={<RequireAdmin user={currentUser} />}>
+            <Route
+              path="/admin/admin-management"
+              element={
+                <AdminManagementScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
+              }
+            />
+            <Route path="/admin/user-management" element={<UserManagementScreen user={currentUser!} />} />
+            <Route path="/admin/system-health" element={<SystemHealthScreen user={currentUser!} />} />
+            <Route path="/admin/audit-log" element={<AuditLogScreen user={currentUser!} />} />
+          </Route>
         </Route>
 
-        {/* Standalone Full-Screen Submission Editor */}
-        <Route
-          path="/submissions/new"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/submissions/:submissionId"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
+        {/* Standalone full-screen submission editor — any signed-in role */}
+        <Route element={<RequireSignedIn user={currentUser} />}>
+          <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
+          <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
+        </Route>
 
           <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />
         </Routes>
