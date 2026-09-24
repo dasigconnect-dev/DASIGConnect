@@ -5342,10 +5342,6 @@
   cursor: not-allowed;
 }
 
-/* ══ Phones: the queue list looks like the desktop full-width queue ══
-   (≤860px otherwise inherited the compact 340px-sidebar styling: small
-   unboxed tabs, bare search and sort). Same toolbar card, pill tabs,
-   search, sort, and cards as `.is-queue-expanded` above 861px. */
 @media (max-width: 860px) {
   .val-page .val-queue-header {
     padding: 16px 16px 0;
