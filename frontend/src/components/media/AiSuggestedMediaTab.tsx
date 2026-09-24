@@ -13,6 +13,7 @@ interface AiSuggestedMediaTabProps {
   caption: string;
   category: string;
   tags: string[];
+  selectedImageCount: number;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
 }
@@ -25,13 +26,16 @@ export default function AiSuggestedMediaTab({
   caption,
   category,
   tags,
+  selectedImageCount,
   onAddItems,
   disabled,
 }: AiSuggestedMediaTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { state, results, fetch } = suggestions;
 
-  const hasContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const hasVisualContext = selectedImageCount > 0;
+  const hasContext = hasTextContext || hasVisualContext;
 
   const contextParts: string[] = [];
   if (eventTitle.trim()) contextParts.push(eventTitle.trim());
@@ -41,6 +45,9 @@ export default function AiSuggestedMediaTab({
   }
   if (category.trim()) contextParts.push(category.trim());
   if (tags.length > 0) contextParts.push(tags.slice(0, 3).map((t) => `#${t}`).join(" "));
+  if (hasVisualContext) {
+    contextParts.push(`${selectedImageCount} selected image${selectedImageCount === 1 ? "" : "s"}`);
+  }
 
   const gridAssets: GridAsset[] = results.map((r) => ({
     id: r.id,
@@ -93,7 +100,7 @@ export default function AiSuggestedMediaTab({
       {!hasContext && (
         <div className="ast-no-context" role="status">
           <i className="ti ti-info-circle" aria-hidden />
-          <span>Add an event title, caption, or tags first so AI can find relevant media.</span>
+          <span>Add an image, event title, caption, or tags so AI can find relevant media.</span>
         </div>
       )}
 
@@ -107,7 +114,7 @@ export default function AiSuggestedMediaTab({
       {hasContext && submissionId && state === "idle" && (
         <div className="ast-idle">
           <p className="ast-idle-hint">
-            AI will scan your media library and surface assets most relevant to your post context.
+            AI will scan your media library and surface assets relevant to your selected images and post context.
           </p>
           <button
             type="button"
@@ -141,7 +148,7 @@ export default function AiSuggestedMediaTab({
       {state === "empty" && (
         <div className="ast-empty" role="status">
           <i className="ti ti-photo-off" aria-hidden />
-          <span>No closely matching assets found in your library. Try refining your caption or title.</span>
+          <span>No closely matching assets found in your library. Try another image or refine your post details.</span>
           <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
             Try again
           </button>

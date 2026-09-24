@@ -67,6 +67,63 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                                            @Param("queryVector") String queryVectorJson,
                                            @Param("limit") int limit);
 
+    /**
+     * Finds candidates similar to the complete selected asset set for one
+     * embedding type. Each selected asset performs an indexed nearest-neighbour
+     * lookup; the outer query combines those bounded result sets. This avoids
+     * scanning the whole institution library or limiting context to the first
+     * attached image.
+     */
+    @Query(value = """
+        WITH query_embeddings AS (
+            SELECT mae.asset_id, mae.embedding
+            FROM media_asset_embeddings mae
+            WHERE mae.asset_id IN (:queryAssetIds)
+              AND mae.embedding_type = :embeddingType
+        ), nearest AS (
+            SELECT q.asset_id AS query_asset_id,
+                   candidate.asset_id,
+                   candidate.score
+            FROM query_embeddings q
+            CROSS JOIN LATERAL (
+                SELECT candidate_embedding.asset_id,
+                       1 - (candidate_embedding.embedding <=> q.embedding) AS score
+                FROM media_asset_embeddings candidate_embedding
+                JOIN media_assets candidate_asset ON candidate_asset.id = candidate_embedding.asset_id
+                WHERE candidate_asset.institution_id = :institutionId
+                  AND candidate_asset.deleted_at IS NULL
+                  AND candidate_asset.status = 'READY'
+                  AND candidate_embedding.embedding_type = :embeddingType
+                  AND candidate_embedding.asset_id NOT IN (SELECT asset_id FROM query_embeddings)
+                ORDER BY candidate_embedding.embedding <=> q.embedding
+                LIMIT :perImageLimit
+            ) candidate
+        )
+        SELECT CAST(asset_id AS text),
+               (0.50 * MAX(score))
+               + (0.30 * AVG(score))
+               + (0.20 * COUNT(DISTINCT query_asset_id)::double precision
+                  / NULLIF((SELECT COUNT(*) FROM query_embeddings), 0)) AS score
+        FROM nearest
+        GROUP BY asset_id
+        ORDER BY score DESC
+        LIMIT :resultLimit
+        """, nativeQuery = true)
+    List<Object[]> findTopSimilarToAssetsWithScore(@Param("institutionId") UUID institutionId,
+                                                    @Param("embeddingType") String embeddingType,
+                                                    @Param("queryAssetIds") List<UUID> queryAssetIds,
+                                                    @Param("perImageLimit") int perImageLimit,
+                                                    @Param("resultLimit") int resultLimit);
+
+    default List<Object[]> findTopSimilarToAssetsWithScore(UUID institutionId,
+                                                            MediaAssetEmbeddingType embeddingType,
+                                                            List<UUID> queryAssetIds,
+                                                            int perImageLimit,
+                                                            int resultLimit) {
+        return findTopSimilarToAssetsWithScore(
+                institutionId, embeddingType.dbValue(), queryAssetIds, perImageLimit, resultLimit);
+    }
+
     @Modifying
     @Transactional
     @Query(value = "DELETE FROM media_asset_embeddings WHERE asset_id = :assetId", nativeQuery = true)

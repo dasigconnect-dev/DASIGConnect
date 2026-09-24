@@ -77,7 +77,7 @@ export async function suggestMedia(
     params,
     { signal, validateStatus: () => true }
   );
-  if (res.status !== 200) return [];
+  if (res.status !== 200) throw new Error("media_suggestions_unavailable");
   return res.data ?? [];
 }
 

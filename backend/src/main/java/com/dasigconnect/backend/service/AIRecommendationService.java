@@ -48,15 +48,18 @@ import com.dasigconnect.backend.security.JwtUserDetails;
  * Provides AI media recommendations for UC-3.3.
  *
  * Asset image understanding is generated once at upload time. Suggestion
- * requests only embed the contributor's current text context and run pgvector
- * search, then apply lightweight category/tag/recency boosts. This keeps the
- * feature fast and avoids rescanning images during content submission.
+ * requests reuse stored image embeddings for attached-media context and only
+ * embed the contributor's text when text context is present. Candidate search
+ * then applies lightweight category/tag/recency boosts. This keeps the feature
+ * fast and avoids rescanning images during content submission.
  */
 @Service
 @Transactional(readOnly = true)
 public class AIRecommendationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
+    private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
+    private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -124,9 +127,9 @@ public class AIRecommendationService {
      * context.
      *
      * The expensive image scan was already done when media was uploaded. At
-     * request time we embed the contributor's title/caption/category/tags once,
-     * fetch pgvector nearest neighbors, and re-rank a small candidate set with
-     * deterministic metadata boosts.
+     * request time we reuse every available attached IMAGE embedding, optionally
+     * embed the contributor's text context once, and re-rank a bounded candidate
+     * set with deterministic metadata boosts.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MediaSuggestResultDto> suggestMedia(UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
@@ -137,29 +140,19 @@ public class AIRecommendationService {
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
         Map<UUID, List<TagSignal>> attachedTagMap = loadTagSignalMap(attachedAssets.stream().map(MediaAsset::getId).toList());
 
-        String embeddingText = buildQueryEmbeddingText(dto, attachedAssets, attachedTagMap);
-        if (embeddingText.isBlank()) {
-            return List.of();
-        }
+        Map<UUID, Double> visualScores = loadAttachedCandidateScores(
+                institutionId, attachedIds, MediaAssetEmbeddingType.IMAGE, submissionId);
+        Map<UUID, Double> selectedMediaSemanticScores = loadAttachedCandidateScores(
+                institutionId, attachedIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
+        Map<UUID, Double> textSemanticScores = loadTextSemanticCandidateScores(
+                institutionId, attachedAssets, attachedTagMap, dto, submissionId);
+        Map<UUID, Double> semanticScores = combineSemanticScores(
+                selectedMediaSemanticScores, textSemanticScores);
 
-        String queryVector;
-        try {
-            queryVector = voyageAIClient.embedQuery(embeddingText);
-        } catch (Exception e) {
-            log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
-            return fallbackSuggestions(institutionId, attachedIds, dto);
-        }
-
-        List<Object[]> rows = mediaAssetEmbeddingRepository.findTopSimilarWithScore(
-                institutionId, MediaAssetEmbeddingType.SEMANTIC, queryVector, 30);
-        List<UUID> candidateIds = new ArrayList<>();
-        Map<UUID, Double> semanticScores = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            UUID id = toUuid(row[0]);
-            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
-            candidateIds.add(id);
-            semanticScores.put(id, score);
-        }
+        List<UUID> candidateIds = new ArrayList<>(visualScores.keySet());
+        semanticScores.keySet().stream()
+                .filter(id -> !visualScores.containsKey(id))
+                .forEach(candidateIds::add);
         if (candidateIds.isEmpty()) {
             return fallbackSuggestions(institutionId, attachedIds, dto);
         }
@@ -175,6 +168,7 @@ public class AIRecommendationService {
                 .map(id -> rankAsset(
                 assetMap.get(id),
                 semanticScores.getOrDefault(id, 0.0),
+                visualScores.getOrDefault(id, 0.0),
                 dto,
                 tagMap.getOrDefault(id, List.of())
         ))
@@ -191,6 +185,81 @@ public class AIRecommendationService {
         }
 
         return rankedResults;
+    }
+
+    private Map<UUID, Double> loadAttachedCandidateScores(
+            UUID institutionId,
+            Set<UUID> attachedIds,
+            MediaAssetEmbeddingType embeddingType,
+            UUID submissionId) {
+        if (attachedIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            return scoreMap(mediaAssetEmbeddingRepository.findTopSimilarToAssetsWithScore(
+                    institutionId,
+                    embeddingType,
+                    List.copyOf(attachedIds),
+                    ATTACHED_CANDIDATES_PER_ASSET,
+                    SUGGESTION_CANDIDATE_LIMIT));
+        } catch (RuntimeException e) {
+            // Attached-media retrieval is additive. Preserve the established
+            // text path if a transient database error occurs.
+            log.warn("{} media retrieval failed for submission {}: {}",
+                    embeddingType, submissionId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private Map<UUID, Double> loadTextSemanticCandidateScores(
+            UUID institutionId,
+            List<MediaAsset> attachedAssets,
+            Map<UUID, List<TagSignal>> attachedTagMap,
+            MediaSuggestRequestDto dto,
+            UUID submissionId) {
+        if (!hasTextContext(dto)) {
+            return Map.of();
+        }
+        String embeddingText = buildQueryEmbeddingText(dto, attachedAssets, attachedTagMap);
+        try {
+            String queryVector = voyageAIClient.embedQuery(embeddingText);
+            return scoreMap(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+                    institutionId,
+                    MediaAssetEmbeddingType.SEMANTIC,
+                    queryVector,
+                    SUGGESTION_CANDIDATE_LIMIT));
+        } catch (Exception e) {
+            log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private static Map<UUID, Double> combineSemanticScores(
+            Map<UUID, Double> selectedMediaScores,
+            Map<UUID, Double> textScores) {
+        Map<UUID, Double> combined = new LinkedHashMap<>(selectedMediaScores);
+        textScores.forEach((id, textScore) -> combined.merge(
+                id,
+                textScore,
+                (selectedScore, existingTextScore) -> (0.40 * selectedScore) + (0.60 * existingTextScore)));
+        return combined;
+    }
+
+    private static Map<UUID, Double> scoreMap(List<Object[]> rows) {
+        Map<UUID, Double> scores = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID id = toUuid(row[0]);
+            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
+            scores.merge(id, score, Math::max);
+        }
+        return scores;
+    }
+
+    private static boolean hasTextContext(MediaSuggestRequestDto dto) {
+        return !normalize(dto.getEventTitle()).isBlank()
+                || !normalize(dto.getCaption()).isBlank()
+                || !normalize(dto.getCategory()).isBlank()
+                || (dto.getTags() != null && dto.getTags().stream().anyMatch(tag -> !normalize(tag).isBlank()));
     }
 
     // NOT the same feature as UploadModal.tsx's Auto-Match (UC-2.1,
@@ -373,7 +442,6 @@ public class AIRecommendationService {
         appendAll(sb, "tags", dto.getTags());
         if (attachedAssets != null && !attachedAssets.isEmpty()) {
             String selectedContext = attachedAssets.stream()
-                    .limit(3)
                     .map(asset -> selectedMediaContext(asset, attachedTagMap.getOrDefault(asset.getId(), List.of())))
                     .filter(text -> !text.isBlank())
                     .collect(Collectors.joining(" "));
@@ -389,8 +457,18 @@ public class AIRecommendationService {
         return rankAsset(asset, semanticScore, dto, tagSignals).score();
     }
 
-    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore, MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
-        double score = semanticScore;
+    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore,
+            MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
+        return rankAsset(asset, semanticScore, 0.0, dto, assetTags);
+    }
+
+    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore, double visualScore,
+            MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
+        boolean hasSemanticSignal = semanticScore > 0.0;
+        boolean hasVisualSignal = visualScore > 0.0;
+        double score = hasSemanticSignal && hasVisualSignal
+                ? (0.55 * semanticScore) + (0.45 * visualScore)
+                : Math.max(semanticScore, visualScore);
         List<String> reasons = new ArrayList<>();
         Set<String> queryTerms = normalizedTerms(dto);
 
@@ -400,6 +478,14 @@ public class AIRecommendationService {
             reasons.add("Similar to the post context from the title or caption.");
         } else if (semanticScore >= 0.40) {
             reasons.add("Some semantic overlap with the post context.");
+        }
+
+        if (visualScore >= 0.75) {
+            reasons.add("Strong visual similarity to the selected media.");
+        } else if (visualScore >= 0.55) {
+            reasons.add("Visually similar to the selected media.");
+        } else if (visualScore >= 0.40) {
+            reasons.add("Some visual overlap with the selected media.");
         }
 
         String assetCategory = normalize(asset.getAiCategory());

@@ -70,7 +70,17 @@ export default function MediaAssetsPicker({
     setVisitedTabs(new Set(visitedTabs).add(activeTab));
   }
 
-  const aiSuggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, category, tags);
+  const selectedImageAssetIds = items
+    .filter((item) => item.mediaType === "image" && item.assetId)
+    .map((item) => item.assetId!);
+  const aiSuggestions = useAiMediaSuggestions(
+    submissionId,
+    eventTitle,
+    caption,
+    category,
+    tags,
+    selectedImageAssetIds,
+  );
 
   const alreadyAddedIds = new Set(items.filter((i) => i.assetId).map((i) => i.assetId!));
 
@@ -128,6 +138,7 @@ export default function MediaAssetsPicker({
             caption={caption}
             category={category}
             tags={tags}
+            selectedImageCount={selectedImageAssetIds.length}
             onAddItems={handleAddItems}
             disabled={disabled}
           />
@@ -205,6 +216,7 @@ export default function MediaAssetsPicker({
               caption={caption}
               category={category}
               tags={tags}
+              selectedImageCount={selectedImageAssetIds.length}
               onAddItems={handleAddItems}
               disabled={disabled}
             />
