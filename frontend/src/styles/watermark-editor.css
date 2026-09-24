@@ -1459,7 +1459,7 @@
   z-index: 20;
 }
 
-/* Segmented Group with Clean No-Box Styling */
+/* Segmented Group matching system pill buttons */
 .canva-pill-segment {
   display: inline-flex;
   align-items: center;
@@ -1474,41 +1474,61 @@
   font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   padding: 0 4px;
 }
 
 .canva-segment-item {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-height: 32px;
+  padding: 5px 14px;
   border: 1px solid #e2e8f0;
-  background: #ffffff;
-  padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
   cursor: pointer;
-  transition: all 0.18s ease;
+  white-space: nowrap;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+  user-select: none;
+}
+
+.canva-segment-item i {
+  font-size: 13px;
+  color: #64748b;
+  transition: color 150ms ease;
 }
 
 .canva-segment-item:hover {
   color: #1877f2;
-  border-color: #93c5fd;
+  border-color: #bfdbfe;
   background: #eff6ff;
+}
+
+.canva-segment-item:hover i {
+  color: #1877f2;
 }
 
 .canva-segment-item.is-active {
   background: #1877f2;
   color: #ffffff;
   border-color: #1877f2;
-  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
-  font-weight: 700;
+  font-weight: 650;
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.22);
 }
 
 .canva-segment-item.is-active i {
   color: #ffffff;
+}
+
+.canva-segment-item:focus-visible {
+  outline: 2px solid #1877f2;
+  outline-offset: 2px;
 }
 
 /* ==========================================================================
@@ -1687,8 +1707,9 @@
   .canva-segment-item {
     flex-shrink: 0;
     white-space: nowrap;
-    padding: 5px 9px;
-    font-size: 11px;
+    padding: 4px 12px;
+    min-height: 28px;
+    font-size: 11.5px;
   }
 }
 
@@ -1732,7 +1753,8 @@
   }
 
   .canva-segment-item {
-    padding: 5px 8px;
+    padding: 4px 10px;
+    min-height: 28px;
     font-size: 11px;
   }
 
