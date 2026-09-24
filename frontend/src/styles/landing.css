@@ -126,21 +126,27 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-brand-title {
-  font-family: var(--ff-body);
-  font-size: 1.22rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--ff-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
   color: var(--lp-ink);
   display: flex;
-  align-items: center;
-  gap: 3px;
+  align-items: baseline;
+  line-height: 1;
 }
 
 .landing-brand-title em {
   font-family: var(--ff-display);
   font-style: italic;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--lp-blue);
+  margin-left: 2px;
+  transition: color 0.2s ease;
+}
+
+.landing-brand:hover .landing-brand-title em {
+  color: var(--lp-blue-dark);
 }
 
 .landing-brand-badge {
