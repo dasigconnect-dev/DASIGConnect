@@ -33,14 +33,46 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Modifying
     @Transactional
     @Query(value = """
+        INSERT INTO media_processing_jobs
+            (submission_id, job_type, processing_version, max_attempts)
+        VALUES (:submissionId, 'BUILD_SUBMISSION_CONTEXT', :processingVersion, :maxAttempts)
+        ON CONFLICT (submission_id, job_type, processing_version) WHERE submission_id IS NOT NULL
+        DO UPDATE SET
+            status = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                          THEN 'PROCESSING' ELSE 'PENDING' END,
+            attempt_count = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                                 THEN media_processing_jobs.attempt_count ELSE 0 END,
+            next_attempt_at = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                                   THEN media_processing_jobs.next_attempt_at ELSE NOW() END,
+            lease_until = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                               THEN media_processing_jobs.lease_until ELSE NULL END,
+            claimed_by = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                              THEN media_processing_jobs.claimed_by ELSE NULL END,
+            last_error = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                              THEN media_processing_jobs.last_error ELSE NULL END,
+            completed_at = NULL,
+            rerun_requested = media_processing_jobs.status = 'PROCESSING',
+            updated_at = NOW()
+        WHERE media_processing_jobs.status IN ('PROCESSING', 'COMPLETED', 'DEAD')
+        """, nativeQuery = true)
+    int enqueueSubmissionContext(@Param("submissionId") UUID submissionId,
+                                 @Param("processingVersion") String processingVersion,
+                                 @Param("maxAttempts") int maxAttempts);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
         WITH candidates AS (
             SELECT id
             FROM media_processing_jobs
             WHERE (
-                status IN ('PENDING', 'RETRY') AND next_attempt_at <= :now
-            ) OR (
-                status = 'PROCESSING' AND lease_until < :now
+                (
+                    status IN ('PENDING', 'RETRY') AND next_attempt_at <= :now
+                ) OR (
+                    status = 'PROCESSING' AND lease_until < :now
+                )
             )
+              AND (:includeAiJobs = TRUE OR job_type = 'BUILD_SUBMISSION_CONTEXT')
             ORDER BY next_attempt_at, created_at
             FOR UPDATE SKIP LOCKED
             LIMIT :batchSize
@@ -57,7 +89,8 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     int claimBatch(@Param("workerId") String workerId,
                    @Param("now") Instant now,
                    @Param("leaseUntil") Instant leaseUntil,
-                   @Param("batchSize") int batchSize);
+                   @Param("batchSize") int batchSize,
+                   @Param("includeAiJobs") boolean includeAiJobs);
 
     List<MediaProcessingJob> findByClaimedByAndStatusOrderByCreatedAtAsc(
             String claimedBy, MediaProcessingJobStatus status);
@@ -66,8 +99,12 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Transactional
     @Query(value = """
         UPDATE media_processing_jobs
-        SET status = 'COMPLETED', completed_at = :completedAt,
+        SET status = CASE WHEN rerun_requested THEN 'PENDING' ELSE 'COMPLETED' END,
+            attempt_count = CASE WHEN rerun_requested THEN 0 ELSE attempt_count END,
+            next_attempt_at = CASE WHEN rerun_requested THEN :completedAt ELSE next_attempt_at END,
+            completed_at = CASE WHEN rerun_requested THEN NULL ELSE :completedAt END,
             lease_until = NULL, claimed_by = NULL, last_error = NULL,
+            rerun_requested = FALSE,
             updated_at = :completedAt
         WHERE id = :id AND claimed_by = :workerId AND status = 'PROCESSING'
         """, nativeQuery = true)
@@ -81,6 +118,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
         UPDATE media_processing_jobs
         SET status = :status, next_attempt_at = :nextAttemptAt,
             lease_until = NULL, claimed_by = NULL, last_error = :lastError,
+            rerun_requested = FALSE,
             updated_at = :updatedAt
         WHERE id = :id AND claimed_by = :workerId AND status = 'PROCESSING'
         """, nativeQuery = true)

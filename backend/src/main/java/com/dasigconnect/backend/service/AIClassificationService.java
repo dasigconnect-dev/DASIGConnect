@@ -10,6 +10,8 @@ import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -37,6 +39,7 @@ public class AIClassificationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIClassificationService.class);
     private static final int MAX_AI_TAGS_TO_STORE = 30;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final DateTimeFormatter UPLOAD_MONTH_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM").withZone(ZoneOffset.UTC);
 
@@ -289,6 +292,18 @@ public class AIClassificationService {
         asset.setPossibleUseCases(toArray(result.possibleUseCases()));
         asset.setAiTags(toArray(result.suggestedTags()));
         asset.setExcludedCategories(toArray(result.excludedCategories()));
+        asset.setObservedScenes(toArray(result.observedScenes()));
+        asset.setObservedActivities(toArray(result.observedActivities()));
+        asset.setPeopleCountRange(result.peopleCountRange());
+        asset.setEquipmentSignals(toArray(result.equipmentSignals()));
+        asset.setRecognitionSignals(toArray(result.recognitionSignals()));
+        asset.setOcrText(toArray(result.ocrText()));
+        asset.setVisibleDates(toArray(result.visibleDates()));
+        asset.setEventHypotheses(toJson(result.eventHypotheses()));
+        asset.setTemporalClassification(result.temporalClassification());
+        asset.setPossibleExpiration(result.possibleExpiration());
+        asset.setVisualQualitySignals(toArray(result.visualQualitySignals()));
+        asset.setCompositionSignals(toArray(result.compositionSignals()));
         asset.setAiClassifiedAt(java.time.Instant.now());
         asset.setAiClassificationModel(claudeVisionClient.modelName());
         mediaAssetRepository.save(asset);
@@ -368,6 +383,18 @@ public class AIClassificationService {
         appendAll(sb, "dominant_colors", result.dominantColors());
         appendAll(sb, "possible_use_cases", result.possibleUseCases());
         appendAll(sb, "ai_tags", result.suggestedTags());
+        appendAll(sb, "scenes", result.observedScenes());
+        appendAll(sb, "activities", result.observedActivities());
+        append(sb, "people_count", result.peopleCountRange());
+        appendAll(sb, "equipment", result.equipmentSignals());
+        appendAll(sb, "recognition", result.recognitionSignals());
+        appendAll(sb, "ocr", result.ocrText());
+        appendAll(sb, "visible_dates", result.visibleDates());
+        appendAll(sb, "event_hypotheses", result.eventHypotheses().stream()
+                .map(hypothesis -> hypothesis.eventType()).toList());
+        append(sb, "temporal", result.temporalClassification());
+        appendAll(sb, "visual_quality", result.visualQualitySignals());
+        appendAll(sb, "composition", result.compositionSignals());
         return sb.toString().trim();
     }
 
@@ -387,6 +414,9 @@ public class AIClassificationService {
         appendAll(sb, "possible_use_cases", firstNonEmpty(result.possibleUseCases(), asset.getPossibleUseCases()));
         appendAll(sb, "ai_tags", result.suggestedTags());
         appendAll(sb, "asset_tags", manualTags);
+        appendAll(sb, "scenes", Arrays.asList(asset.getObservedScenes() == null ? new String[0] : asset.getObservedScenes()));
+        appendAll(sb, "activities", Arrays.asList(asset.getObservedActivities() == null ? new String[0] : asset.getObservedActivities()));
+        append(sb, "people_count", asset.getPeopleCountRange());
         return sb.toString().trim();
     }
 
@@ -457,5 +487,13 @@ public class AIClassificationService {
             if (unique.size() >= MAX_AI_TAGS_TO_STORE) break;
         }
         return List.copyOf(unique);
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value == null ? List.of() : value);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("Could not serialize media classification context", error);
+        }
     }
 }

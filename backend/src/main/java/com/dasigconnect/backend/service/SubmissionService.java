@@ -1060,6 +1060,7 @@ public class SubmissionService {
 
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submissionId);
         refreshManualPublishingFlag(submission);
         log.info("Asset {} detached from submission {}", mediaAssetId, submissionId);
 
@@ -1179,6 +1180,7 @@ public class SubmissionService {
             }
         }
         submissionMediaAssetRepository.saveAll(links);
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submissionId);
 
         log.info("Reordered media for submission {}", submissionId);
         return buildResponse(submission);
@@ -1374,6 +1376,7 @@ public class SubmissionService {
         link.setMediaAsset(asset);
         link.setDisplayOrder(currentCount);
         submissionMediaAssetRepository.save(link);
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submission.getId());
     }
 
     private MediaFileType validateMediaFile(String rawFileType, Long fileSizeBytes) {

@@ -2,6 +2,7 @@ package com.dasigconnect.backend.external;
 
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
+import com.dasigconnect.backend.model.dto.ai.EventHypothesisDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -755,6 +756,18 @@ public class ClaudeVisionClient {
               "possible_use_cases": [],
               "ai_tags": [],
               "excluded_categories": [],
+              "observed_scenes": [],
+              "observed_activities": [],
+              "people_count_range": "",
+              "equipment_signals": [],
+              "recognition_signals": [],
+              "ocr_text": [],
+              "visible_dates": [],
+              "event_hypotheses": [{"event_type": "", "confidence": 0.0, "evidence": []}],
+              "temporal_classification": "",
+              "possible_expiration": "",
+              "visual_quality_signals": [],
+              "composition_signals": [],
               "confidence": 0.0
             }
 
@@ -763,6 +776,11 @@ public class ClaudeVisionClient {
             - ai_caption must be factual and neutral, not promotional.
             - ai_tags must contain 8 to 30 searchable visual tags.
             - Tags must describe visible subjects, objects, setting, style, or use case.
+            - Describe observable scenes and activities before suggesting an event type.
+            - Event hypotheses are probabilities, not facts. Include only hypotheses supported by visible evidence.
+            - people_count_range must be a coarse range such as "0", "1", "2-5", "6-20", or "20+".
+            - OCR and visible dates must contain only legible text. Do not guess obscured text.
+            - temporal_classification may be evergreen, time_bound, expired, or unknown.
             - Do not identify private individuals by name.
             """;
     }
@@ -801,9 +819,25 @@ public class ClaudeVisionClient {
             }
             List<String> excludedCategories = readStringArray(node, "excluded_categories", 15, 80);
 
+            List<String> observedScenes = readStringArray(node, "observed_scenes", 15, 80);
+            List<String> observedActivities = readStringArray(node, "observed_activities", 20, 80);
+            String peopleCountRange = node.path("people_count_range").asText("").strip();
+            List<String> equipmentSignals = readStringArray(node, "equipment_signals", 15, 80);
+            List<String> recognitionSignals = readStringArray(node, "recognition_signals", 15, 80);
+            List<String> ocrText = readStringArray(node, "ocr_text", 20, 160);
+            List<String> visibleDates = readStringArray(node, "visible_dates", 10, 60);
+            List<EventHypothesisDto> eventHypotheses = readEventHypotheses(node.path("event_hypotheses"));
+            String temporalClassification = node.path("temporal_classification").asText("").strip();
+            String possibleExpiration = node.path("possible_expiration").asText("").strip();
+            List<String> visualQualitySignals = readStringArray(node, "visual_quality_signals", 15, 80);
+            List<String> compositionSignals = readStringArray(node, "composition_signals", 15, 80);
+
             return new MediaClassificationDto(category, assetType, confidence, description,
                     visibleObjects, specificSubjects, visualStyle, dominantColors,
-                    possibleUseCases, tags, excludedCategories);
+                    possibleUseCases, tags, excludedCategories, observedScenes, observedActivities,
+                    peopleCountRange, equipmentSignals, recognitionSignals, ocrText, visibleDates,
+                    eventHypotheses, temporalClassification, possibleExpiration,
+                    visualQualitySignals, compositionSignals);
         } catch (Exception e) {
             log.warn("Failed to parse Claude classification response: {}", e.getMessage());
             throw new ClaudeApiException("Could not parse classification from Claude response.");
@@ -832,6 +866,20 @@ public class ClaudeVisionClient {
             if (values.size() >= maxItems) break;
         }
         return values;
+    }
+
+    private static List<EventHypothesisDto> readEventHypotheses(JsonNode array) {
+        if (!array.isArray()) return List.of();
+        List<EventHypothesisDto> hypotheses = new ArrayList<>();
+        for (JsonNode item : array) {
+            String eventType = item.path("event_type").asText("").strip();
+            if (eventType.isBlank()) continue;
+            double confidence = Math.min(1.0, Math.max(0.0, item.path("confidence").asDouble(0.0)));
+            List<String> evidence = readStringArray(item, "evidence", 8, 100);
+            hypotheses.add(new EventHypothesisDto(eventType, confidence, evidence));
+            if (hypotheses.size() >= 8) break;
+        }
+        return List.copyOf(hypotheses);
     }
 
     public static class ClaudeApiException extends RuntimeException {

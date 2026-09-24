@@ -32,6 +32,16 @@ class MediaProcessingQueueServiceTest {
     }
 
     @Test
+    void enqueueSubmissionContext_usesStableContextVersion() {
+        UUID submissionId = UUID.randomUUID();
+
+        service.enqueueSubmissionContext(submissionId);
+
+        verify(repository).enqueueSubmissionContext(
+                submissionId, MediaProcessingQueueService.CONTEXT_VERSION, 5);
+    }
+
+    @Test
     void enqueueAfterCommit_defersQueueWriteUntilOwningTransactionCommits() {
         UUID assetId = UUID.randomUUID();
         TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -58,9 +68,9 @@ class MediaProcessingQueueServiceTest {
         when(repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
                 "worker", MediaProcessingJobStatus.PROCESSING)).thenReturn(List.of());
 
-        assertThat(service.claimBatch("worker", 100)).isEmpty();
+        assertThat(service.claimBatch("worker", 100, false)).isEmpty();
 
-        verify(repository).claimBatch(eq("worker"), any(), any(), eq(10));
+        verify(repository).claimBatch(eq("worker"), any(), any(), eq(10), eq(false));
     }
 
     @Test
