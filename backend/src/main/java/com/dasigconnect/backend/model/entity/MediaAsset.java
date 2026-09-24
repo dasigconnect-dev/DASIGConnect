@@ -101,6 +101,9 @@ public class MediaAsset {
     @Column(name = "ai_classification_model", length = 100)
     private String aiClassificationModel;
 
+    @Column(name = "ai_processing_version", length = 50)
+    private String aiProcessingVersion;
+
     // embedding VECTOR(1024) — managed via native queries; Hibernate does not map pgvector type natively
     // Use MediaAssetRepository.updateEmbedding() for writes and cosine search for reads
     @Column(name = "embedding_generated_at")
@@ -337,6 +340,14 @@ public class MediaAsset {
 
     public void setAiClassificationModel(String aiClassificationModel) {
         this.aiClassificationModel = aiClassificationModel;
+    }
+
+    public String getAiProcessingVersion() {
+        return aiProcessingVersion;
+    }
+
+    public void setAiProcessingVersion(String aiProcessingVersion) {
+        this.aiProcessingVersion = aiProcessingVersion;
     }
 
     public Instant getEmbeddingGeneratedAt() {

@@ -68,7 +68,7 @@ class MediaAssetServiceTest {
     @Mock
     private MediaStorageService mediaStorage;
     @Mock
-    private AIClassificationService aiClassificationService;
+    private MediaProcessingQueueService mediaProcessingQueueService;
     @Mock
     private com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     @Mock
@@ -97,7 +97,7 @@ class MediaAssetServiceTest {
                 mediaAssetEmbeddingRepository,
                 institutionRepository,
                 mediaStorage,
-                aiClassificationService,
+                mediaProcessingQueueService,
                 voyageAIClient,
                 auditLogService,
                 auditLogRepository,
@@ -107,7 +107,7 @@ class MediaAssetServiceTest {
     }
 
     @Test
-    void upload_imageAsset_staysProcessingAndTriggersClassification() {
+    void upload_imageAsset_staysProcessingAndEnqueuesClassification() {
         UUID institutionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID albumId = UUID.randomUUID();
@@ -139,7 +139,7 @@ class MediaAssetServiceTest {
         ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
         verify(mediaAssetRepository).save(savedAsset.capture());
         assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, savedAsset.getValue().getStatus());
-        verify(aiClassificationService).classifyAndEmbed(any(), eq("https://example.com/a.jpg"));
+        verify(mediaProcessingQueueService).enqueueAfterCommit(any());
     }
 
     @Test
@@ -175,7 +175,7 @@ class MediaAssetServiceTest {
         ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
         verify(mediaAssetRepository).save(savedAsset.capture());
         assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, savedAsset.getValue().getStatus());
-        verify(aiClassificationService, never()).classifyAndEmbed(any(), any());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 
     @Test

@@ -315,8 +315,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         UPDATE media_assets
         SET embedding = CAST(:embedding AS vector),
             embedding_generated_at = NOW(),
-            embedding_model = :embeddingModel,
-            status = 'READY'
+            embedding_model = :embeddingModel
         WHERE id = :id
         """, nativeQuery = true)
     void updateEmbedding(@Param("id") UUID id,
@@ -451,6 +450,16 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Transactional
     @Query(value = "UPDATE media_assets SET status = :status WHERE id = :id", nativeQuery = true)
     void updateStatus(@Param("id") UUID id, @Param("status") String status);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE media_assets
+        SET status = 'READY', ai_processing_version = :processingVersion
+        WHERE id = :id AND deleted_at IS NULL
+        """, nativeQuery = true)
+    void markProcessingReady(@Param("id") UUID id,
+                             @Param("processingVersion") String processingVersion);
 
     @Query(value = """
         SELECT * FROM media_assets

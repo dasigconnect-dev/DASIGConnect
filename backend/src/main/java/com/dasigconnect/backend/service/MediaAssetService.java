@@ -82,7 +82,7 @@ public class MediaAssetService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final InstitutionRepository institutionRepository;
     private final MediaStorageService mediaStorage;
-    private final AIClassificationService aiClassificationService;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     private final AuditLogService auditLogService;
     private final AuditLogRepository auditLogRepository;
@@ -104,7 +104,7 @@ public class MediaAssetService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             InstitutionRepository institutionRepository,
             MediaStorageService mediaStorage,
-            AIClassificationService aiClassificationService,
+            MediaProcessingQueueService mediaProcessingQueueService,
             com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
             AuditLogService auditLogService,
             AuditLogRepository auditLogRepository,
@@ -118,7 +118,7 @@ public class MediaAssetService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.institutionRepository = institutionRepository;
         this.mediaStorage = mediaStorage;
-        this.aiClassificationService = aiClassificationService;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
         this.voyageAIClient = voyageAIClient;
         this.auditLogService = auditLogService;
         this.auditLogRepository = auditLogRepository;
@@ -773,16 +773,15 @@ public class MediaAssetService {
         auditMeta.put("tagCount", savedTags.size());
         recordAssetAudit(user, "MEDIA_ASSET_UPLOADED", asset.getId(), auditMeta);
 
-        // Trigger async classification + embedding — never blocks the upload response
+        // Register durable work after this upload transaction commits.
         final UUID savedId = asset.getId();
-        final String savedUrl = asset.getStorageUrl();
         final MediaFileType savedType = asset.getFileType();
         try {
             if (savedType.isImage()) {
-                aiClassificationService.classifyAndEmbed(savedId, savedUrl);
+                mediaProcessingQueueService.enqueueAfterCommit(savedId);
             }
         } catch (Exception e) {
-            log.warn("Failed to trigger AI classification for asset {}: {}", savedId, e.getMessage());
+            log.warn("Failed to enqueue AI classification for asset {}: {}", savedId, e.getMessage());
         }
 
         return MediaAssetDetailDto.from(asset, List.of(), savedTags);

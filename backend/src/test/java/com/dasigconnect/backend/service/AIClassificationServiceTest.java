@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -139,6 +140,32 @@ class AIClassificationServiceTest {
         verify(claudeVisionClient, never()).classifyMedia(any());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.FAILED.name());
         verify(mediaAssetRepository, never()).updateStatus(eq(assetId), eq(MediaAssetStatus.READY.name()));
+    }
+
+    @Test
+    void processAsset_existingImageEmbedding_onlyRunsMissingSemanticStage() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setFileName("event.jpg");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetEmbeddingRepository.findEmbedding(
+                assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE))
+                .thenReturn(Optional.of("[0.1]"));
+        when(mediaAssetEmbeddingRepository.findEmbedding(
+                assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.SEMANTIC))
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+
+        boolean completed = service().processAsset(assetId, "https://example.com/a.jpg");
+
+        assertThat(completed).isTrue();
+        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(claudeVisionClient, never()).prepareImageForEmbedding(anyString());
+        verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
     }
 
     @Test

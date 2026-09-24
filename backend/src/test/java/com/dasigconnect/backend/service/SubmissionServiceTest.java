@@ -115,6 +115,9 @@ class SubmissionServiceTest {
     @Mock
     private GuardRailSettingsService guardRailSettings;
 
+    @Mock
+    private MediaProcessingQueueService mediaProcessingQueueService;
+
     @InjectMocks
     private SubmissionService submissionService;
 
@@ -1101,6 +1104,7 @@ class SubmissionServiceTest {
         assertThat(staged.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
         assertThat(staged.getInstitution()).isEqualTo(institution);
         verify(mediaAssetRepository).saveAll(List.of(staged));
+        verify(mediaProcessingQueueService).enqueueAfterCommit(staged.getId());
     }
 
     @Test
