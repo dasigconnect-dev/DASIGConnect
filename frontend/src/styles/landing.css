@@ -108,21 +108,27 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-brand-logo {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 3px;
-  border: 1px solid var(--lp-light-border);
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  padding: 0;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-brand:hover .landing-brand-logo {
+  transform: scale(1.06);
 }
 
 .landing-brand-logo img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
 }
 
 .landing-brand-title {
