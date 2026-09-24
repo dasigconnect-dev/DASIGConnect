@@ -566,6 +566,30 @@
   min-width: 0;
 }
 
+.canva-layer-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.canva-layer-badge.is-top {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.canva-layer-badge.is-bottom {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
 .canva-layer-info i {
   font-size: 16px;
   color: #64748b;
@@ -1104,17 +1128,8 @@
   pointer-events: auto;
 }
 
-.wm-canvas-element.wm-type-shape {
-  z-index: 5;
-}
-
-.wm-canvas-element.wm-type-image {
-  z-index: 12;
-}
-
 .wm-canvas-element.wm-type-text {
   cursor: text;
-  z-index: 15;
 }
 
 .wm-canvas-element:active {
@@ -1128,7 +1143,6 @@
 .wm-canvas-element.is-selected {
   outline: 2px solid #1877f2;
   outline-offset: 1px;
-  z-index: 35;
   box-shadow: 0 0 0 1px rgba(24, 119, 242, 0.4);
 }
 
@@ -1230,29 +1244,31 @@
 /* 8-Point Selection Handles */
 .wm-element-handles {
   position: absolute;
-  inset: -6px;
+  inset: 0px;
   pointer-events: none;
 }
 
 .wm-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   background: #ffffff;
   border: 2px solid #1877f2;
   border-radius: 50%;
   pointer-events: auto;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  touch-action: none;
 }
 
-.handle-nw { top: 0; left: 0; cursor: nwse-resize; }
-.handle-ne { top: 0; right: 0; cursor: nesw-resize; }
-.handle-sw { bottom: 0; left: 0; cursor: nesw-resize; }
-.handle-se { bottom: 0; right: 0; cursor: nwse-resize; }
-.handle-n { top: 0; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
-.handle-s { bottom: 0; left: 50%; transform: translate(-50%, 50%); cursor: ns-resize; }
-.handle-w { top: 50%; left: 0; transform: translate(-50%, -50%); cursor: ew-resize; }
-.handle-e { top: 50%; right: 0; transform: translate(50%, -50%); cursor: ew-resize; }
+.handle-nw { top: -2px; left: -2px; cursor: nwse-resize; }
+.handle-ne { top: -2px; right: -2px; cursor: nesw-resize; }
+.handle-sw { bottom: -2px; left: -2px; cursor: nesw-resize; }
+.handle-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
+.handle-n { top: -2px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.handle-s { bottom: -2px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.handle-w { top: 50%; left: -2px; transform: translateY(-50%); cursor: ew-resize; }
+.handle-e { top: 50%; right: -2px; transform: translateY(-50%); cursor: ew-resize; }
 
 /* Canva Floating Pill Toolbar directly attached to selected element */
 .canva-floating-pill-bar {
