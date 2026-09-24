@@ -15,7 +15,9 @@ import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
+import java.awt.Paint;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -251,9 +253,23 @@ public class WatermarkApplicationService {
             return;
         }
 
+        int arc = Math.min(16, Math.min(width, height) / 2);
+
+        if ("gradient".equalsIgnoreCase(element.getShapeType()) || "scrim".equalsIgnoreCase(element.getShapeType())) {
+            Color baseColor = colorOrDefault(element.getFillColor(), new Color(7, 17, 42));
+            Color startColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 0);
+            Color endColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 255);
+            GradientPaint gp = new GradientPaint(x, y, startColor, x, y + height, endColor);
+            Paint oldPaint = g.getPaint();
+            g.setPaint(gp);
+            g.fillRoundRect(x, y, width, height, arc, arc);
+            g.setPaint(oldPaint);
+            return;
+        }
+
         Color fillColor = colorOrDefault(element.getFillColor(), new Color(15, 23, 42, 190));
         g.setColor(fillColor);
-        g.fillRect(x, y, width, height);
+        g.fillRoundRect(x, y, width, height, arc, arc);
 
         // Do not draw white or default outline on shapes
         String stroke = element.getStrokeColor();
@@ -261,7 +277,7 @@ public class WatermarkApplicationService {
             Color strokeColor = colorOrDefault(stroke, null);
             if (strokeColor != null) {
                 g.setColor(strokeColor);
-                g.drawRect(x, y, width, height);
+                g.drawRoundRect(x, y, width, height, arc, arc);
             }
         }
     }

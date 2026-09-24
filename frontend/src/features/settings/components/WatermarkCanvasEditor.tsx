@@ -58,6 +58,8 @@ export default function WatermarkCanvasEditor({
   const [showInfo, setShowInfo] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const justDraggedRef = useRef(false);
@@ -154,16 +156,17 @@ export default function WatermarkCanvasEditor({
     } else {
       // Shape
       const isLine = initialVariant === "line";
+      const isGradient = initialVariant === "gradient";
       newElement = {
         id,
         type: "shape",
-        shapeType: isLine ? "line" : "rectangle",
+        shapeType: isLine ? "line" : isGradient ? "gradient" : "rectangle",
         xPercent: 0,
-        yPercent: 86,
+        yPercent: isLine ? 86 : isGradient ? 70 : 86,
         widthPercent: 100,
-        heightPercent: isLine ? 2 : 14,
-        opacity: 0.5,
-        fillColor: "rgba(15, 23, 42, 0.75)",
+        heightPercent: isLine ? 2 : isGradient ? 28 : 14,
+        opacity: isGradient ? 0.85 : 0.5,
+        fillColor: isGradient ? "#07112a" : "rgba(15, 23, 42, 0.75)",
         strokeColor: "transparent",
       };
     }
@@ -187,27 +190,59 @@ export default function WatermarkCanvasEditor({
     setSelectedId(null);
   }
 
-  function alignElement(alignment: "bottom-right" | "bottom-left" | "top-right" | "top-left" | "bottom-bar" | "top-bar" | "center") {
+  function alignElement(alignment: "bottom-right" | "bottom-left" | "top-right" | "top-left" | "bottom-center" | "top-center" | "bottom-bar" | "top-bar" | "center") {
     if (!selectedElement || disabled) return;
+
+    let targetW = selectedElement.widthPercent;
+    let targetH = selectedElement.heightPercent;
+
+    // If an image or logo is currently stretched (>=75%) and user chooses a corner or center:
+    // restore it to standard logo size (18% x 18%) so it fits properly.
+    if (selectedElement.type === "image" && targetW >= 75 && targetH >= 75) {
+      targetW = 18;
+      targetH = 18;
+    }
 
     if (alignment === "bottom-right") {
       updateSelected({
-        xPercent: Math.max(0, 100 - selectedElement.widthPercent - 3),
-        yPercent: Math.max(0, 100 - selectedElement.heightPercent - 3),
+        widthPercent: targetW,
+        heightPercent: targetH,
+        xPercent: Math.max(0, 100 - targetW - 3),
+        yPercent: Math.max(0, 100 - targetH - 3),
       });
     } else if (alignment === "bottom-left") {
       updateSelected({
+        widthPercent: targetW,
+        heightPercent: targetH,
         xPercent: 3,
-        yPercent: Math.max(0, 100 - selectedElement.heightPercent - 3),
+        yPercent: Math.max(0, 100 - targetH - 3),
       });
     } else if (alignment === "top-right") {
       updateSelected({
-        xPercent: Math.max(0, 100 - selectedElement.widthPercent - 3),
+        widthPercent: targetW,
+        heightPercent: targetH,
+        xPercent: Math.max(0, 100 - targetW - 3),
         yPercent: 3,
       });
     } else if (alignment === "top-left") {
       updateSelected({
+        widthPercent: targetW,
+        heightPercent: targetH,
         xPercent: 3,
+        yPercent: 3,
+      });
+    } else if (alignment === "bottom-center") {
+      updateSelected({
+        widthPercent: targetW,
+        heightPercent: targetH,
+        xPercent: Math.max(0, Math.round(((100 - targetW) / 2) * 10) / 10),
+        yPercent: Math.max(0, 100 - targetH - 3),
+      });
+    } else if (alignment === "top-center") {
+      updateSelected({
+        widthPercent: targetW,
+        heightPercent: targetH,
+        xPercent: Math.max(0, Math.round(((100 - targetW) / 2) * 10) / 10),
         yPercent: 3,
       });
     } else if (alignment === "bottom-bar") {
@@ -224,11 +259,29 @@ export default function WatermarkCanvasEditor({
       });
     } else if (alignment === "center") {
       updateSelected({
-        xPercent: Math.max(0, (100 - selectedElement.widthPercent) / 2),
-        yPercent: Math.max(0, (100 - selectedElement.heightPercent) / 2),
+        widthPercent: targetW,
+        heightPercent: targetH,
+        xPercent: Math.max(0, Math.round(((100 - targetW) / 2) * 10) / 10),
+        yPercent: Math.max(0, Math.round(((100 - targetH) / 2) * 10) / 10),
       });
     }
     setShowAlignMenu(false);
+  }
+
+  function setElementSize(widthPercent: number, heightPercent?: number) {
+    if (!selectedElement || disabled) return;
+    const currentW = selectedElement.widthPercent || 18;
+    const currentH = selectedElement.heightPercent || 18;
+    const aspect = currentW > 0 ? currentH / currentW : 1;
+    const targetH = heightPercent !== undefined ? heightPercent : Math.min(100, Math.round(widthPercent * aspect * 10) / 10);
+    const clampedX = Math.max(0, Math.min(selectedElement.xPercent, 100 - widthPercent));
+    const clampedY = Math.max(0, Math.min(selectedElement.yPercent, 100 - targetH));
+    updateSelected({
+      widthPercent: Math.round(widthPercent * 10) / 10,
+      heightPercent: Math.round(targetH * 10) / 10,
+      xPercent: Math.round(clampedX * 10) / 10,
+      yPercent: Math.round(clampedY * 10) / 10,
+    });
   }
 
   function moveLayer(id: string, direction: "up" | "down" | "top" | "bottom") {
@@ -244,14 +297,30 @@ export default function WatermarkCanvasEditor({
       const temp = newElements[index];
       newElements[index] = newElements[index - 1];
       newElements[index - 1] = temp;
-    } else if (direction === "top") {
+    } else if (direction === "top" && index < newElements.length - 1) {
       const [item] = newElements.splice(index, 1);
       newElements.push(item);
-    } else if (direction === "bottom") {
+    } else if (direction === "bottom" && index > 0) {
       const [item] = newElements.splice(index, 1);
       newElements.unshift(item);
     }
     onChange(newElements);
+  }
+
+  function handleReorderLayers(draggedId: string, targetId: string) {
+    if (draggedId === targetId || disabled) return;
+    const uiList = [...elements].reverse();
+    const fromIndex = uiList.findIndex((item) => item.id === draggedId);
+    const toIndex = uiList.findIndex((item) => item.id === targetId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const newUiList = [...uiList];
+    const [movedItem] = newUiList.splice(fromIndex, 1);
+    newUiList.splice(toIndex, 0, movedItem);
+
+    const newElements = [...newUiList].reverse();
+    onChange(newElements);
+    setSelectedId(draggedId);
   }
 
   // Pointer Drag & Resize Handling
@@ -427,7 +496,9 @@ export default function WatermarkCanvasEditor({
     if (el.type === "text") {
       return el.text || "Text / Handle";
     }
-    return el.shapeType === "line" ? "Divider Line" : "Background Ribbon";
+    if (el.shapeType === "line") return "Divider Line";
+    if (el.shapeType === "gradient") return "Gradient Scrim";
+    return "Background Ribbon";
   }
 
   // Floating pill positioning helpers
@@ -561,7 +632,7 @@ export default function WatermarkCanvasEditor({
               {/* Drawer Tab 1: Shapes */}
               {activeTab === "shapes" && (
                 <div className="canva-drawer-section canva-anim-fade">
-                  <p className="canva-drawer-desc">Add solid backdrop ribbons or divider lines to highlight text.</p>
+                  <p className="canva-drawer-desc">Add solid ribbons, gradient scrims, or divider lines to highlight text.</p>
                   <div className="canva-item-card-grid">
                     <button
                       type="button"
@@ -574,7 +645,23 @@ export default function WatermarkCanvasEditor({
                       </div>
                       <div className="canva-item-meta">
                         <strong>Background Ribbon</strong>
-                        <span>Bottom or top branding banner</span>
+                        <span>Bottom or top solid branding banner</span>
+                      </div>
+                      <i className="ti ti-plus canva-add-icon"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="canva-item-card"
+                      onClick={() => addElement("shape", "gradient")}
+                      disabled={elements.length >= 3 || disabled}
+                    >
+                      <div className="canva-item-preview shape-gradient-preview">
+                        <div className="mini-gradient" />
+                      </div>
+                      <div className="canva-item-meta">
+                        <strong>Gradient Scrim</strong>
+                        <span>Smooth bottom photo fade</span>
                       </div>
                       <i className="ti ti-plus canva-add-icon"></i>
                     </button>
@@ -713,6 +800,9 @@ export default function WatermarkCanvasEditor({
               {/* Drawer Tab 4: Layers */}
               {activeTab === "layers" && (
                 <div className="canva-drawer-section canva-anim-fade">
+                  <p className="canva-drawer-desc">
+                    Drag and drop cards to reorder stack, toggle visibility, or select covered elements.
+                  </p>
                   {elements.length === 0 ? (
                     <div className="canva-empty-layers">
                       <i className="ti ti-layers-subtract"></i>
@@ -720,72 +810,116 @@ export default function WatermarkCanvasEditor({
                     </div>
                   ) : (
                     <div className="canva-layers-stack">
-                      {elements.map((el, index) => {
-                        const isSelected = el.id === selectedId;
-                        const isHidden = el.opacity === 0;
+                      {[...elements]
+                        .map((el, originalIndex) => ({ el, originalIndex }))
+                        .reverse()
+                        .map(({ el, originalIndex }) => {
+                          const isSelected = el.id === selectedId;
+                          const isHidden = el.opacity === 0;
+                          const isTop = originalIndex === elements.length - 1;
+                          const isBottom = originalIndex === 0;
 
-                        return (
-                          <div
-                            key={el.id}
-                            className={`canva-layer-row ${isSelected ? "is-selected" : ""}`}
-                            onClick={() => setSelectedId(el.id)}
-                          >
-                            <div className="canva-layer-info">
-                              <i
-                                className={`ti ${
-                                  el.type === "image"
-                                    ? "ti-photo"
-                                    : el.type === "text"
-                                      ? "ti-typography"
-                                      : "ti-rectangle"
-                                }`}
-                              />
-                              <span className="canva-layer-title">{getElementLabel(el)}</span>
-                            </div>
+                          return (
+                            <div
+                              key={el.id}
+                              className={`canva-layer-row ${isSelected ? "is-selected" : ""} ${draggedLayerId === el.id ? "is-dragging" : ""} ${dragOverLayerId === el.id && draggedLayerId !== el.id ? "is-drag-over" : ""}`}
+                              onClick={() => setSelectedId(el.id)}
+                              draggable={!disabled}
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/plain", el.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                setDraggedLayerId(el.id);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                if (dragOverLayerId !== el.id) {
+                                  setDragOverLayerId(el.id);
+                                }
+                              }}
+                              onDragLeave={() => {
+                                setDragOverLayerId(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const sourceId = e.dataTransfer.getData("text/plain") || draggedLayerId;
+                                if (sourceId) {
+                                  handleReorderLayers(sourceId, el.id);
+                                }
+                                setDraggedLayerId(null);
+                                setDragOverLayerId(null);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedLayerId(null);
+                                setDragOverLayerId(null);
+                              }}
+                              title="Drag to reorder or click to select"
+                            >
+                              <div className="canva-layer-info">
+                                <i className="ti ti-grip-vertical canva-layer-grip" title="Drag to reorder" />
+                                <span className={`canva-layer-badge ${isTop ? "is-top" : isBottom ? "is-bottom" : ""}`}>
+                                  {isTop ? "Front" : isBottom ? "Back" : "Middle"}
+                                </span>
+                                <i
+                                  className={`ti ${
+                                    el.type === "image"
+                                      ? "ti-photo"
+                                      : el.type === "text"
+                                        ? "ti-typography"
+                                        : "ti-rectangle"
+                                  }`}
+                                />
+                                <span className="canva-layer-title">{getElementLabel(el)}</span>
+                              </div>
 
-                            <div className="canva-layer-actions" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                className="canva-layer-icon-btn"
-                                onClick={() => moveLayer(el.id, "up")}
-                                disabled={index === elements.length - 1 || disabled}
-                                title="Bring Forward"
+                              <div
+                                className="canva-layer-actions"
+                                onClick={(e) => e.stopPropagation()}
+                                onDragStart={(e) => e.stopPropagation()}
+                                draggable={false}
                               >
-                                <i className="ti ti-arrow-up" />
-                              </button>
-                              <button
-                                type="button"
-                                className="canva-layer-icon-btn"
-                                onClick={() => moveLayer(el.id, "down")}
-                                disabled={index === 0 || disabled}
-                                title="Send Backward"
-                              >
-                                <i className="ti ti-arrow-down" />
-                              </button>
-                              <button
-                                type="button"
-                                className={`canva-layer-icon-btn ${isHidden ? "is-hidden" : ""}`}
-                                onClick={() => toggleElementVisibility(el.id)}
-                                title={isHidden ? "Show element" : "Hide element"}
-                              >
-                                <i className={`ti ${isHidden ? "ti-eye-off" : "ti-eye"}`} />
-                              </button>
-                              <button
-                                type="button"
-                                className="canva-layer-icon-btn is-danger"
-                                onClick={() => {
-                                  onChange(elements.filter((item) => item.id !== el.id));
-                                  if (selectedId === el.id) setSelectedId(null);
-                                }}
-                                title="Delete layer"
-                                disabled={disabled}
-                              >
-                                <i className="ti ti-trash" />
-                              </button>
+                                <button
+                                  type="button"
+                                  className="canva-layer-icon-btn"
+                                  onClick={() => moveLayer(el.id, "up")}
+                                  disabled={isTop || disabled}
+                                  title="Bring Forward (Higher in Stack)"
+                                >
+                                  <i className="ti ti-arrow-up" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="canva-layer-icon-btn"
+                                  onClick={() => moveLayer(el.id, "down")}
+                                  disabled={isBottom || disabled}
+                                  title="Send Backward (Lower in Stack)"
+                                >
+                                  <i className="ti ti-arrow-down" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`canva-layer-icon-btn ${isHidden ? "is-hidden" : ""}`}
+                                  onClick={() => toggleElementVisibility(el.id)}
+                                  title={isHidden ? "Show element" : "Hide element"}
+                                >
+                                  <i className={`ti ${isHidden ? "ti-eye-off" : "ti-eye"}`} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="canva-layer-icon-btn is-danger"
+                                  onClick={() => {
+                                    onChange(elements.filter((item) => item.id !== el.id));
+                                    if (selectedId === el.id) setSelectedId(null);
+                                  }}
+                                  title="Delete layer"
+                                  disabled={disabled}
+                                >
+                                  <i className="ti ti-trash" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
                     </div>
                   )}
                 </div>
@@ -989,11 +1123,17 @@ export default function WatermarkCanvasEditor({
                     <button type="button" onClick={() => alignElement("bottom-right")}>
                       <i className="ti ti-layout-align-right" /> Bottom-Right
                     </button>
+                    <button type="button" onClick={() => alignElement("bottom-center")}>
+                      <i className="ti ti-layout-align-bottom" /> Bottom-Center
+                    </button>
                     <button type="button" onClick={() => alignElement("bottom-left")}>
                       <i className="ti ti-layout-align-left" /> Bottom-Left
                     </button>
                     <button type="button" onClick={() => alignElement("top-right")}>
                       <i className="ti ti-layout-align-top" /> Top-Right
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-center")}>
+                      <i className="ti ti-layout-align-top" /> Top-Center
                     </button>
                     <button type="button" onClick={() => alignElement("top-left")}>
                       <i className="ti ti-layout-align-top" /> Top-Left
@@ -1002,22 +1142,62 @@ export default function WatermarkCanvasEditor({
                       <i className="ti ti-layout-align-middle" /> Center
                     </button>
                     <div className="canva-dropdown-divider" />
-                    <div className="canva-dropdown-title">Layer Stacking</div>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "up")}>
+                    <div className="canva-dropdown-title">
+                      Layer Stacking ({elements.findIndex((el) => el.id === selectedElement.id) + 1} of {elements.length})
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "up")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-arrow-up" /> Bring Forward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "down")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "down")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-arrow-down" /> Send Backward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "top")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "top")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-stack-2" /> Bring to Front
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "bottom")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "bottom")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-stack" /> Send to Back
+                    </button>
+                    <div className="canva-dropdown-divider" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("layers");
+                        setShowAlignMenu(false);
+                      }}
+                    >
+                      <i className="ti ti-layers-intersect" /> Open Layers Panel
                     </button>
                   </div>
                 )}
               </div>
+
+              {/* Direct Layers Toggle Button */}
+              <button
+                type="button"
+                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
+                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                title="Manage Layers"
+                disabled={disabled}
+              >
+                <i className="ti ti-layers-intersect" />
+                <span>Layers</span>
+              </button>
 
               {/* Delete Button */}
               <button
@@ -1039,11 +1219,27 @@ export default function WatermarkCanvasEditor({
               <div className="canva-pill-segment">
                 <button
                   type="button"
-                  className={`canva-segment-item ${selectedElement.shapeType !== "line" ? "is-active" : ""}`}
+                  className={`canva-segment-item ${selectedElement.shapeType === "rectangle" || (!selectedElement.shapeType && selectedElement.shapeType !== "line" && selectedElement.shapeType !== "gradient") ? "is-active" : ""}`}
                   onClick={() => updateSelected({ shapeType: "rectangle" })}
                   disabled={disabled}
                 >
                   Ribbon
+                </button>
+                <button
+                  type="button"
+                  className={`canva-segment-item ${selectedElement.shapeType === "gradient" ? "is-active" : ""}`}
+                  onClick={() => {
+                    updateSelected({
+                      shapeType: "gradient",
+                      ...(selectedElement.heightPercent && selectedElement.heightPercent < 20 ? {
+                        heightPercent: 28,
+                        yPercent: Math.max(0, 100 - 28),
+                      } : {}),
+                    });
+                  }}
+                  disabled={disabled}
+                >
+                  Gradient Scrim
                 </button>
                 <button
                   type="button"
@@ -1070,7 +1266,7 @@ export default function WatermarkCanvasEditor({
                       backgroundColor:
                         selectedElement.shapeType === "line"
                           ? selectedElement.strokeColor || "#FFFFFF"
-                          : selectedElement.fillColor || "rgba(15, 23, 42, 0.75)",
+                          : selectedElement.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "rgba(15, 23, 42, 0.75)"),
                     }}
                   />
                   <span>Color</span>
@@ -1080,14 +1276,18 @@ export default function WatermarkCanvasEditor({
                 {showColorPicker && (
                   <div className="canva-floating-menu canva-color-dropdown">
                     <div className="canva-dropdown-title">
-                      {selectedElement.shapeType === "line" ? "Line Color" : "Fill Color"}
+                      {selectedElement.shapeType === "line"
+                        ? "Line Color"
+                        : selectedElement.shapeType === "gradient"
+                          ? "Gradient Color"
+                          : "Fill Color"}
                     </div>
                     <div className="canva-color-grid">
                       {COLOR_PRESETS.map((color) => {
                         const activeColor =
                           selectedElement.shapeType === "line"
                             ? selectedElement.strokeColor || "#FFFFFF"
-                            : selectedElement.fillColor || "rgba(15, 23, 42, 0.75)";
+                            : selectedElement.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "rgba(15, 23, 42, 0.75)");
                         return (
                           <button
                             key={color}
@@ -1112,13 +1312,13 @@ export default function WatermarkCanvasEditor({
 
               {/* Height / Thickness Stepper with Slider */}
               {selectedElement.shapeType !== "line" ? (
-                <div className="canva-stepper-pill" title="Ribbon Height (% of canvas)">
+                <div className="canva-stepper-pill" title="Ribbon / Scrim Height (% of canvas)">
                   <span className="canva-stepper-label">Height:</span>
                   <span className="canva-stepper-val">{Math.round((selectedElement.heightPercent || 14) * 10) / 10}%</span>
                   <input
                     type="range"
                     min={3}
-                    max={45}
+                    max={60}
                     step={0.5}
                     className="canva-mini-slider"
                     value={selectedElement.heightPercent || 14}
@@ -1196,22 +1396,62 @@ export default function WatermarkCanvasEditor({
                       <i className="ti ti-layout-align-middle" /> Centered Bar
                     </button>
                     <div className="canva-dropdown-divider" />
-                    <div className="canva-dropdown-title">Layer Stacking</div>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "up")}>
+                    <div className="canva-dropdown-title">
+                      Layer Stacking ({elements.findIndex((el) => el.id === selectedElement.id) + 1} of {elements.length})
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "up")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-arrow-up" /> Bring Forward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "down")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "down")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-arrow-down" /> Send Backward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "top")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "top")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-stack-2" /> Bring to Front
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "bottom")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "bottom")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-stack" /> Send to Back
+                    </button>
+                    <div className="canva-dropdown-divider" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("layers");
+                        setShowAlignMenu(false);
+                      }}
+                    >
+                      <i className="ti ti-layers-intersect" /> Open Layers Panel
                     </button>
                   </div>
                 )}
               </div>
+
+              {/* Direct Layers Toggle Button */}
+              <button
+                type="button"
+                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
+                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                title="Manage Layers"
+                disabled={disabled}
+              >
+                <i className="ti ti-layers-intersect" />
+                <span>Layers</span>
+              </button>
 
               {/* Delete Button */}
               <button
@@ -1268,6 +1508,37 @@ export default function WatermarkCanvasEditor({
                 <span>DASIG Logo</span>
               </button>
 
+              {/* Image Size Stepper with Slider */}
+              <div className="canva-stepper-pill" title="Logo / Image Size (% of canvas)">
+                <span className="canva-stepper-label">Size:</span>
+                <span className="canva-stepper-val">{Math.round((selectedElement.widthPercent || 18) * 10) / 10}%</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={100}
+                  step={1}
+                  className="canva-mini-slider"
+                  value={selectedElement.widthPercent || 18}
+                  onChange={(e) => setElementSize(parseFloat(e.target.value))}
+                  disabled={disabled}
+                />
+              </div>
+
+              {/* Reset Size Button if stretched */}
+              <button
+                type="button"
+                className="canva-tool-btn"
+                onClick={() => {
+                  setElementSize(18, 18);
+                  alignElement("bottom-right");
+                }}
+                title="Reset to default logo size (18%) and position"
+                disabled={disabled}
+              >
+                <i className="ti ti-rotate-clockwise" />
+                <span>Reset Size</span>
+              </button>
+
               {/* Opacity Stepper */}
               <div className="canva-stepper-pill" title="Transparency / Opacity">
                 <i className="ti ti-blur" />
@@ -1303,32 +1574,101 @@ export default function WatermarkCanvasEditor({
                     <button type="button" onClick={() => alignElement("bottom-right")}>
                       <i className="ti ti-layout-align-right" /> Bottom-Right
                     </button>
+                    <button type="button" onClick={() => alignElement("bottom-center")}>
+                      <i className="ti ti-layout-align-bottom" /> Bottom-Center
+                    </button>
                     <button type="button" onClick={() => alignElement("bottom-left")}>
                       <i className="ti ti-layout-align-left" /> Bottom-Left
                     </button>
                     <button type="button" onClick={() => alignElement("top-right")}>
                       <i className="ti ti-layout-align-top" /> Top-Right
                     </button>
+                    <button type="button" onClick={() => alignElement("top-center")}>
+                      <i className="ti ti-layout-align-top" /> Top-Center
+                    </button>
                     <button type="button" onClick={() => alignElement("top-left")}>
                       <i className="ti ti-layout-align-top" /> Top-Left
                     </button>
+                    <button type="button" onClick={() => alignElement("center")}>
+                      <i className="ti ti-layout-align-middle" /> Center
+                    </button>
                     <div className="canva-dropdown-divider" />
-                    <div className="canva-dropdown-title">Layer Stacking</div>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "up")}>
+                    <div className="canva-dropdown-title">Size Presets</div>
+                    <button type="button" onClick={() => setElementSize(18, 18)}>
+                      <i className="ti ti-badge" /> Standard Logo (18%)
+                    </button>
+                    <button type="button" onClick={() => setElementSize(35, 35)}>
+                      <i className="ti ti-aspect-ratio" /> Medium (35%)
+                    </button>
+                    <button type="button" onClick={() => setElementSize(60, 60)}>
+                      <i className="ti ti-maximize" /> Large (60%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateSelected({ widthPercent: 100, heightPercent: 100, xPercent: 0, yPercent: 0 });
+                        setShowAlignMenu(false);
+                      }}
+                    >
+                      <i className="ti ti-arrows-maximize" /> Full Canvas (100%)
+                    </button>
+                    <div className="canva-dropdown-divider" />
+                    <div className="canva-dropdown-title">
+                      Layer Stacking ({elements.findIndex((el) => el.id === selectedElement.id) + 1} of {elements.length})
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "up")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-arrow-up" /> Bring Forward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "down")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "down")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-arrow-down" /> Send Backward
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "top")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "top")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === elements.length - 1}
+                    >
                       <i className="ti ti-stack-2" /> Bring to Front
                     </button>
-                    <button type="button" onClick={() => moveLayer(selectedElement.id, "bottom")}>
+                    <button
+                      type="button"
+                      onClick={() => moveLayer(selectedElement.id, "bottom")}
+                      disabled={elements.findIndex((el) => el.id === selectedElement.id) === 0}
+                    >
                       <i className="ti ti-stack" /> Send to Back
+                    </button>
+                    <div className="canva-dropdown-divider" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("layers");
+                        setShowAlignMenu(false);
+                      }}
+                    >
+                      <i className="ti ti-layers-intersect" /> Open Layers Panel
                     </button>
                   </div>
                 )}
               </div>
+
+              {/* Direct Layers Toggle Button */}
+              <button
+                type="button"
+                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
+                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                title="Manage Layers"
+                disabled={disabled}
+              >
+                <i className="ti ti-layers-intersect" />
+                <span>Layers</span>
+              </button>
 
               {/* Delete Button */}
               <button
@@ -1401,7 +1741,7 @@ export default function WatermarkCanvasEditor({
                     top: `${el.yPercent}%`,
                     width: `${el.widthPercent}%`,
                     height: `${el.heightPercent}%`,
-                    zIndex: isSelected ? 45 : 10 + index * 5,
+                    zIndex: 10 + index * 5 + (isSelected ? 2 : 0),
                   }}
                   onPointerDown={(event) => handlePointerDown(event, el.id)}
                   onClick={(event) => {
@@ -1499,11 +1839,17 @@ export default function WatermarkCanvasEditor({
 
                   {el.type === "shape" && (
                     <div
-                      className={`wm-element-content wm-shape-content ${el.shapeType === "line" ? "is-line" : "is-rect"}`}
+                      className={`wm-element-content wm-shape-content ${el.shapeType === "line" ? "is-line" : el.shapeType === "gradient" ? "is-gradient" : "is-rect"}`}
                       style={{
                         opacity: el.opacity,
-                        backgroundColor: el.shapeType === "line" ? "transparent" : el.fillColor || "rgba(0,0,0,0.5)",
+                        background:
+                          el.shapeType === "line"
+                            ? "transparent"
+                            : el.shapeType === "gradient"
+                              ? `linear-gradient(to bottom, transparent 0%, ${el.fillColor || "#07112a"} 100%)`
+                              : el.fillColor || "rgba(0,0,0,0.5)",
                         borderTop: el.shapeType === "line" ? `3px solid ${el.strokeColor || "#FFFFFF"}` : "none",
+                        borderRadius: el.shapeType === "line" ? "0" : "8px",
                       }}
                     />
                   )}
@@ -1531,6 +1877,18 @@ export default function WatermarkCanvasEditor({
                           title="Snap to Bottom Position"
                         >
                           <i className="ti ti-layout-align-bottom" />
+                        </button>
+                        <button
+                          type="button"
+                          className="canva-pill-action-btn"
+                          onClick={() => {
+                            const idx = elements.findIndex((item) => item.id === el.id);
+                            if (idx < elements.length - 1) moveLayer(el.id, "up");
+                            else moveLayer(el.id, "bottom");
+                          }}
+                          title="Cycle Layer Order (Forward / Backward)"
+                        >
+                          <i className="ti ti-stack-2" />
                         </button>
                         <button
                           type="button"
