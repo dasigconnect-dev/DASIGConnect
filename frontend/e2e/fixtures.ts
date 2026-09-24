@@ -28,7 +28,7 @@ export function userFor(role: AppRole, suffix = role) {
   };
 }
 
-function profileFor(role: AppRole, suffix = role) {
+export function profileFor(role: AppRole, suffix = role) {
   const user = userFor(role, suffix);
   return {
     id: user.id, email: user.email, firstName: "Test", lastName: role, displayName: user.name,
@@ -36,6 +36,9 @@ function profileFor(role: AppRole, suffix = role) {
     institutionId: user.institutionId, institutionName: user.institutionId ? institution.name : null,
     createdAt: "2026-09-01T00:00:00Z", notifyInApp: true, notifyEmail: false,
     hasAvatar: false, avatarUpdatedAt: null,
+    // Onboarding guides auto-start ~0.6s after a screen loads and cover it,
+    // racing the test's clicks. Tests that want a guide can override /me.
+    toursEnabled: false,
   };
 }
 

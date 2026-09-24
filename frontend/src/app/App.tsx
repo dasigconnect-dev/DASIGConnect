@@ -175,7 +175,7 @@ function App() {
                     />
                   </>
                 ) : (
-                  <Navigate to="/login" replace />
+                  <Navigate to={auth.signedOutRedirect} replace />
                 )
               }
             >

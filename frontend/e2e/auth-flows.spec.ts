@@ -188,4 +188,10 @@ test.describe("auth flows", () => {
     await expect.poll(() => api.count("POST", "/api/v1/auth/logout")).toBe(1);
     expect(await page.evaluate(() => localStorage.getItem("dasigconnect_token"))).toBeNull();
   });
+
+  test("a signed-out visit to a signed-in page goes to the login page", async ({ page }) => {
+    await mockApi(page, "contributor");
+    await page.goto("/calendar");
+    await expect(page).toHaveURL(/\/login$/);
+  });
 });

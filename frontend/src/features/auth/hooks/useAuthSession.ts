@@ -48,6 +48,11 @@ export function useAuthSession() {
   const [authReady, setAuthReady] = useState(() => !hasSavedSession());
   const [showDropdown, setShowDropdown] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  // Where a signed-out visit to a signed-in page goes: /login normally, but "/"
+  // right after signing out. navigate() is a low-priority transition (and the
+  // landing page is lazy), so clearing the user would otherwise let the still-
+  // mounted layout's /login redirect win. Cleared once "/" is reached.
+  const [afterSignOutPath, setAfterSignOutPath] = useState<string | null>(null);
   const profileRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const profileRequestIdRef = useRef(0);
   // Bumped by every sign-in/out, so a slower, superseded flow can't apply its result.
@@ -262,6 +267,11 @@ export function useAuthSession() {
     return () => window.removeEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
   }, [currentUser, loginEmail, showSessionModal, stopSessionCountdown]);
 
+  useEffect(() => {
+    if (!afterSignOutPath || location.pathname !== afterSignOutPath) return;
+    queueMicrotask(() => setAfterSignOutPath(null));
+  }, [afterSignOutPath, location.pathname]);
+
   function resetLoginState() {
     setLoginPassword("");
     setLoginError("");
@@ -420,9 +430,10 @@ export function useAuthSession() {
         await logoutRequest();
       } catch {
         // Server revocation is best-effort; the request has a short deadline.
-      } finally {
-        await clearLocalAuthentication();
       }
+      setAfterSignOutPath("/");
+      navigate("/");
+      await clearLocalAuthentication();
       setShowDropdown(false);
       setShowSessionModal(false);
       stopLoginSplash();
@@ -431,7 +442,6 @@ export function useAuthSession() {
       setLoginLoading(false);
       setModalLoginLoading(false);
       invite.setLoading(false);
-      navigate("/");
       toast.info("You have been signed out.");
     } finally {
       setLogoutLoading(false);
@@ -447,6 +457,8 @@ export function useAuthSession() {
   return {
     currentUser,
     authReady,
+    /** Where a signed-out visit to a signed-in page should redirect. */
+    signedOutRedirect: afterSignOutPath ?? "/login",
     refreshCurrentUserProfile,
     splash: { user: splashUser, visible: showSplash },
     login: {
