@@ -16,8 +16,11 @@ public class MediaProcessingJob {
     @Id
     private UUID id;
 
-    @Column(name = "asset_id", nullable = false)
+    @Column(name = "asset_id")
     private UUID assetId;
+
+    @Column(name = "submission_id")
+    private UUID submissionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "job_type", nullable = false, length = 40)
@@ -59,6 +62,7 @@ public class MediaProcessingJob {
 
     public UUID getId() { return id; }
     public UUID getAssetId() { return assetId; }
+    public UUID getSubmissionId() { return submissionId; }
     public MediaProcessingJobType getJobType() { return jobType; }
     public String getProcessingVersion() { return processingVersion; }
     public MediaProcessingJobStatus getStatus() { return status; }

@@ -9,10 +9,13 @@ import static org.mockito.Mockito.when;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.MediaProcessingJob;
+import com.dasigconnect.backend.model.entity.MediaProcessingJobType;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
+import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,10 +27,12 @@ class MediaProcessingWorkerTest {
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
     private final AIClassificationService classification = mock(AIClassificationService.class);
     private final ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
+    private final SubmissionMediaContextService context = mock(SubmissionMediaContextService.class);
+    private final SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
 
     private MediaProcessingWorker worker(boolean configured) {
         return new MediaProcessingWorker(
-                queue, assets, classification, health, 2,
+                queue, assets, classification, health, context, submissionMedia, 2,
                 configured ? "anthropic" : "", configured ? "voyage" : "");
     }
 
@@ -41,7 +46,8 @@ class MediaProcessingWorkerTest {
         asset.setId(assetId);
         asset.setFileType(MediaFileType.jpeg);
         asset.setStorageUrl("https://example.com/image.jpg");
-        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2))).thenReturn(List.of(job));
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(classification.processAsset(assetId, asset.getStorageUrl())).thenReturn(true);
 
@@ -49,7 +55,8 @@ class MediaProcessingWorkerTest {
 
         verify(assets).markProcessingReady(assetId, "media-ai-v1");
         verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
-        verify(queue, never()).fail(org.mockito.ArgumentMatchers.eq(job), anyString(), org.mockito.ArgumentMatchers.any());
+        verify(queue, never()).fail(org.mockito.ArgumentMatchers.eq(job), anyString(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -61,20 +68,39 @@ class MediaProcessingWorkerTest {
         asset.setId(assetId);
         asset.setFileType(MediaFileType.jpeg);
         asset.setStorageUrl("https://example.com/image.jpg");
-        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2))).thenReturn(List.of(job));
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(classification.processAsset(assetId, asset.getStorageUrl())).thenReturn(false);
 
         worker(true).processBatch();
 
-        verify(queue).fail(org.mockito.ArgumentMatchers.eq(job), anyString(), org.mockito.ArgumentMatchers.any());
+        verify(queue).fail(org.mockito.ArgumentMatchers.eq(job), anyString(),
+                org.mockito.ArgumentMatchers.any());
         verify(queue, never()).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
     }
 
     @Test
-    void processBatch_withoutProviderConfigurationDoesNotClaim() {
+    void processBatch_withoutProviderConfigurationClaimsOnlyContextJobs() {
         worker(false).processBatch();
 
-        verify(queue, never()).claimBatch(anyString(), org.mockito.ArgumentMatchers.anyInt());
+        verify(queue).claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(false));
+    }
+
+    @Test
+    void processBatch_contextJobRebuildsWithoutCallingProviders() {
+        UUID submissionId = UUID.randomUUID();
+        MediaProcessingJob job = mock(MediaProcessingJob.class);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.BUILD_SUBMISSION_CONTEXT);
+        when(job.getSubmissionId()).thenReturn(submissionId);
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(false))).thenReturn(List.of(job));
+
+        worker(false).processBatch();
+
+        verify(context).rebuild(submissionId);
+        verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
+        verify(classification, never()).processAsset(org.mockito.ArgumentMatchers.any(), anyString());
     }
 }

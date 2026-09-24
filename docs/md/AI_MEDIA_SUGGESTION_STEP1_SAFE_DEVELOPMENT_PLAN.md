@@ -32,6 +32,14 @@
 - Submission detail responses expose additive ready, processing, and failed media counts, and asset responses expose the completed processing version.
 - Queue rows are not granted to Supabase `anon` or `authenticated` roles, and enqueueing remains scoped to the authenticated uploader or institution.
 - Regression coverage verifies queue idempotency, bounded claims, dead-letter behavior, worker completion and retry, staged-media promotion, and missing-stage-only processing.
+- **Phase 3 - Structured Image and Event Context:** Implemented on `feature/ai-media-phase3-structured-context`.
+- Claude Vision classification now records evidence-first scene, activity, people-count, equipment, recognition, OCR, visible-date, event-hypothesis, temporal, quality, and composition signals for each image.
+- A versioned, institution-scoped submission media context deterministically aggregates every ready attached image while reporting processing and failed counts as partial state.
+- Context rebuild jobs are triggered after attach, detach, reorder, and media-processing completion; an order-sensitive asset hash skips unchanged rebuilds.
+- Durable rerun markers prevent attachment changes from being lost when they occur while a context rebuild is already processing.
+- Database-only context jobs can run without AI provider credentials, while provider-dependent jobs remain unclaimed until credentials are configured.
+- Context generation remains internal and asynchronous, so uploads, draft saves, and established UI behavior are unchanged and never wait for context completion.
+- Regression coverage verifies multi-image aggregation, incomplete-state handling, provider-independent context processing, bounded claims, and stable context queue versioning.
 
 ## 2. Verified Current Baseline
 

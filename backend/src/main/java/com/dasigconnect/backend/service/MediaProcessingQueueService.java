@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class MediaProcessingQueueService {
 
     public static final String PROCESSING_VERSION = "media-ai-v1";
+    public static final String CONTEXT_VERSION = "submission-context-v1";
     private static final int MAX_ERROR_LENGTH = 500;
     private static final Logger log = LoggerFactory.getLogger(MediaProcessingQueueService.class);
 
@@ -51,10 +52,19 @@ public class MediaProcessingQueueService {
         });
     }
 
-    public List<MediaProcessingJob> claimBatch(String workerId, int requestedBatchSize) {
+    public void enqueueSubmissionContext(UUID submissionId) {
+        repository.enqueueSubmissionContext(submissionId, CONTEXT_VERSION, maxAttempts);
+    }
+
+    public void enqueueSubmissionContextAfterCommit(UUID submissionId) {
+        runAfterCommit(() -> enqueueSubmissionContextSafely(submissionId));
+    }
+
+    public List<MediaProcessingJob> claimBatch(
+            String workerId, int requestedBatchSize, boolean includeAiJobs) {
         Instant now = Instant.now();
         int batchSize = Math.max(1, Math.min(requestedBatchSize, 10));
-        repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize);
+        repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize, includeAiJobs);
         return repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
                 workerId, MediaProcessingJobStatus.PROCESSING);
     }
@@ -89,5 +99,26 @@ public class MediaProcessingQueueService {
         } catch (Exception error) {
             log.warn("Failed to enqueue media processing for asset {}: {}", assetId, error.getMessage());
         }
+    }
+
+    private void enqueueSubmissionContextSafely(UUID submissionId) {
+        try {
+            enqueueSubmissionContext(submissionId);
+        } catch (Exception error) {
+            log.warn("Failed to enqueue media context for submission {}: {}", submissionId, error.getMessage());
+        }
+    }
+
+    private static void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }
