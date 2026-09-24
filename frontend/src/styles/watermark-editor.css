@@ -544,8 +544,13 @@
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.18s ease;
+  user-select: none;
+}
+
+.canva-layer-row:active {
+  cursor: grabbing;
 }
 
 .canva-layer-row:hover {
@@ -557,6 +562,33 @@
   border-color: #1877f2;
   background: #eff6ff;
   box-shadow: 0 0 0 1px #1877f2;
+}
+
+.canva-layer-row.is-dragging {
+  opacity: 0.35;
+  border: 1.5px dashed #1877f2;
+  background: #f0f7ff;
+}
+
+.canva-layer-row.is-drag-over {
+  border-color: #1877f2;
+  background: #ebf5ff;
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.45);
+  transform: translateY(-1px);
+}
+
+.canva-layer-grip {
+  font-size: 14px;
+  color: #94a3b8;
+  cursor: grab;
+  margin-right: -4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+
+.canva-layer-row:hover .canva-layer-grip {
+  color: #1877f2;
 }
 
 .canva-layer-info {

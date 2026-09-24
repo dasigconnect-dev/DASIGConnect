@@ -58,6 +58,8 @@ export default function WatermarkCanvasEditor({
   const [showInfo, setShowInfo] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const justDraggedRef = useRef(false);
@@ -303,6 +305,22 @@ export default function WatermarkCanvasEditor({
       newElements.unshift(item);
     }
     onChange(newElements);
+  }
+
+  function handleReorderLayers(draggedId: string, targetId: string) {
+    if (draggedId === targetId || disabled) return;
+    const uiList = [...elements].reverse();
+    const fromIndex = uiList.findIndex((item) => item.id === draggedId);
+    const toIndex = uiList.findIndex((item) => item.id === targetId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+
+    const newUiList = [...uiList];
+    const [movedItem] = newUiList.splice(fromIndex, 1);
+    newUiList.splice(toIndex, 0, movedItem);
+
+    const newElements = [...newUiList].reverse();
+    onChange(newElements);
+    setSelectedId(draggedId);
   }
 
   // Pointer Drag & Resize Handling
@@ -783,7 +801,7 @@ export default function WatermarkCanvasEditor({
               {activeTab === "layers" && (
                 <div className="canva-drawer-section canva-anim-fade">
                   <p className="canva-drawer-desc">
-                    Reorder layer stack, toggle visibility, or select covered elements.
+                    Drag and drop cards to reorder stack, toggle visibility, or select covered elements.
                   </p>
                   {elements.length === 0 ? (
                     <div className="canva-empty-layers">
@@ -804,10 +822,41 @@ export default function WatermarkCanvasEditor({
                           return (
                             <div
                               key={el.id}
-                              className={`canva-layer-row ${isSelected ? "is-selected" : ""}`}
+                              className={`canva-layer-row ${isSelected ? "is-selected" : ""} ${draggedLayerId === el.id ? "is-dragging" : ""} ${dragOverLayerId === el.id && draggedLayerId !== el.id ? "is-drag-over" : ""}`}
                               onClick={() => setSelectedId(el.id)}
+                              draggable={!disabled}
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/plain", el.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                setDraggedLayerId(el.id);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                if (dragOverLayerId !== el.id) {
+                                  setDragOverLayerId(el.id);
+                                }
+                              }}
+                              onDragLeave={() => {
+                                setDragOverLayerId(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const sourceId = e.dataTransfer.getData("text/plain") || draggedLayerId;
+                                if (sourceId) {
+                                  handleReorderLayers(sourceId, el.id);
+                                }
+                                setDraggedLayerId(null);
+                                setDragOverLayerId(null);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedLayerId(null);
+                                setDragOverLayerId(null);
+                              }}
+                              title="Drag to reorder or click to select"
                             >
                               <div className="canva-layer-info">
+                                <i className="ti ti-grip-vertical canva-layer-grip" title="Drag to reorder" />
                                 <span className={`canva-layer-badge ${isTop ? "is-top" : isBottom ? "is-bottom" : ""}`}>
                                   {isTop ? "Front" : isBottom ? "Back" : "Middle"}
                                 </span>
@@ -823,7 +872,12 @@ export default function WatermarkCanvasEditor({
                                 <span className="canva-layer-title">{getElementLabel(el)}</span>
                               </div>
 
-                              <div className="canva-layer-actions" onClick={(e) => e.stopPropagation()}>
+                              <div
+                                className="canva-layer-actions"
+                                onClick={(e) => e.stopPropagation()}
+                                onDragStart={(e) => e.stopPropagation()}
+                                draggable={false}
+                              >
                                 <button
                                   type="button"
                                   className="canva-layer-icon-btn"
