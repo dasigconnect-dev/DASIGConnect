@@ -48,6 +48,13 @@
 - Attached assets remain excluded, while text and metadata fallback behavior remains available when text context exists.
 - `AI_MEDIA_VISUAL_SUGGESTIONS_ENABLED` provides a deployment rollback path to the established text recommendation behavior without a code rollback or UI change.
 - Regression coverage verifies all-selected-image retrieval, no text-token use for visual-only requests, pending-embedding behavior, role authorization, and feature-flag fallback.
+- **Phase 5 - Hybrid Ranking and Diversity:** Implemented on `feature/ai-media-phase5-hybrid-ranking`.
+- Hybrid ranking combines selected-media visual and semantic similarity with aggregated event context, draft metadata, freshness, visual quality, and sequence-complement signals while renormalizing unavailable inputs.
+- Deterministic `hybrid-v1` result versioning and evidence-based match reasons make ranking behavior observable without changing the existing suggestion UI.
+- Bounded maximal-marginal-relevance reranking lowers repeated or near-duplicate results while retaining the established eight-result limit.
+- `AI_MEDIA_HYBRID_RANKING_ENABLED` defaults off for rollback safety, while `AI_MEDIA_HYBRID_SHADOW_ENABLED` compares legacy and hybrid top results before activation.
+- Institution validation is applied before a stored submission context contributes to ranking; candidate retrieval and authorization remain unchanged.
+- Regression coverage verifies context, quality, and sequence ranking; near-duplicate diversification; version output; and preservation of the legacy path while the feature flag is disabled.
 
 ## 2. Verified Current Baseline
 

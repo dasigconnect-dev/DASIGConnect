@@ -3,6 +3,7 @@ package com.dasigconnect.backend.service;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -37,14 +38,18 @@ import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaContext;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
+import com.dasigconnect.backend.repository.SubmissionMediaContextRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Provides AI media recommendations for UC-3.3.
@@ -62,6 +67,9 @@ public class AIRecommendationService {
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
     private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
     private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
+    private static final String LEGACY_RANKING_VERSION = "legacy-v1";
+    private static final String HYBRID_RANKING_VERSION = "hybrid-v1";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -71,7 +79,10 @@ public class AIRecommendationService {
     private final AiInteractionLogRepository aiInteractionLogRepository;
     private final VoyageAIClient voyageAIClient;
     private final MediaAlbumRepository mediaAlbumRepository;
+    private final SubmissionMediaContextRepository submissionMediaContextRepository;
     private final boolean visualSuggestionsEnabled;
+    private final boolean hybridRankingEnabled;
+    private final boolean hybridShadowEnabled;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -81,7 +92,10 @@ public class AIRecommendationService {
             AiInteractionLogRepository aiInteractionLogRepository,
             VoyageAIClient voyageAIClient,
             MediaAlbumRepository mediaAlbumRepository,
-            @Value("${app.ai.media-suggestions.visual-enabled:true}") boolean visualSuggestionsEnabled) {
+            SubmissionMediaContextRepository submissionMediaContextRepository,
+            @Value("${app.ai.media-suggestions.visual-enabled:true}") boolean visualSuggestionsEnabled,
+            @Value("${app.ai.media-suggestions.hybrid-ranking-enabled:false}") boolean hybridRankingEnabled,
+            @Value("${app.ai.media-suggestions.hybrid-shadow-enabled:true}") boolean hybridShadowEnabled) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -90,7 +104,10 @@ public class AIRecommendationService {
         this.aiInteractionLogRepository = aiInteractionLogRepository;
         this.voyageAIClient = voyageAIClient;
         this.mediaAlbumRepository = mediaAlbumRepository;
+        this.submissionMediaContextRepository = submissionMediaContextRepository;
         this.visualSuggestionsEnabled = visualSuggestionsEnabled;
+        this.hybridRankingEnabled = hybridRankingEnabled;
+        this.hybridShadowEnabled = hybridShadowEnabled;
     }
 
     /**
@@ -170,21 +187,26 @@ public class AIRecommendationService {
                 .stream()
                 .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
+        SubmissionMediaContext mediaContext = submissionMediaContextRepository.findById(submissionId)
+                .filter(context -> institutionId.equals(context.getInstitutionId()))
+                .orElse(null);
+        List<RankedAsset> legacyRanking = rankCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores, visualScores,
+                dto, tagMap, attachedAssets, mediaContext, false);
+        List<RankedAsset> hybridRanking = hybridRankingEnabled || hybridShadowEnabled
+                ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores, visualScores,
+                        dto, tagMap, attachedAssets, mediaContext, true)
+                : List.of();
+        if (hybridShadowEnabled) {
+            logShadowComparison(submissionId, legacyRanking, hybridRanking);
+        }
 
-        List<MediaSuggestResultDto> rankedResults = candidateIds.stream()
-                .filter(id -> assetMap.containsKey(id))
-                .filter(id -> !attachedIds.contains(id))
-                .map(id -> rankAsset(
-                assetMap.get(id),
-                semanticScores.getOrDefault(id, 0.0),
-                visualScores.getOrDefault(id, 0.0),
-                dto,
-                tagMap.getOrDefault(id, List.of())
-        ))
-                .filter(result -> result.score() >= 0.40)
-                .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
+        List<RankedAsset> selectedRanking = hybridRankingEnabled ? hybridRanking : legacyRanking;
+        String rankingVersion = hybridRankingEnabled ? HYBRID_RANKING_VERSION : LEGACY_RANKING_VERSION;
+        List<MediaSuggestResultDto> rankedResults = selectedRanking.stream()
                 .limit(8)
-                .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
+                .map(result -> MediaSuggestResultDto.from(
+                        result.asset(), result.score(), result.reasons(), rankingVersion))
                 .toList();
 
         if (rankedResults.isEmpty()) {
@@ -198,6 +220,57 @@ public class AIRecommendationService {
         }
 
         return rankedResults;
+    }
+
+    private static List<RankedAsset> rankCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> semanticScores,
+            Map<UUID, Double> visualScores,
+            MediaSuggestRequestDto dto,
+            Map<UUID, List<TagSignal>> tagMap,
+            List<MediaAsset> attachedAssets,
+            SubmissionMediaContext mediaContext,
+            boolean hybrid) {
+        List<RankedAsset> ranked = candidateIds.stream()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .map(id -> hybrid
+                        ? rankAssetHybrid(
+                                assetMap.get(id),
+                                semanticScores.getOrDefault(id, 0.0),
+                                visualScores.getOrDefault(id, 0.0),
+                                dto,
+                                tagMap.getOrDefault(id, List.of()),
+                                attachedAssets,
+                                mediaContext)
+                        : rankAsset(
+                                assetMap.get(id),
+                                semanticScores.getOrDefault(id, 0.0),
+                                visualScores.getOrDefault(id, 0.0),
+                                dto,
+                                tagMap.getOrDefault(id, List.of())))
+                .filter(result -> result.score() >= 0.40)
+                .sorted(rankedAssetComparator())
+                .toList();
+        return hybrid ? diversify(ranked, 8) : ranked;
+    }
+
+    private static Comparator<RankedAsset> rankedAssetComparator() {
+        return Comparator.comparingDouble(RankedAsset::score).reversed()
+                .thenComparing(result -> result.asset().getId());
+    }
+
+    private static void logShadowComparison(
+            UUID submissionId, List<RankedAsset> legacy, List<RankedAsset> hybrid) {
+        List<UUID> legacyTop = legacy.stream().limit(8).map(result -> result.asset().getId()).toList();
+        List<UUID> hybridTop = hybrid.stream().limit(8).map(result -> result.asset().getId()).toList();
+        long overlap = hybridTop.stream().filter(legacyTop::contains).count();
+        boolean topChanged = !legacyTop.isEmpty() && !hybridTop.isEmpty()
+                && !legacyTop.getFirst().equals(hybridTop.getFirst());
+        log.info("Media ranking shadow comparison submission={} legacy={} hybrid={} overlap={} topChanged={}",
+                submissionId, legacyTop.size(), hybridTop.size(), overlap, topChanged);
     }
 
     private Map<UUID, Double> loadAttachedCandidateScores(
@@ -581,6 +654,223 @@ public class AIRecommendationService {
         return new RankedAsset(asset, Math.max(0.0, Math.min(1.0, score)), reasons);
     }
 
+    private static RankedAsset rankAssetHybrid(
+            MediaAsset asset,
+            double semanticScore,
+            double visualScore,
+            MediaSuggestRequestDto dto,
+            Collection<TagSignal> assetTags,
+            List<MediaAsset> attachedAssets,
+            SubmissionMediaContext mediaContext) {
+        Set<String> candidateTerms = structuredAssetTerms(asset, assetTags);
+        Set<String> postTerms = normalizedTerms(dto);
+        Set<String> contextTerms = new LinkedHashSet<>();
+        if (mediaContext != null && mediaContext.getReadyAssetCount() > 0) {
+            addLooseWords(contextTerms, mediaContext.getContextText());
+        }
+
+        double contextScore = overlapScore(contextTerms, candidateTerms);
+        double metadataScore = overlapScore(postTerms, candidateTerms);
+        String requestedCategory = normalize(dto.getCategory());
+        if (!requestedCategory.isBlank() && requestedCategory.equals(normalize(asset.getAiCategory()))) {
+            metadataScore = Math.max(metadataScore, 0.90);
+        }
+        double freshnessScore = freshnessScore(asset);
+        double qualityScore = qualityScore(asset);
+        double sequenceScore = sequenceComplementScore(asset, attachedAssets);
+
+        List<WeightedSignal> signals = new ArrayList<>();
+        addSignal(signals, semanticScore, 0.30, semanticScore > 0.0);
+        addSignal(signals, visualScore, 0.32, visualScore > 0.0);
+        addSignal(signals, contextScore, 0.14, !contextTerms.isEmpty());
+        addSignal(signals, metadataScore, 0.10, !postTerms.isEmpty());
+        addSignal(signals, freshnessScore, 0.04, true);
+        addSignal(signals, qualityScore, 0.05, qualityScore >= 0.0);
+        addSignal(signals, sequenceScore, 0.05, sequenceScore >= 0.0);
+
+        double totalWeight = signals.stream().mapToDouble(WeightedSignal::weight).sum();
+        double weightedScore = signals.stream()
+                .mapToDouble(signal -> signal.value() * signal.weight())
+                .sum();
+        double score = totalWeight == 0.0 ? 0.0 : weightedScore / totalWeight;
+
+        List<String> reasons = new ArrayList<>();
+        addSimilarityReason(reasons, semanticScore, "semantic", "post context");
+        addSimilarityReason(reasons, visualScore, "visual", "selected media");
+        if (contextScore >= 0.18) {
+            List<String> matches = matchingTerms(contextTerms, candidateTerms, 3);
+            reasons.add(matches.isEmpty()
+                    ? "Matches the selected media's event context."
+                    : "Matches event context: " + String.join(", ", matches) + ".");
+        }
+        if (metadataScore >= 0.25) {
+            reasons.add("Metadata aligns with the post details.");
+        }
+        if (qualityScore >= 0.70) {
+            reasons.add("Visual quality signals support publication use.");
+        }
+        if (sequenceScore >= 0.60) {
+            reasons.add("Adds a complementary scene or composition to the selected sequence.");
+        }
+        if (reasons.isEmpty()) {
+            reasons.add("Ranked from available visual and media context signals.");
+        }
+
+        return new RankedAsset(asset, clamp(score), List.copyOf(reasons));
+    }
+
+    private static void addSignal(
+            List<WeightedSignal> signals, double value, double weight, boolean available) {
+        if (available) {
+            signals.add(new WeightedSignal(clamp(value), weight));
+        }
+    }
+
+    private static void addSimilarityReason(
+            List<String> reasons, double score, String signalName, String target) {
+        if (score >= 0.75) {
+            reasons.add("Strong " + signalName + " similarity to the " + target + ".");
+        } else if (score >= 0.55) {
+            reasons.add("Good " + signalName + " similarity to the " + target + ".");
+        } else if (score >= 0.40) {
+            reasons.add("Some " + signalName + " overlap with the " + target + ".");
+        }
+    }
+
+    private static double freshnessScore(MediaAsset asset) {
+        if (asset.getCreatedAt() == null) return 0.50;
+        long ageDays = Math.max(0, Duration.between(asset.getCreatedAt(), Instant.now()).toDays());
+        if (ageDays <= 30) return 1.0;
+        if (ageDays <= 90) return 0.75;
+        if (ageDays <= 365) return 0.45;
+        return 0.20;
+    }
+
+    private static double qualityScore(MediaAsset asset) {
+        String[] qualitySignals = asset.getVisualQualitySignals();
+        if (qualitySignals == null || qualitySignals.length == 0) return -1.0;
+        int positive = 0;
+        int negative = 0;
+        for (String raw : qualitySignals) {
+            String signal = normalize(raw);
+            if (containsAny(signal, "sharp", "clear", "well lit", "balanced", "good contrast", "focused")) {
+                positive++;
+            }
+            if (containsAny(signal, "blurry", "blur", "dark", "overexposed", "underexposed",
+                    "low quality", "obstructed")) {
+                negative++;
+            }
+        }
+        return clamp(0.60 + (positive * 0.15) - (negative * 0.20));
+    }
+
+    private static boolean containsAny(String value, String... fragments) {
+        return Arrays.stream(fragments).anyMatch(value::contains);
+    }
+
+    private static double sequenceComplementScore(MediaAsset candidate, List<MediaAsset> attachedAssets) {
+        if (attachedAssets == null || attachedAssets.isEmpty()) return -1.0;
+        Set<String> candidateVisualTerms = visualTerms(candidate);
+        if (candidateVisualTerms.isEmpty()) return -1.0;
+        Set<String> selectedTerms = new LinkedHashSet<>();
+        attachedAssets.forEach(asset -> selectedTerms.addAll(visualTerms(asset)));
+        long novelTerms = candidateVisualTerms.stream().filter(term -> !selectedTerms.contains(term)).count();
+        double novelty = (double) novelTerms / candidateVisualTerms.size();
+        return clamp(0.30 + (0.70 * novelty));
+    }
+
+    private static Set<String> structuredAssetTerms(MediaAsset asset, Collection<TagSignal> tags) {
+        Set<String> terms = normalizedAssetTerms(asset);
+        tags.stream().map(TagSignal::label).forEach(value -> addLooseWords(terms, value));
+        terms.addAll(visualTerms(asset));
+        addEventHypothesisTerms(terms, asset.getEventHypotheses());
+        return terms;
+    }
+
+    private static Set<String> visualTerms(MediaAsset asset) {
+        Set<String> terms = new LinkedHashSet<>();
+        addArrayTerms(terms, asset.getVisibleObjects());
+        addArrayTerms(terms, asset.getSpecificSubjects());
+        addArrayTerms(terms, asset.getObservedScenes());
+        addArrayTerms(terms, asset.getObservedActivities());
+        addArrayTerms(terms, asset.getEquipmentSignals());
+        addArrayTerms(terms, asset.getRecognitionSignals());
+        addArrayTerms(terms, asset.getCompositionSignals());
+        return terms;
+    }
+
+    private static void addArrayTerms(Set<String> terms, String[] values) {
+        if (values == null) return;
+        Arrays.stream(values).forEach(value -> addLooseWords(terms, value));
+    }
+
+    private static void addEventHypothesisTerms(Set<String> terms, String eventHypotheses) {
+        if (eventHypotheses == null || eventHypotheses.isBlank()) return;
+        try {
+            JsonNode values = OBJECT_MAPPER.readTree(eventHypotheses);
+            if (!values.isArray()) return;
+            values.forEach(value -> addLooseWords(terms,
+                    value.path("eventType").asText(value.path("event_type").asText(""))));
+        } catch (Exception ignored) {
+            // Legacy malformed metadata must not block recommendations.
+        }
+    }
+
+    private static double overlapScore(Set<String> left, Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) return 0.0;
+        long overlap = left.stream().filter(right::contains).count();
+        return clamp(overlap / Math.sqrt((double) left.size() * right.size()));
+    }
+
+    private static List<String> matchingTerms(Set<String> left, Set<String> right, int limit) {
+        return left.stream().filter(right::contains).sorted().limit(limit).toList();
+    }
+
+    private static List<RankedAsset> diversify(List<RankedAsset> ranked, int limit) {
+        if (ranked.size() <= 1) return ranked.stream().limit(limit).toList();
+        List<RankedAsset> remaining = new ArrayList<>(ranked);
+        List<RankedAsset> selected = new ArrayList<>();
+        while (!remaining.isEmpty() && selected.size() < limit) {
+            RankedAsset best = null;
+            double bestMmr = Double.NEGATIVE_INFINITY;
+            for (RankedAsset candidate : remaining) {
+                double maxSimilarity = selected.stream()
+                        .mapToDouble(chosen -> candidateSimilarity(candidate.asset(), chosen.asset()))
+                        .max()
+                        .orElse(0.0);
+                double mmr = (0.85 * candidate.score()) - (0.15 * maxSimilarity);
+                if (best == null || mmr > bestMmr
+                        || (Math.abs(mmr - bestMmr) < 0.000001
+                            && candidate.asset().getId().compareTo(best.asset().getId()) < 0)) {
+                    best = candidate;
+                    bestMmr = mmr;
+                }
+            }
+            selected.add(best);
+            remaining.remove(best);
+        }
+        return List.copyOf(selected);
+    }
+
+    private static double candidateSimilarity(MediaAsset left, MediaAsset right) {
+        if (left.getContentHash() != null && left.getContentHash().equals(right.getContentHash())) {
+            return 1.0;
+        }
+        Set<String> leftTerms = visualTerms(left);
+        Set<String> rightTerms = visualTerms(right);
+        Set<String> union = new LinkedHashSet<>(leftTerms);
+        union.addAll(rightTerms);
+        long intersection = leftTerms.stream().filter(rightTerms::contains).count();
+        double termSimilarity = union.isEmpty() ? 0.0 : (double) intersection / union.size();
+        double categorySimilarity = !normalize(left.getAiCategory()).isBlank()
+                && normalize(left.getAiCategory()).equals(normalize(right.getAiCategory())) ? 1.0 : 0.0;
+        return (0.75 * termSimilarity) + (0.25 * categorySimilarity);
+    }
+
+    private static double clamp(double value) {
+        return Math.max(0.0, Math.min(1.0, value));
+    }
+
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
@@ -769,6 +1059,10 @@ public class AIRecommendationService {
     }
 
     private record RankedAsset(MediaAsset asset, double score, List<String> reasons) {
+
+    }
+
+    private record WeightedSignal(double value, double weight) {
 
     }
 }
