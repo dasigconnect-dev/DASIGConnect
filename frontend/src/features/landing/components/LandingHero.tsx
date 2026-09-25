@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { User } from '../../../types/auth.types';
 import DriftWall, { type DriftWallItem } from '../../../components/ui/DriftWall';
 import TextType from '../../../components/ui/TextType';
+import ShapeGrid from '../../../components/ui/ShapeGrid';
 
 interface LandingHeroProps {
   user: User | null;
@@ -93,14 +94,32 @@ const HERO_MEDIA_ITEMS: DriftWallItem[] = [
 export default function LandingHero({ user }: LandingHeroProps) {
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (!el) return;
+    const headerOffset = 84;
+    const elementPosition = el.getBoundingClientRect().top;
+    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+    window.scrollTo({
+      top: Math.max(0, offsetPosition),
+      behavior: 'smooth',
+    });
   };
 
   return (
-    <section className="hero-editorial-section">
-      <div className="hero-split-screen">
+    <section className="hero-editorial-section" style={{ position: 'relative', overflow: 'hidden' }}>
+      <div className="shapegrid-bg-wrap" aria-hidden="true">
+        <ShapeGrid
+          speed={0.35}
+          squareSize={42}
+          direction="diagonal"
+          borderColor="rgba(24, 119, 242, 0.09)"
+          hoverFillColor="rgba(24, 119, 242, 0.15)"
+          shape="square"
+          hoverTrailAmount={4}
+        />
+      </div>
+
+      <div className="hero-split-screen" style={{ position: 'relative', zIndex: 1 }}>
         {/* Left Side: Context */}
         <div className="hero-content-col">
           <div className="meta-tagline">
