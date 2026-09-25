@@ -44,6 +44,39 @@ class MediaProcessingQueueServiceTest {
     }
 
     @Test
+    void enqueueImageOnly_usesIndependentStableVersion() {
+        UUID assetId = UUID.randomUUID();
+
+        service.enqueueImageOnly(assetId);
+
+        verify(repository).enqueueImageOnly(
+                assetId, MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION, 5);
+    }
+
+    @Test
+    void enqueueImageOnlyAfterCommit_defersQueueWriteUntilTransactionCommits() {
+        UUID assetId = UUID.randomUUID();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.enqueueImageOnlyAfterCommit(assetId);
+            org.mockito.Mockito.verify(repository, org.mockito.Mockito.never())
+                    .enqueueImageOnly(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+            synchronizations.getFirst().afterCommit();
+
+            verify(repository).enqueueImageOnly(
+                    assetId, MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION, 5);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
     void enqueueAfterCommit_defersQueueWriteUntilOwningTransactionCommits() {
         UUID assetId = UUID.randomUUID();
         TransactionSynchronizationManager.setActualTransactionActive(true);
@@ -70,9 +103,10 @@ class MediaProcessingQueueServiceTest {
         when(repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
                 "worker", MediaProcessingJobStatus.PROCESSING)).thenReturn(List.of());
 
-        assertThat(service.claimBatch("worker", 100, false)).isEmpty();
+        assertThat(service.claimBatch("worker", 100, false, true)).isEmpty();
 
-        verify(repository).claimBatch(eq("worker"), any(), any(), eq(10), eq(2), eq(false));
+        verify(repository).claimBatch(
+                eq("worker"), any(), any(), eq(10), eq(2), eq(false), eq(true));
     }
 
     @Test

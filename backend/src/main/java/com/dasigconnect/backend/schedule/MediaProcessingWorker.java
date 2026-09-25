@@ -7,6 +7,7 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
+import com.dasigconnect.backend.service.MediaImageEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.time.Instant;
@@ -26,16 +27,19 @@ public class MediaProcessingWorker {
     private final MediaProcessingQueueService queue;
     private final MediaAssetRepository mediaAssetRepository;
     private final AIClassificationService classificationService;
+    private final MediaImageEmbeddingService imageEmbeddingService;
     private final ScheduledJobHealthService healthService;
     private final SubmissionMediaContextService contextService;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final int batchSize;
     private final boolean aiConfigured;
+    private final boolean imageEmbeddingConfigured;
 
     public MediaProcessingWorker(
             MediaProcessingQueueService queue,
             MediaAssetRepository mediaAssetRepository,
             AIClassificationService classificationService,
+            MediaImageEmbeddingService imageEmbeddingService,
             ScheduledJobHealthService healthService,
             SubmissionMediaContextService contextService,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -45,11 +49,13 @@ public class MediaProcessingWorker {
         this.queue = queue;
         this.mediaAssetRepository = mediaAssetRepository;
         this.classificationService = classificationService;
+        this.imageEmbeddingService = imageEmbeddingService;
         this.healthService = healthService;
         this.contextService = contextService;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.batchSize = Math.max(1, Math.min(batchSize, 10));
         this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
+        this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
     }
 
     @Scheduled(fixedDelayString = "${app.media-processing.poll-delay-ms:5000}")
@@ -57,7 +63,8 @@ public class MediaProcessingWorker {
         Instant startedAt = Instant.now();
         String workerId = UUID.randomUUID().toString();
         try {
-            List<MediaProcessingJob> jobs = queue.claimBatch(workerId, batchSize, aiConfigured);
+            List<MediaProcessingJob> jobs = queue.claimBatch(
+                    workerId, batchSize, aiConfigured, imageEmbeddingConfigured);
             if (jobs.isEmpty()) return;
             for (MediaProcessingJob job : jobs) process(job, workerId);
             healthService.recordSuccess("MediaProcessingWorker", startedAt);
@@ -76,6 +83,17 @@ public class MediaProcessingWorker {
             }
             MediaAsset asset = mediaAssetRepository.findActiveById(job.getAssetId()).orElse(null);
             if (asset == null || asset.getFileType() == null) {
+                queue.complete(job, workerId);
+                return;
+            }
+            if (job.getJobType() == MediaProcessingJobType.EMBED_IMAGE_ONLY) {
+                if (!asset.getFileType().isImage()) {
+                    queue.complete(job, workerId);
+                    return;
+                }
+                if (!imageEmbeddingService.generateOrReuse(asset.getId(), asset.getStorageUrl())) {
+                    throw new IllegalStateException("Image embedding did not complete");
+                }
                 queue.complete(job, workerId);
                 return;
             }

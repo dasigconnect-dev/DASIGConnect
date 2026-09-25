@@ -35,6 +35,23 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Transactional
     @Query(value = """
         INSERT INTO media_processing_jobs
+            (asset_id, job_type, processing_version, max_attempts)
+        VALUES (:assetId, 'EMBED_IMAGE_ONLY', :processingVersion, :maxAttempts)
+        ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
+        DO UPDATE SET
+            status = 'PENDING', attempt_count = 0,
+            next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
+            last_error = NULL, completed_at = NULL, updated_at = NOW()
+        WHERE media_processing_jobs.status = 'COMPLETED'
+        """, nativeQuery = true)
+    int enqueueImageOnly(@Param("assetId") UUID assetId,
+                         @Param("processingVersion") String processingVersion,
+                         @Param("maxAttempts") int maxAttempts);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_processing_jobs
             (submission_id, job_type, processing_version, max_attempts)
         VALUES (:submissionId, 'BUILD_SUBMISSION_CONTEXT', :processingVersion, :maxAttempts)
         ON CONFLICT (submission_id, job_type, processing_version) WHERE submission_id IS NOT NULL
@@ -79,7 +96,11 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                     job.status = 'PROCESSING' AND job.lease_until < :now
                 )
             )
-              AND (:includeAiJobs = TRUE OR job.job_type = 'BUILD_SUBMISSION_CONTEXT')
+              AND (
+                  job.job_type = 'BUILD_SUBMISSION_CONTEXT'
+                  OR (:includeAiJobs = TRUE AND job.job_type = 'CLASSIFY_AND_EMBED')
+                  OR (:includeImageJobs = TRUE AND job.job_type = 'EMBED_IMAGE_ONLY')
+              )
         ), candidates AS (
             SELECT job.id
             FROM media_processing_jobs job
@@ -103,7 +124,8 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                    @Param("leaseUntil") Instant leaseUntil,
                    @Param("batchSize") int batchSize,
                    @Param("perInstitutionLimit") int perInstitutionLimit,
-                   @Param("includeAiJobs") boolean includeAiJobs);
+                   @Param("includeAiJobs") boolean includeAiJobs,
+                   @Param("includeImageJobs") boolean includeImageJobs);
 
     List<MediaProcessingJob> findByClaimedByAndStatusOrderByCreatedAtAsc(
             String claimedBy, MediaProcessingJobStatus status);
