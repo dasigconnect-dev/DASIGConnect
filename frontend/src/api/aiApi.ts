@@ -66,6 +66,7 @@ export interface MediaSuggestRequest {
   caption?: string;
   category?: string;
   tags?: string[];
+  selectedAssetIds?: string[];
 }
 
 export async function suggestMedia(
