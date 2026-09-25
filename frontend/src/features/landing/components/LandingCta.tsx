@@ -11,7 +11,7 @@ export default function LandingCta({ user, onOpenPrivacy }: LandingCtaProps) {
     <section className="cta-editorial-section">
       <div className="landing-container">
         <div className="cta-editorial-banner">
-          <div className="meta-tagline meta-white" style={{ justifyContent: 'center', marginBottom: 14 }}>
+          <div className="meta-tagline" style={{ justifyContent: 'center', marginBottom: 14 }}>
             <span>Workspace</span>
             <span>&bull;</span>
             <span>Access Portal</span>

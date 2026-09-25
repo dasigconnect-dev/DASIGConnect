@@ -155,8 +155,8 @@ export default function NoAccountScreen({
               </div>
             </div>
           </div>
-          <button type="button" className="btn-ghost" onClick={onBack}>
-            Return to Sign In
+          <button type="button" className="btn-primary" onClick={onBack}>
+            <i className="ti ti-arrow-left"></i> Back to Sign In
           </button>
         </RightPanel>
       </div>

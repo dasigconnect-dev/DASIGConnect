@@ -12,4 +12,19 @@
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
+  /* Top & bottom organic feathering - eliminates harsh cutoff lines between sections */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16%,
+    black 84%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16%,
+    black 84%,
+    transparent 100%
+  );
 }

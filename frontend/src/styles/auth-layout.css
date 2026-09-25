@@ -235,10 +235,25 @@
   align-items: center;
   justify-content: center;
   padding: 44px 36px;
+  position: relative;
+  overflow: hidden;
+}
+.panel-r::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 1;
 }
 .form-card {
   width: 100%;
   max-width: 420px;
+  position: relative;
+  z-index: 2;
 }
 
 @media (min-width: 769px) {

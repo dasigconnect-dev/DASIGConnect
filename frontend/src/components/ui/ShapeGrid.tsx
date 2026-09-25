@@ -385,8 +385,8 @@ export default function ShapeGrid({
       hoveredSquare.current = null;
     };
 
-    // Attach mouse listeners to window or parent section so hover triggers smoothly even when moving across cards
-    const parent = canvas.parentElement || canvas;
+    // Attach mouse listeners to section or parent so hover triggers smoothly even when moving across cards
+    const parent = (canvas.closest('section, .landing-cta-zone') as HTMLElement) || canvas.parentElement || canvas;
     parent.addEventListener('mousemove', handleMouseMove as any);
     parent.addEventListener('mouseleave', handleMouseLeave);
 

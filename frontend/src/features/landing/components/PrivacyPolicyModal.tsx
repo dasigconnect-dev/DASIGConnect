@@ -35,10 +35,11 @@ export default function PrivacyPolicyModal({ open, onClose }: PrivacyPolicyModal
       <div className="privacy-modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="privacy-modal-header">
           <div className="privacy-modal-title" id="privacy-modal-title">
-            <i className="ti ti-shield-check" style={{ color: '#60a5fa', fontSize: '1.4rem' }}></i>
+            <i className="ti ti-shield-check"></i>
             DASIGConnect Privacy Policy
           </div>
           <button
+            type="button"
             className="privacy-modal-close"
             onClick={onClose}
             aria-label="Close Privacy Policy Modal"
@@ -113,7 +114,12 @@ export default function PrivacyPolicyModal({ open, onClose }: PrivacyPolicyModal
         </div>
 
         <div className="privacy-modal-footer">
-          <button className="btn-landing-primary" onClick={onClose}>
+          <button
+            type="button"
+            className="btn-editorial-primary"
+            onClick={onClose}
+          >
+            <i className="ti ti-check"></i>
             I Understand
           </button>
         </div>

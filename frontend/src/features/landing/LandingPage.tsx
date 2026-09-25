@@ -8,7 +8,7 @@ import LandingDevelopers from './components/LandingDevelopers';
 import LandingCta from './components/LandingCta';
 import LandingFooter from './components/LandingFooter';
 import PrivacyPolicyModal from './components/PrivacyPolicyModal';
-import GridScan from '../../components/ui/GridScan';
+import ShapeGrid from '../../components/ui/ShapeGrid';
 import '../../styles/landing.css';
 
 interface LandingPageProps {
@@ -38,29 +38,17 @@ export default function LandingPage({ user }: LandingPageProps) {
         <LandingDevelopers />
       </main>
 
-      {/* Dark Continuous Section: Regional CTA & Footer with GridScan Background */}
-      <div className="landing-dark-zone">
-        <div className="landing-dark-zone-gridscan" aria-hidden="true">
-          <GridScan
-            enableMouseTracking={false}
-            sensitivity={0}
-            lineThickness={1}
-            linesColor="#17284f"
-            gridScale={0.08}
-            scanColor="#38bdf8"
-            scanOpacity={0.4}
-            enablePost
-            bloomIntensity={0.55}
-            chromaticAberration={0.002}
-            noiseIntensity={0.01}
-            lineJitter={0.08}
-            scanGlow={0.6}
-            scanSoftness={2}
-            scanDirection="pingpong"
-            scanDuration={2.2}
-            scanDelay={1.5}
-            enableWebcam={false}
-            showPreview={false}
+      {/* Harmonious White Theme Section: Regional CTA & Footer with Animated Moving Box Grid */}
+      <div className="landing-cta-zone">
+        <div className="shapegrid-bg-wrap" aria-hidden="true">
+          <ShapeGrid
+            speed={0.35}
+            squareSize={42}
+            direction="diagonal"
+            borderColor="rgba(24, 119, 242, 0.09)"
+            hoverFillColor="rgba(24, 119, 242, 0.15)"
+            shape="square"
+            hoverTrailAmount={4}
           />
         </div>
 
