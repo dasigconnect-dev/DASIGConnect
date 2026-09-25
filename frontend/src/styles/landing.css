@@ -38,10 +38,15 @@
   font-family: var(--ff-body);
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Subtle, sleek landing page scrollbar (replaces harsh electric blue thumb) */
+html:has(.landing-root),
+body:has(.landing-root) {
+  overflow-x: clip;
+}
+
 html:has(.landing-root),
 body:has(.landing-root),
 .landing-root {
@@ -85,11 +90,15 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 .landing-header {
   position: sticky;
   top: 0;
-  z-index: 50;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1000;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid var(--lp-light-border);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
 }
 
 .landing-nav-inner {
