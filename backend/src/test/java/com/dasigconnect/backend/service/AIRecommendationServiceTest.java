@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
@@ -289,14 +290,68 @@ class AIRecommendationServiceTest {
     }
 
     @Test
-    void suggestMedia_requestedMixedSelectionUsesOnlyAttachedSelectedImages() {
+    void suggestMedia_oneSelectedImageReturnsVisualMatchesAndExcludesSelectedAsset() {
         UUID institutionId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
-        MediaAsset stagedUpload = asset(UUID.randomUUID(), "staged-upload.jpg", "Event");
-        MediaAsset libraryPick = asset(UUID.randomUUID(), "library-pick.jpg", "Event");
-        MediaAsset unselected = asset(UUID.randomUUID(), "unselected.jpg", "Event");
-        MediaAsset candidate = asset(UUID.randomUUID(), "recommended.jpg", "Event");
+        MediaAsset selected = asset(UUID.randomUUID(), "robotics-demo.jpg", "Technology");
+        MediaAsset related = asset(UUID.randomUUID(), "robotics-team.jpg", "Technology");
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        VoyageAIClient voyage = mock(VoyageAIClient.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(selected));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(
+                List.of(selected.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.IMAGE,
+                List.of(selected.getId()), 12, 30))
+                .thenReturn(List.of(
+                        new Object[]{selected.getId().toString(), 0.99},
+                        new Object[]{related.getId().toString(), 0.90}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC,
+                List.of(selected.getId()), 12, 30)).thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(anyList())).thenReturn(List.of(selected, related));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), true, false, false);
+        MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
+        dto.setSelectedAssetIds(List.of(selected.getId()));
+
+        AIRecommendationService.MediaSuggestionBatch batch = service.suggestMediaBatch(
+                submissionId,
+                dto,
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(List.of(related.getId()),
+                batch.results().stream().map(MediaSuggestResultDto::getId).toList());
+        assertFalse(batch.processing());
+        verify(voyage, never()).embedQuery(anyString());
+    }
+
+    @Test
+    void suggestMedia_complementarySelectionUsesEveryImageAndReturnsUnifiedResults() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset presentation = asset(UUID.randomUUID(), "presentation.jpg", "Event");
+        MediaAsset demonstration = asset(UUID.randomUUID(), "robotics-demo.jpg", "Technology");
+        MediaAsset audience = asset(UUID.randomUUID(), "audience.jpg", "Event");
+        MediaAsset stageMatch = asset(UUID.randomUUID(), "stage-match.jpg", "Event");
+        MediaAsset demoMatch = asset(UUID.randomUUID(), "demo-match.jpg", "Technology");
+        MediaAsset crowdMatch = asset(UUID.randomUUID(), "crowd-match.jpg", "Community");
+        List<UUID> selectedIds = List.of(
+                presentation.getId(), demonstration.getId(), audience.getId());
 
         SubmissionRepository submissions = mock(SubmissionRepository.class);
         SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
@@ -307,15 +362,72 @@ class AIRecommendationServiceTest {
         when(submissions.findById(submissionId)).thenReturn(Optional.of(
                 submission(submissionId, institutionId, contributorId)));
         when(submissionMedia.findMediaAssetsBySubmissionId(submissionId))
-                .thenReturn(List.of(stagedUpload, libraryPick, unselected));
+                .thenReturn(List.of(presentation, demonstration, audience));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(selectedIds, MediaAssetEmbeddingType.IMAGE)).thenReturn(3L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.IMAGE),
+                argThat(ids -> ids.size() == 3 && ids.containsAll(selectedIds)), eq(12), eq(30)))
+                .thenReturn(List.of(
+                        new Object[]{stageMatch.getId().toString(), 0.88},
+                        new Object[]{demoMatch.getId().toString(), 0.84},
+                        new Object[]{crowdMatch.getId().toString(), 0.80}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.SEMANTIC),
+                argThat(ids -> ids.size() == 3 && ids.containsAll(selectedIds)), eq(12), eq(30)))
+                .thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(anyList()))
+                .thenReturn(List.of(stageMatch, demoMatch, crowdMatch));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
+                true, false, false);
+        MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
+        dto.setSelectedAssetIds(selectedIds);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                dto,
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(Set.of(stageMatch.getId(), demoMatch.getId(), crowdMatch.getId()),
+                results.stream().map(MediaSuggestResultDto::getId).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void suggestMedia_requestedMixedSelectionUsesOnlyAttachedSelectedImages() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset firstStagedUpload = asset(UUID.randomUUID(), "staged-upload-1.jpg", "Event");
+        MediaAsset secondStagedUpload = asset(UUID.randomUUID(), "staged-upload-2.jpg", "Event");
+        MediaAsset firstLibraryPick = asset(UUID.randomUUID(), "library-pick-1.jpg", "Event");
+        MediaAsset secondLibraryPick = asset(UUID.randomUUID(), "library-pick-2.jpg", "Event");
+        MediaAsset unselected = asset(UUID.randomUUID(), "unselected.jpg", "Event");
+        MediaAsset candidate = asset(UUID.randomUUID(), "recommended.jpg", "Event");
+        List<UUID> selectedIds = List.of(
+                firstStagedUpload.getId(), secondStagedUpload.getId(),
+                firstLibraryPick.getId(), secondLibraryPick.getId());
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(firstStagedUpload, secondStagedUpload,
+                        firstLibraryPick, secondLibraryPick, unselected));
         when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
         when(embeddings.findTopSimilarToAssetsWithScore(
                 eq(institutionId),
                 eq(submissionId),
                 eq(MediaAssetEmbeddingType.IMAGE),
-                argThat(ids -> ids.size() == 2
-                        && ids.contains(stagedUpload.getId())
-                        && ids.contains(libraryPick.getId())),
+                argThat(ids -> ids.size() == 4 && ids.containsAll(selectedIds)),
                 eq(12),
                 eq(30)))
                 .thenReturn(List.<Object[]>of(new Object[]{candidate.getId().toString(), 0.82}));
@@ -323,9 +435,7 @@ class AIRecommendationServiceTest {
                 eq(institutionId),
                 eq(submissionId),
                 eq(MediaAssetEmbeddingType.SEMANTIC),
-                argThat(ids -> ids.size() == 2
-                        && ids.contains(stagedUpload.getId())
-                        && ids.contains(libraryPick.getId())),
+                argThat(ids -> ids.size() == 4 && ids.containsAll(selectedIds)),
                 eq(12),
                 eq(30)))
                 .thenReturn(List.of());
@@ -337,7 +447,7 @@ class AIRecommendationServiceTest {
                 mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
                 true, false, false);
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
-        dto.setSelectedAssetIds(List.of(stagedUpload.getId(), libraryPick.getId()));
+        dto.setSelectedAssetIds(selectedIds);
 
         List<MediaSuggestResultDto> results = service.suggestMedia(
                 submissionId,
@@ -352,6 +462,83 @@ class AIRecommendationServiceTest {
                 eq(List.of(unselected.getId())),
                 eq(12),
                 eq(30));
+    }
+
+    @Test
+    void suggestMedia_partiallyReadySelectionReturnsAvailableMatchesAndKeepsProcessingState() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset ready = asset(UUID.randomUUID(), "ready.jpg", "Technology");
+        MediaAsset pending = asset(UUID.randomUUID(), "pending.jpg", "Technology");
+        MediaAsset candidate = asset(UUID.randomUUID(), "robotics-team.jpg", "Technology");
+        List<UUID> selectedIds = List.of(ready.getId(), pending.getId());
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        VoyageAIClient voyage = mock(VoyageAIClient.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(ready, pending));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(selectedIds, MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.IMAGE),
+                argThat(ids -> ids.size() == 2 && ids.containsAll(selectedIds)), eq(12), eq(30)))
+                .thenReturn(List.<Object[]>of(new Object[]{candidate.getId().toString(), 0.87}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.SEMANTIC),
+                argThat(ids -> ids.size() == 2 && ids.containsAll(selectedIds)), eq(12), eq(30)))
+                .thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(List.of(candidate.getId()))).thenReturn(List.of(candidate));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), true, false, true);
+        MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
+        dto.setSelectedAssetIds(selectedIds);
+
+        AIRecommendationService.MediaSuggestionBatch batch = service.suggestMediaBatch(
+                submissionId,
+                dto,
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(List.of(candidate.getId()),
+                batch.results().stream().map(MediaSuggestResultDto::getId).toList());
+        assertTrue(batch.processing());
+        verify(voyage, never()).embedQuery(anyString());
+    }
+
+    @Test
+    void suggestMedia_contributorFromAnotherInstitutionIsRejectedBeforeMediaQueries() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mock(MediaAssetRepository.class), embeddings,
+                mock(AssetTagRepository.class), mock(AiInteractionLogRepository.class),
+                mock(VoyageAIClient.class), mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), true, false, false);
+        JwtUserDetails otherInstitutionContributor = new JwtUserDetails(
+                UUID.randomUUID(), "other@test.edu", "contributor", UUID.randomUUID());
+
+        assertThatThrownBy(() -> service.suggestMedia(
+                submissionId, new MediaSuggestRequestDto(), otherInstitutionContributor))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(submissionMedia, never()).findMediaAssetsBySubmissionId(any());
+        verify(embeddings, never()).findTopSimilarToAssetsWithScore(
+                any(), any(), any(MediaAssetEmbeddingType.class), anyList(), anyInt(), anyInt());
     }
 
     @Test
