@@ -27,6 +27,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/ai/submissions")
 public class AIRecommendationController {
 
+    public static final String MEDIA_SUGGESTIONS_PROCESSING_HEADER = "X-Media-Suggestions-Processing";
+
     private final AIRecommendationService aiRecommendationService;
     private final AiAdoptionTrackingService adoptionTracking;
 
@@ -55,7 +57,22 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody @Valid MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestMedia(id, dto, user)));
+        AIRecommendationService.MediaSuggestionBatch batch =
+                aiRecommendationService.suggestMediaBatch(id, dto, user);
+        return ResponseEntity.ok()
+                .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
+                .body(ApiResponse.success(batch.results()));
+    }
+
+    /** Lightweight readiness check used by the composer's bounded background refresh. */
+    @PostMapping("/{id}/suggest-media-status")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Boolean>> getSuggestMediaStatus(
+            @PathVariable UUID id,
+            @RequestBody @Valid MediaSuggestRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                aiRecommendationService.areSelectedImagesProcessing(id, dto, user)));
     }
 
     /**

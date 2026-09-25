@@ -158,6 +158,12 @@ public class AIRecommendationService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MediaSuggestResultDto> suggestMedia(UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        return suggestMediaBatch(submissionId, dto, user).results();
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public MediaSuggestionBatch suggestMediaBatch(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
         Submission submission = loadAndAuthorise(submissionId, user);
         UUID institutionId = submission.getInstitution().getId();
 
@@ -167,6 +173,8 @@ public class AIRecommendationService {
         Set<UUID> selectedImageIds = selectedImageAssets.stream()
                 .map(MediaAsset::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+        boolean processing = visualSuggestionsEnabled
+                && hasPendingImageEmbeddings(selectedImageIds, submissionId);
         Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
 
         Map<UUID, Double> visualScores = visualSuggestionsEnabled
@@ -187,7 +195,8 @@ public class AIRecommendationService {
                 .filter(id -> !visualScores.containsKey(id))
                 .forEach(candidateIds::add);
         if (candidateIds.isEmpty()) {
-            return fallbackOrEmpty(institutionId, attachedIds, dto);
+            return new MediaSuggestionBatch(
+                    fallbackOrEmpty(institutionId, attachedIds, dto), processing);
         }
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
@@ -226,10 +235,40 @@ public class AIRecommendationService {
             } else {
                 log.info("No visual media candidates are ready for submission {}.", submissionId);
             }
-            return fallbackOrEmpty(institutionId, attachedIds, dto);
+            return new MediaSuggestionBatch(
+                    fallbackOrEmpty(institutionId, attachedIds, dto), processing);
         }
 
-        return rankedResults;
+        return new MediaSuggestionBatch(rankedResults, processing);
+    }
+
+    private boolean hasPendingImageEmbeddings(Set<UUID> selectedImageIds, UUID submissionId) {
+        if (selectedImageIds.isEmpty()) return false;
+        try {
+            long ready = mediaAssetEmbeddingRepository.countEmbeddingsForAssets(
+                    List.copyOf(selectedImageIds), MediaAssetEmbeddingType.IMAGE);
+            return ready < selectedImageIds.size();
+        } catch (RuntimeException error) {
+            log.warn("Could not determine image preparation status for submission {}: {}",
+                    submissionId, error.getMessage());
+            return true;
+        }
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public boolean areSelectedImagesProcessing(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        loadAndAuthorise(submissionId, user);
+        if (!visualSuggestionsEnabled) return false;
+        List<MediaAsset> attachedAssets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId);
+        Set<UUID> attachedIds = attachedAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toSet());
+        Set<UUID> selectedImageIds = resolveSelectedImageAssets(dto, attachedAssets, attachedIds).stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return hasPendingImageEmbeddings(selectedImageIds, submissionId);
     }
 
     private static List<MediaAsset> resolveSelectedImageAssets(
@@ -1135,6 +1174,10 @@ public class AIRecommendationService {
     }
 
     private record OptionalVector(String value) {
+
+    }
+
+    public record MediaSuggestionBatch(List<MediaSuggestResultDto> results, boolean processing) {
 
     }
 

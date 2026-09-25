@@ -412,6 +412,8 @@ class AIRecommendationServiceTest {
         when(submissions.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
         when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(
+                List.of(attached.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(0L);
         when(embeddings.findTopSimilarToAssetsWithScore(
                 eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30)))
                 .thenReturn(List.of());
@@ -424,12 +426,17 @@ class AIRecommendationServiceTest {
                 mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
                 mock(SubmissionMediaContextRepository.class), true, false, true);
 
-        List<MediaSuggestResultDto> results = service.suggestMedia(
+        AIRecommendationService.MediaSuggestionBatch batch = service.suggestMediaBatch(
                 submissionId,
                 new MediaSuggestRequestDto(),
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
 
-        assertTrue(results.isEmpty());
+        assertTrue(batch.results().isEmpty());
+        assertTrue(batch.processing());
+        assertTrue(service.areSelectedImagesProcessing(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId)));
         verify(mediaAssets, never()).findVisibleReadyByInstitution(eq(institutionId), any());
         verify(voyage, never()).embedQuery(anyString());
     }
