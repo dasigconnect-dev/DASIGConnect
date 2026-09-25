@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { suggestMedia, logAiInteraction, type MediaSuggestResult } from "../api/aiApi";
+import {
+  getMediaSuggestionProcessingStatus,
+  suggestMedia,
+  logAiInteraction,
+  type MediaSuggestResult,
+} from "../api/aiApi";
 
-export type AiMediaSuggestState = "idle" | "loading" | "ready" | "empty" | "error";
+export type AiMediaSuggestState = "idle" | "loading" | "processing" | "ready" | "empty" | "error";
 
 export interface UseAiMediaSuggestionsReturn {
   state: AiMediaSuggestState;
   results: MediaSuggestResult[];
   fetch: () => void;
 }
+
+const PROCESSING_RETRY_DELAYS_MS = [3_000, 6_000, 12_000, 24_000] as const;
 
 export function hasSufficientMediaContext(eventTitle: string, caption: string, category: string, tags: string[]) {
   return [eventTitle, caption, category, ...tags].join(" ").trim().length >= 10;
@@ -23,6 +30,8 @@ export function useAiMediaSuggestions(
 ): UseAiMediaSuggestionsReturn {
   const [state, setState] = useState<AiMediaSuggestState>("idle");
   const [results, setResults] = useState<MediaSuggestResult[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [processingCheckVersion, setProcessingCheckVersion] = useState(0);
   const [responseKey, setResponseKey] = useState("");
 
   const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
@@ -41,8 +50,10 @@ export function useAiMediaSuggestions(
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestIdRef = useRef(0);
   const visualRetryRef = useRef({ key: "", attempts: 0 });
+  const lastLoggedResultsRef = useRef("");
+  const hasResultsRef = useRef(false);
 
-  const fetch = useCallback(async () => {
+  const requestSuggestions = useCallback(async (background = false) => {
     if (!submissionId || !hasContext) return;
     const requestTags = JSON.parse(tagsKey) as string[];
     const requestAssetIds = JSON.parse(selectedImagesKey) as string[];
@@ -53,10 +64,14 @@ export function useAiMediaSuggestions(
     };
     requestRef.current = request;
     setResponseKey(requestKey);
-    setState("loading");
-    setResults([]);
+    if (!background) {
+      hasResultsRef.current = false;
+      setProcessing(false);
+      setState("loading");
+      setResults([]);
+    }
     try {
-      const data = await suggestMedia(submissionId, {
+      const response = await suggestMedia(submissionId, {
         eventTitle: eventTitle.trim() || undefined,
         caption: caption.trim() || undefined,
         category: category.trim() || undefined,
@@ -64,24 +79,41 @@ export function useAiMediaSuggestions(
         selectedAssetIds: requestAssetIds.length > 0 ? requestAssetIds : undefined,
       }, request.controller.signal);
       if (requestRef.current?.id !== request.id) return;
-      setResults(data);
-      setState(data.length === 0 ? "empty" : "ready");
-      if (data.length > 0) {
-        logAiInteraction(submissionId, "media_recommendation", "shown");
+      const retriesExhausted = visualRetryRef.current.attempts >= PROCESSING_RETRY_DELAYS_MS.length;
+      hasResultsRef.current = response.results.length > 0;
+      setResults(response.results);
+      setProcessing(response.processing && !retriesExhausted);
+      setState(response.results.length > 0
+        ? "ready"
+        : response.processing && !retriesExhausted ? "processing" : "empty");
+      if (response.results.length > 0) {
+        const loggedKey = JSON.stringify([requestKey, response.results.map((item) => item.id)]);
+        if (lastLoggedResultsRef.current !== loggedKey) {
+          lastLoggedResultsRef.current = loggedKey;
+          logAiInteraction(submissionId, "media_recommendation", "shown");
+        }
       }
     } catch {
       if (requestRef.current?.id === request.id && !request.controller.signal.aborted) {
-        setState("error");
+        setProcessing(false);
+        if (!hasResultsRef.current) setState("error");
       }
     } finally {
       if (requestRef.current?.id === request.id) requestRef.current = null;
     }
   }, [caption, category, eventTitle, hasContext, requestKey, selectedImagesKey, submissionId, tagsKey]);
 
+  const fetch = useCallback(() => {
+    visualRetryRef.current = { key: requestKey, attempts: 0 };
+    void requestSuggestions();
+  }, [requestKey, requestSuggestions]);
+
   useEffect(() => {
     if (!submissionId || !hasContext) {
       lastAutomaticRequest.current = "";
       visualRetryRef.current = { key: "", attempts: 0 };
+      lastLoggedResultsRef.current = "";
+      hasResultsRef.current = false;
       return;
     }
     if (visualRetryRef.current.key !== requestKey) {
@@ -90,7 +122,7 @@ export function useAiMediaSuggestions(
     if (lastAutomaticRequest.current === requestKey) return;
     const timer = window.setTimeout(() => {
       lastAutomaticRequest.current = requestKey;
-      void fetch();
+      void requestSuggestions();
     }, 650);
     return () => {
       window.clearTimeout(timer);
@@ -98,17 +130,13 @@ export function useAiMediaSuggestions(
       requestRef.current?.controller.abort();
       requestRef.current = null;
     };
-  }, [fetch, requestKey, submissionId, hasContext]);
+  }, [requestKey, requestSuggestions, submissionId, hasContext]);
 
   useEffect(() => {
-    // A new upload is attached before its asynchronous image embedding is
-    // necessarily ready. Retry only visual-only empty results; hybrid/text
-    // retries would repeatedly spend Voyage text-embedding tokens.
     if (
       !submissionId
-      || hasTextContext
       || selectedImageAssetIds.length === 0
-      || state !== "empty"
+      || !processing
       || responseKey !== requestKey
     ) {
       return;
@@ -117,13 +145,45 @@ export function useAiMediaSuggestions(
       visualRetryRef.current = { key: requestKey, attempts: 0 };
     }
     const retry = visualRetryRef.current;
-    const delays = [3_000, 6_000, 12_000];
-    if (retry.attempts >= delays.length) return;
-    const delay = delays[retry.attempts];
+    if (retry.attempts >= PROCESSING_RETRY_DELAYS_MS.length) return;
+    const delay = PROCESSING_RETRY_DELAYS_MS[retry.attempts];
     retry.attempts += 1;
-    const timer = window.setTimeout(() => void fetch(), delay);
-    return () => window.clearTimeout(timer);
-  }, [fetch, hasTextContext, requestKey, responseKey, selectedImageAssetIds.length, state, submissionId]);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const selectedIds = JSON.parse(selectedImagesKey) as string[];
+      void getMediaSuggestionProcessingStatus(submissionId, selectedIds, controller.signal)
+        .then((stillProcessing) => {
+          if (!stillProcessing) {
+            void requestSuggestions(true);
+            return;
+          }
+          if (retry.attempts >= PROCESSING_RETRY_DELAYS_MS.length) {
+            setProcessing(false);
+            if (!hasResultsRef.current) setState("empty");
+            return;
+          }
+          setProcessingCheckVersion((version) => version + 1);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setProcessing(false);
+          if (!hasResultsRef.current) setState("error");
+        });
+    }, delay);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    processing,
+    processingCheckVersion,
+    requestKey,
+    requestSuggestions,
+    responseKey,
+    selectedImageAssetIds.length,
+    selectedImagesKey,
+    submissionId,
+  ]);
 
   return {
     state: submissionId && hasContext && responseKey === requestKey ? state : "idle",

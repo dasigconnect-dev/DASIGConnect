@@ -69,18 +69,40 @@ export interface MediaSuggestRequest {
   selectedAssetIds?: string[];
 }
 
+export interface MediaSuggestResponse {
+  results: MediaSuggestResult[];
+  processing: boolean;
+}
+
 export async function suggestMedia(
   submissionId: string,
   params: MediaSuggestRequest,
   signal?: AbortSignal,
-): Promise<MediaSuggestResult[]> {
+): Promise<MediaSuggestResponse> {
   const res = await api.post<MediaSuggestResult[]>(
     `/ai/submissions/${submissionId}/suggest-media`,
     params,
     { signal, validateStatus: () => true }
   );
   if (res.status !== 200) throw new Error("media_suggestions_unavailable");
-  return res.data ?? [];
+  return {
+    results: res.data ?? [],
+    processing: res.headers["x-media-suggestions-processing"] === "true",
+  };
+}
+
+export async function getMediaSuggestionProcessingStatus(
+  submissionId: string,
+  selectedAssetIds: string[],
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const res = await api.post<boolean>(
+    `/ai/submissions/${submissionId}/suggest-media-status`,
+    { selectedAssetIds },
+    { signal, validateStatus: () => true },
+  );
+  if (res.status !== 200) throw new Error("media_suggestion_status_unavailable");
+  return res.data === true;
 }
 
 export interface AlbumMatchCandidate {

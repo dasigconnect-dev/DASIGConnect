@@ -135,6 +135,13 @@ export default function AiSuggestedMediaTab({
         </div>
       )}
 
+      {state === "processing" && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Preparing media suggestions...</span>
+        </div>
+      )}
+
       {state === "error" && (
         <div className="ast-error" role="alert">
           <i className="ti ti-alert-circle" aria-hidden />

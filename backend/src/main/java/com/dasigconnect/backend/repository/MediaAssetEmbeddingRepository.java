@@ -63,6 +63,19 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                                    @Param("embeddingType") String embeddingType,
                                    @Param("model") String model);
 
+    default long countEmbeddingsForAssets(List<UUID> assetIds, MediaAssetEmbeddingType type) {
+        return countEmbeddingsForAssets(assetIds, type.dbValue());
+    }
+
+    @Query(value = """
+        SELECT COUNT(DISTINCT asset_id)
+        FROM media_asset_embeddings
+        WHERE asset_id IN (:assetIds)
+          AND embedding_type = :embeddingType
+        """, nativeQuery = true)
+    long countEmbeddingsForAssets(@Param("assetIds") List<UUID> assetIds,
+                                  @Param("embeddingType") String embeddingType);
+
     default List<Object[]> findTopSimilarWithScore(UUID institutionId, MediaAssetEmbeddingType type,
                                                    String queryVectorJson, int limit) {
         return findTopSimilarWithScore(institutionId, type.dbValue(), queryVectorJson, limit);
