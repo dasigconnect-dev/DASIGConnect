@@ -48,17 +48,20 @@ public class AIClassificationService {
     private final AssetTagRepository assetTagRepository;
     private final ClaudeVisionClient claudeVisionClient;
     private final VoyageAIClient voyageAIClient;
+    private final MediaImageEmbeddingService mediaImageEmbeddingService;
 
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
                                    AssetTagRepository assetTagRepository,
                                    ClaudeVisionClient claudeVisionClient,
-                                   VoyageAIClient voyageAIClient) {
+                                   VoyageAIClient voyageAIClient,
+                                   MediaImageEmbeddingService mediaImageEmbeddingService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
         this.claudeVisionClient = claudeVisionClient;
         this.voyageAIClient = voyageAIClient;
+        this.mediaImageEmbeddingService = mediaImageEmbeddingService;
     }
 
     /**
@@ -108,9 +111,7 @@ public class AIClassificationService {
             }
         }
 
-        if (mediaAssetEmbeddingRepository
-                .findEmbedding(assetId, MediaAssetEmbeddingType.IMAGE).isEmpty()
-                && !generateAndStoreImageEmbedding(assetId, storageUrl)) {
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
             return false;
         }
@@ -175,7 +176,7 @@ public class AIClassificationService {
                 .orElseGet(() -> buildEmbeddingText(result));
 
         // Step 4: Generate image + semantic embeddings (external HTTP, no DB connection held)
-        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
             return;
         }
@@ -211,7 +212,7 @@ public class AIClassificationService {
      * to 374 over repeated retries.
      */
     public void retryStuckImageEmbedding(UUID assetId, String storageUrl) {
-        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
             return;
         }
@@ -250,36 +251,6 @@ public class AIClassificationService {
             return true;
         } catch (Exception e) {
             log.warn("Failed to store embedding for asset {}: {}", assetId, e.getMessage());
-            return false;
-        }
-    }
-
-    private boolean generateAndStoreImageEmbedding(UUID assetId, String storageUrl) {
-        ClaudeVisionClient.PreparedImage image;
-        try {
-            image = claudeVisionClient.prepareImageForEmbedding(storageUrl);
-        } catch (Exception e) {
-            log.warn("Failed to fetch image for multimodal embedding for asset {}: {}", assetId, e.getMessage());
-            return false;
-        }
-
-        String embeddingJson;
-        try {
-            embeddingJson = voyageAIClient.embedImageDocument(image.bytes(), image.mediaType());
-        } catch (Exception e) {
-            log.warn("Voyage AI image embedding failed for asset {}: {}", assetId, e.getMessage());
-            return false;
-        }
-
-        try {
-            mediaAssetEmbeddingRepository.upsert(
-                    assetId,
-                    MediaAssetEmbeddingType.IMAGE,
-                    embeddingJson,
-                    voyageAIClient.multimodalModelName());
-            return true;
-        } catch (Exception e) {
-            log.warn("Failed to store image embedding for asset {}: {}", assetId, e.getMessage());
             return false;
         }
     }
