@@ -163,18 +163,22 @@ public class AIRecommendationService {
 
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
-        Map<UUID, List<TagSignal>> attachedTagMap = loadTagSignalMap(attachedAssets.stream().map(MediaAsset::getId).toList());
+        List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        Set<UUID> selectedImageIds = selectedImageAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
 
         Map<UUID, Double> visualScores = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
-                        institutionId, attachedIds, MediaAssetEmbeddingType.IMAGE, submissionId)
+                        institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId)
                 : Map.of();
         Map<UUID, Double> selectedMediaSemanticScores = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
-                        institutionId, attachedIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
+                        institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
                 : Map.of();
         Map<UUID, Double> textSemanticScores = loadTextSemanticCandidateScores(
-                institutionId, attachedAssets, attachedTagMap, dto, submissionId);
+                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
         Map<UUID, Double> semanticScores = combineSemanticScores(
                 selectedMediaSemanticScores, textSemanticScores);
 
@@ -196,12 +200,12 @@ public class AIRecommendationService {
                 .orElse(null);
         List<RankedAsset> legacyRanking = rankCandidates(
                 candidateIds, assetMap, attachedIds, semanticScores, visualScores,
-                dto, tagMap, usageMap, attachedAssets, mediaContext, false);
+                dto, tagMap, usageMap, selectedImageAssets, mediaContext, false);
         boolean hybridEnabledForInstitution = hybridRankingEnabled
                 && submission.getInstitution().isAiMediaHybridRankingEnabled();
         List<RankedAsset> hybridRanking = hybridEnabledForInstitution || hybridShadowEnabled
                 ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores, visualScores,
-                        dto, tagMap, usageMap, attachedAssets, mediaContext, true)
+                        dto, tagMap, usageMap, selectedImageAssets, mediaContext, true)
                 : List.of();
         if (hybridShadowEnabled) {
             logShadowComparison(submissionId, legacyRanking, hybridRanking);
@@ -226,6 +230,24 @@ public class AIRecommendationService {
         }
 
         return rankedResults;
+    }
+
+    private static List<MediaAsset> resolveSelectedImageAssets(
+            MediaSuggestRequestDto dto,
+            List<MediaAsset> attachedAssets,
+            Set<UUID> attachedIds) {
+        Set<UUID> requestedIds = dto.getSelectedAssetIds() == null
+                ? Set.of()
+                : new LinkedHashSet<>(dto.getSelectedAssetIds());
+        if (!requestedIds.isEmpty() && !attachedIds.containsAll(requestedIds)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "selectedAssetIds must reference media attached to this submission.");
+        }
+
+        return attachedAssets.stream()
+                .filter(asset -> requestedIds.isEmpty() || requestedIds.contains(asset.getId()))
+                .filter(asset -> asset.getFileType() != null && asset.getFileType().isImage())
+                .toList();
     }
 
     private static List<RankedAsset> rankCandidates(
@@ -293,6 +315,7 @@ public class AIRecommendationService {
         try {
             return scoreMap(mediaAssetEmbeddingRepository.findTopSimilarToAssetsWithScore(
                     institutionId,
+                    submissionId,
                     embeddingType,
                     List.copyOf(attachedIds),
                     ATTACHED_CANDIDATES_PER_ASSET,

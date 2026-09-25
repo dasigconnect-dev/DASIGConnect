@@ -100,7 +100,9 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
 
     /**
      * Finds candidates similar to the complete selected asset set for one
-     * embedding type. Each selected asset performs an indexed nearest-neighbour
+     * embedding type. Query assets must belong to the authorized submission;
+     * this permits embedded STAGED draft uploads while keeping them out of the
+     * candidate pool. Each selected asset performs an indexed nearest-neighbour
      * lookup; the outer query combines those bounded result sets. This avoids
      * scanning the whole institution library or limiting context to the first
      * attached image.
@@ -112,9 +114,21 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
             JOIN media_assets query_asset ON query_asset.id = mae.asset_id
             WHERE mae.asset_id IN (:queryAssetIds)
               AND mae.embedding_type = :embeddingType
-              AND query_asset.institution_id = :institutionId
               AND query_asset.deleted_at IS NULL
-              AND query_asset.status = 'READY'
+              AND query_asset.file_type IN ('jpeg', 'png', 'webp', 'gif')
+              AND EXISTS (
+                  SELECT 1
+                  FROM submission_media_assets selected_link
+                  WHERE selected_link.media_asset_id = query_asset.id
+                    AND selected_link.submission_id = :submissionId
+              )
+              AND (
+                  query_asset.institution_id = :institutionId
+                  OR (
+                      query_asset.institution_id IS NULL
+                      AND query_asset.status = 'STAGED'
+                  )
+              )
         ), nearest AS (
             SELECT q.asset_id AS query_asset_id,
                    candidate.asset_id,
@@ -160,18 +174,20 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         LIMIT :resultLimit
         """, nativeQuery = true)
     List<Object[]> findTopSimilarToAssetsWithScore(@Param("institutionId") UUID institutionId,
+                                                    @Param("submissionId") UUID submissionId,
                                                     @Param("embeddingType") String embeddingType,
                                                     @Param("queryAssetIds") List<UUID> queryAssetIds,
                                                     @Param("perImageLimit") int perImageLimit,
                                                     @Param("resultLimit") int resultLimit);
 
     default List<Object[]> findTopSimilarToAssetsWithScore(UUID institutionId,
+                                                            UUID submissionId,
                                                             MediaAssetEmbeddingType embeddingType,
                                                             List<UUID> queryAssetIds,
                                                             int perImageLimit,
                                                             int resultLimit) {
         return findTopSimilarToAssetsWithScore(
-                institutionId, embeddingType.dbValue(), queryAssetIds, perImageLimit, resultLimit);
+                institutionId, submissionId, embeddingType.dbValue(), queryAssetIds, perImageLimit, resultLimit);
     }
 
     @Modifying
