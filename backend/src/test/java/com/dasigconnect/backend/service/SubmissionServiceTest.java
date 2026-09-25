@@ -938,6 +938,30 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isNull();
         assertThat(captor.getValue().getStatus()).isEqualTo(MediaAssetStatus.STAGED);
+        verify(mediaProcessingQueueService).enqueueImageOnlyAfterCommit(captor.getValue().getId());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
+    }
+
+    @Test
+    void attachMedia_onDraftVideoDoesNotEnqueueImageProcessing() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/video.mp4");
+        dto.setFileName("video.mp4");
+        dto.setFileType("mp4");
+        dto.setFileSizeBytes(1024L);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        verify(mediaProcessingQueueService, never()).enqueueImageOnlyAfterCommit(any());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 
     @Test
@@ -990,6 +1014,8 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isEqualTo(institution);
         assertThat(captor.getValue().getStatus()).isNotEqualTo(MediaAssetStatus.STAGED);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(captor.getValue().getId());
+        verify(mediaProcessingQueueService, never()).enqueueImageOnlyAfterCommit(any());
     }
 
     @Test

@@ -897,8 +897,12 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
-        if (!stage && fileType.isImage()) {
-            mediaProcessingQueueService.enqueueAfterCommit(asset.getId());
+        if (fileType.isImage()) {
+            if (stage) {
+                mediaProcessingQueueService.enqueueImageOnlyAfterCommit(asset.getId());
+            } else {
+                mediaProcessingQueueService.enqueueAfterCommit(asset.getId());
+            }
         }
         applySubmissionMediaTags(asset, submission.getMediaTags());
 
