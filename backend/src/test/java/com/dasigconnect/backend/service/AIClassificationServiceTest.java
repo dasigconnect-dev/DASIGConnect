@@ -39,11 +39,12 @@ class AIClassificationServiceTest {
     @Mock private AssetTagRepository assetTagRepository;
     @Mock private ClaudeVisionClient claudeVisionClient;
     @Mock private VoyageAIClient voyageAIClient;
+    @Mock private MediaImageEmbeddingService mediaImageEmbeddingService;
 
     private AIClassificationService service() {
         return new AIClassificationService(
                 mediaAssetRepository, mediaAssetEmbeddingRepository, assetTagRepository,
-                claudeVisionClient, voyageAIClient);
+                claudeVisionClient, voyageAIClient, mediaImageEmbeddingService);
     }
 
     private static MediaClassificationDto classification() {
@@ -58,10 +59,8 @@ class AIClassificationServiceTest {
 
         when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
-                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
-        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
-        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(true);
         when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
         when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
 
@@ -90,10 +89,8 @@ class AIClassificationServiceTest {
 
         when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
-                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
-        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
-        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(true);
         when(voyageAIClient.embedDocument(anyString())).thenThrow(new RuntimeException("Voyage down"));
 
         service().classifyAndEmbed(assetId, "https://example.com/a.jpg");
@@ -110,10 +107,8 @@ class AIClassificationServiceTest {
         asset.setAiClassifiedAt(java.time.Instant.now());
 
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
-                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
-        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
-        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(true);
         when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
         when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
 
@@ -132,8 +127,8 @@ class AIClassificationServiceTest {
         asset.setId(assetId);
         asset.setAiClassifiedAt(java.time.Instant.now());
 
-        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
-                .thenThrow(new RuntimeException("fetch failed"));
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(false);
 
         service().retryStuckImageEmbedding(assetId, "https://example.com/a.jpg");
 
@@ -151,9 +146,8 @@ class AIClassificationServiceTest {
         asset.setAiClassifiedAt(java.time.Instant.now());
         asset.setFileName("event.jpg");
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(mediaAssetEmbeddingRepository.findEmbedding(
-                assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE))
-                .thenReturn(Optional.of("[0.1]"));
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(true);
         when(mediaAssetEmbeddingRepository.findEmbedding(
                 assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.SEMANTIC))
                 .thenReturn(Optional.empty());
@@ -179,9 +173,9 @@ class AIClassificationServiceTest {
         asset.setFileName("legacy-event.jpg");
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
-        when(mediaAssetEmbeddingRepository.findEmbedding(
-                assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE))
-                .thenReturn(Optional.of("[0.1]"));
+        when(mediaImageEmbeddingService.generateOrReuse(
+                assetId, "https://example.com/legacy-event.jpg"))
+                .thenReturn(true);
         when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
         when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
 
@@ -206,10 +200,8 @@ class AIClassificationServiceTest {
 
         when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
-                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
-        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
-        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
+                .thenReturn(true);
         when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
         when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
 

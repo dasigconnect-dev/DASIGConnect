@@ -46,6 +46,23 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
     Optional<String> findEmbedding(@Param("assetId") UUID assetId,
                                    @Param("embeddingType") String embeddingType);
 
+    default boolean existsCurrentEmbedding(UUID assetId, MediaAssetEmbeddingType type, String model) {
+        return existsCurrentEmbedding(assetId, type.dbValue(), model);
+    }
+
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM media_asset_embeddings
+            WHERE asset_id = :assetId
+              AND embedding_type = :embeddingType
+              AND model = :model
+        )
+        """, nativeQuery = true)
+    boolean existsCurrentEmbedding(@Param("assetId") UUID assetId,
+                                   @Param("embeddingType") String embeddingType,
+                                   @Param("model") String model);
+
     default List<Object[]> findTopSimilarWithScore(UUID institutionId, MediaAssetEmbeddingType type,
                                                    String queryVectorJson, int limit) {
         return findTopSimilarWithScore(institutionId, type.dbValue(), queryVectorJson, limit);
