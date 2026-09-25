@@ -360,6 +360,76 @@ class MediaAssetServiceTest {
                 anyCollection(), nullable(UUID.class), any(Pageable.class));
     }
 
+    @Test
+    void semanticSearch_preservesInstitutionAndDraftVisibilityAndAppendsKeywordMatches() {
+        UUID institutionId = UUID.randomUUID();
+        UUID semanticId = UUID.randomUUID();
+        UUID draftOnlyId = UUID.randomUUID();
+        UUID keywordId = UUID.randomUUID();
+        MediaAsset semanticMatch = asset(semanticId, institutionId, UUID.randomUUID());
+        semanticMatch.setAiCategory("Innovation");
+        MediaAsset keywordMatch = asset(keywordId, institutionId, UUID.randomUUID());
+        keywordMatch.setAiCategory("Technology");
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.embedQuery("robotics event")).thenReturn("[0.1,0.2]");
+        when(mediaAssetRepository.findTopSimilarInInstitutions(
+                Set.of(institutionId), "[0.1,0.2]"))
+                .thenReturn(List.of(
+                        new Object[]{semanticId.toString(), 0.91},
+                        new Object[]{draftOnlyId.toString(), 0.88}));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(
+                List.of(semanticId, draftOnlyId))).thenReturn(Set.of(draftOnlyId));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(
+                List.of(semanticId, draftOnlyId))).thenReturn(Set.of());
+        when(mediaAssetRepository.findActiveByIds(List.of(semanticId)))
+                .thenReturn(List.of(semanticMatch));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics event"),
+                eq(Set.of(semanticId)), any(Pageable.class)))
+                .thenReturn(List.of(keywordMatch));
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                " robotics event ",
+                null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(List.of(semanticId, keywordId),
+                result.getItems().stream().map(item -> item.getId()).toList());
+        verify(mediaAssetRepository).findTopSimilarInInstitutions(
+                Set.of(institutionId), "[0.1,0.2]");
+        verify(mediaAssetRepository, never()).findActiveByIds(List.of(draftOnlyId));
+    }
+
+    @Test
+    void semanticSearch_voyageFailureFallsBackToBoundedKeywordSearch() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAsset categoryMatch = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        categoryMatch.setAiCategory("Robotics");
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.embedQuery("robotics")).thenThrow(new RuntimeException("provider unavailable"));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics"),
+                anyCollection(), any(Pageable.class)))
+                .thenReturn(List.of(categoryMatch));
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                "robotics",
+                null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(List.of(categoryMatch.getId()),
+                result.getItems().stream().map(item -> item.getId()).toList());
+        verify(mediaAssetRepository, never()).findTopSimilarInInstitutions(
+                anyCollection(), anyString());
+        verify(mediaAssetRepository).findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics"),
+                anyCollection(), any(Pageable.class));
+    }
+
     private void stubRepositoryPage(
             List<MediaAsset> items,
             long totalCount,
