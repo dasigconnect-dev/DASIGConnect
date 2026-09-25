@@ -53,7 +53,7 @@ public class AIRecommendationController {
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> suggestMedia(
             @PathVariable UUID id,
-            @RequestBody MediaSuggestRequestDto dto,
+            @RequestBody @Valid MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestMedia(id, dto, user)));
     }

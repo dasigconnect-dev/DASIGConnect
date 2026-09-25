@@ -27,7 +27,7 @@ export function useAiMediaSuggestions(
 
   const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
   const tagsKey = JSON.stringify(tags);
-  const selectedImagesKey = JSON.stringify([...selectedImageAssetIds].sort());
+  const selectedImagesKey = JSON.stringify([...new Set(selectedImageAssetIds)].sort());
   const hasContext = hasTextContext || selectedImageAssetIds.length > 0;
   const requestKey = JSON.stringify([
     submissionId,
@@ -45,6 +45,7 @@ export function useAiMediaSuggestions(
   const fetch = useCallback(async () => {
     if (!submissionId || !hasContext) return;
     const requestTags = JSON.parse(tagsKey) as string[];
+    const requestAssetIds = JSON.parse(selectedImagesKey) as string[];
     requestRef.current?.controller.abort();
     const request = {
       id: ++requestIdRef.current,
@@ -60,6 +61,7 @@ export function useAiMediaSuggestions(
         caption: caption.trim() || undefined,
         category: category.trim() || undefined,
         tags: requestTags.length > 0 ? requestTags : undefined,
+        selectedAssetIds: requestAssetIds.length > 0 ? requestAssetIds : undefined,
       }, request.controller.signal);
       if (requestRef.current?.id !== request.id) return;
       setResults(data);
@@ -74,7 +76,7 @@ export function useAiMediaSuggestions(
     } finally {
       if (requestRef.current?.id === request.id) requestRef.current = null;
     }
-  }, [caption, category, eventTitle, hasContext, requestKey, submissionId, tagsKey]);
+  }, [caption, category, eventTitle, hasContext, requestKey, selectedImagesKey, submissionId, tagsKey]);
 
   useEffect(() => {
     if (!submissionId || !hasContext) {

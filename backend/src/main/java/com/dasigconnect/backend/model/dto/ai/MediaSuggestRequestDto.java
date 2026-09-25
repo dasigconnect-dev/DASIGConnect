@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.model.dto.ai;
 
+import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.UUID;
 
 public class MediaSuggestRequestDto {
 
@@ -8,6 +10,9 @@ public class MediaSuggestRequestDto {
     private String caption;
     private String category;
     private List<String> tags;
+
+    @Size(max = 10, message = "selectedAssetIds cannot contain more than 10 assets")
+    private List<UUID> selectedAssetIds;
 
     public String getEventTitle() { return eventTitle; }
     public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
@@ -20,4 +25,7 @@ public class MediaSuggestRequestDto {
 
     public List<String> getTags() { return tags; }
     public void setTags(List<String> tags) { this.tags = tags; }
+
+    public List<UUID> getSelectedAssetIds() { return selectedAssetIds; }
+    public void setSelectedAssetIds(List<UUID> selectedAssetIds) { this.selectedAssetIds = selectedAssetIds; }
 }
