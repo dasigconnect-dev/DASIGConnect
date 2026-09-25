@@ -21,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class MediaProcessingQueueService {
 
     public static final String PROCESSING_VERSION = "media-ai-v2";
+    public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
     public static final String CONTEXT_VERSION = "submission-context-v1";
     private static final int MAX_ERROR_LENGTH = 500;
     private static final Logger log = LoggerFactory.getLogger(MediaProcessingQueueService.class);
@@ -61,6 +62,14 @@ public class MediaProcessingQueueService {
         });
     }
 
+    public void enqueueImageOnly(UUID assetId) {
+        repository.enqueueImageOnly(assetId, IMAGE_EMBEDDING_VERSION, maxAttempts);
+    }
+
+    public void enqueueImageOnlyAfterCommit(UUID assetId) {
+        runAfterCommit(() -> enqueueImageOnlySafely(assetId));
+    }
+
     public void enqueueSubmissionContext(UUID submissionId) {
         repository.enqueueSubmissionContext(submissionId, CONTEXT_VERSION, maxAttempts);
     }
@@ -70,11 +79,14 @@ public class MediaProcessingQueueService {
     }
 
     public List<MediaProcessingJob> claimBatch(
-            String workerId, int requestedBatchSize, boolean includeAiJobs) {
+            String workerId,
+            int requestedBatchSize,
+            boolean includeAiJobs,
+            boolean includeImageJobs) {
         Instant now = Instant.now();
         int batchSize = Math.max(1, Math.min(requestedBatchSize, 10));
         repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize,
-                maxJobsPerInstitutionPerBatch, includeAiJobs);
+                maxJobsPerInstitutionPerBatch, includeAiJobs, includeImageJobs);
         return repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
                 workerId, MediaProcessingJobStatus.PROCESSING);
     }
@@ -134,6 +146,14 @@ public class MediaProcessingQueueService {
             enqueueSubmissionContext(submissionId);
         } catch (Exception error) {
             log.warn("Failed to enqueue media context for submission {}: {}", submissionId, error.getMessage());
+        }
+    }
+
+    private void enqueueImageOnlySafely(UUID assetId) {
+        try {
+            enqueueImageOnly(assetId);
+        } catch (Exception error) {
+            log.warn("Failed to enqueue image embedding for asset {}: {}", assetId, error.getMessage());
         }
     }
 
