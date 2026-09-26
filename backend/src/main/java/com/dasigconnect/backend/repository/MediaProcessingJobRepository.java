@@ -20,7 +20,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
         INSERT INTO media_processing_jobs
             (asset_id, job_type, processing_version, max_attempts)
         VALUES (:assetId, 'CLASSIFY_AND_EMBED', :processingVersion, :maxAttempts)
-        ON CONFLICT (asset_id, job_type, processing_version)
+        ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
         DO UPDATE SET
             status = 'PENDING', attempt_count = 0,
             next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
