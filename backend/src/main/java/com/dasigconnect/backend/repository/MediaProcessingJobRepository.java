@@ -80,12 +80,19 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Modifying
     @Transactional
     @Query(value = """
-        WITH ranked_candidates AS (
+        WITH eligible_jobs AS (
             SELECT job.id,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY COALESCE(asset.institution_id, submission.institution_id, job.id)
-                       ORDER BY job.next_attempt_at, job.created_at
-                   ) AS institution_rank
+                   COALESCE(asset.institution_id, submission.institution_id, job.id) AS institution_key,
+                   CASE WHEN job.job_type = 'EMBED_IMAGE_ONLY' AND EXISTS (
+                       SELECT 1
+                       FROM submission_media_assets selected_media
+                       JOIN submissions selected_submission
+                         ON selected_submission.id = selected_media.submission_id
+                       WHERE selected_media.media_asset_id = job.asset_id
+                         AND selected_submission.status = 'draft'
+                   ) THEN 0 ELSE 1 END AS interactive_priority,
+                   job.next_attempt_at,
+                   job.created_at
             FROM media_processing_jobs job
             LEFT JOIN media_assets asset ON asset.id = job.asset_id
             LEFT JOIN submissions submission ON submission.id = job.submission_id
@@ -101,12 +108,26 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                   OR (:includeAiJobs = TRUE AND job.job_type = 'CLASSIFY_AND_EMBED')
                   OR (:includeImageJobs = TRUE AND job.job_type = 'EMBED_IMAGE_ONLY')
               )
+        ), ranked_candidates AS (
+            SELECT eligible.id,
+                   eligible.interactive_priority,
+                   eligible.next_attempt_at,
+                   eligible.created_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY eligible.institution_key
+                       ORDER BY eligible.interactive_priority,
+                                eligible.next_attempt_at,
+                                eligible.created_at
+                   ) AS institution_rank
+            FROM eligible_jobs eligible
         ), candidates AS (
             SELECT job.id
             FROM media_processing_jobs job
             JOIN ranked_candidates ranked ON ranked.id = job.id
             WHERE ranked.institution_rank <= :perInstitutionLimit
-            ORDER BY job.next_attempt_at, job.created_at
+            ORDER BY ranked.interactive_priority,
+                     ranked.next_attempt_at,
+                     ranked.created_at
             LIMIT :batchSize
             FOR UPDATE SKIP LOCKED
         )
@@ -127,8 +148,24 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                    @Param("includeAiJobs") boolean includeAiJobs,
                    @Param("includeImageJobs") boolean includeImageJobs);
 
-    List<MediaProcessingJob> findByClaimedByAndStatusOrderByCreatedAtAsc(
-            String claimedBy, MediaProcessingJobStatus status);
+    @Query(value = """
+        SELECT job.*
+        FROM media_processing_jobs job
+        WHERE job.claimed_by = :workerId
+          AND job.status = :status
+        ORDER BY CASE WHEN job.job_type = 'EMBED_IMAGE_ONLY' AND EXISTS (
+            SELECT 1
+            FROM submission_media_assets selected_media
+            JOIN submissions selected_submission
+              ON selected_submission.id = selected_media.submission_id
+            WHERE selected_media.media_asset_id = job.asset_id
+              AND selected_submission.status = 'draft'
+        ) THEN 0 ELSE 1 END,
+        job.created_at
+        """, nativeQuery = true)
+    List<MediaProcessingJob> findClaimedBatchInPriorityOrder(
+            @Param("workerId") String workerId,
+            @Param("status") String status);
 
     @Modifying
     @Transactional
