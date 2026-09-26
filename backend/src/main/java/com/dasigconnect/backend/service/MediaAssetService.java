@@ -586,8 +586,9 @@ public class MediaAssetService {
 
         asset.setDeletedAt(null);
         asset.setDeletedByUserId(null);
-        asset.setStatus(MediaAssetStatus.READY);
+        asset.setStatus(MediaAssetStatus.PROCESSING);
         MediaAsset saved = mediaAssetRepository.save(asset);
+        mediaProcessingQueueService.enqueueAfterCommit(assetId);
 
         recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
                 "assetCode", asset.getAssetCode(),
@@ -614,8 +615,9 @@ public class MediaAssetService {
                 }
                 asset.setDeletedAt(null);
                 asset.setDeletedByUserId(null);
-                asset.setStatus(MediaAssetStatus.READY);
+                asset.setStatus(MediaAssetStatus.PROCESSING);
                 mediaAssetRepository.save(asset);
+                mediaProcessingQueueService.enqueueAfterCommit(id);
                 restoredIds.add(id);
             }
         }

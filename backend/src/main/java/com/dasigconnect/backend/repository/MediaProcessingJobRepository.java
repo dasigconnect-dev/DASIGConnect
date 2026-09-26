@@ -25,7 +25,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
             status = 'PENDING', attempt_count = 0,
             next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
             last_error = NULL, completed_at = NULL, updated_at = NOW()
-        WHERE media_processing_jobs.status = 'COMPLETED'
+        WHERE media_processing_jobs.status IN ('COMPLETED', 'DEAD')
         """, nativeQuery = true)
     int enqueue(@Param("assetId") UUID assetId,
                 @Param("processingVersion") String processingVersion,
