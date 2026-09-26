@@ -62,7 +62,7 @@ public class MediaProcessingWorker {
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
     }
 
-    @Scheduled(fixedDelayString = "${app.media-processing.poll-delay-ms:5000}")
+    @Scheduled(fixedDelayString = "${app.media-processing.poll-delay-ms:1000}")
     public void processBatch() {
         Instant startedAt = Instant.now();
         String workerId = UUID.randomUUID().toString();

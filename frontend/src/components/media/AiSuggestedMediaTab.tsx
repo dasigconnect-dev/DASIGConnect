@@ -14,6 +14,7 @@ interface AiSuggestedMediaTabProps {
   category: string;
   tags: string[];
   selectedImageCount?: number;
+  readyImageCount?: number;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
 }
@@ -27,6 +28,7 @@ export default function AiSuggestedMediaTab({
   category,
   tags,
   selectedImageCount = 0,
+  readyImageCount = 0,
   onAddItems,
   disabled,
 }: AiSuggestedMediaTabProps) {
@@ -35,6 +37,7 @@ export default function AiSuggestedMediaTab({
 
   const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
   const hasVisualContext = selectedImageCount > 0;
+  const isPreparingVisualContext = selectedImageCount > readyImageCount;
   const hasContext = hasTextContext || hasVisualContext;
 
   const contextParts: string[] = [];
@@ -100,18 +103,32 @@ export default function AiSuggestedMediaTab({
       {!hasContext && (
         <div className="ast-no-context" role="status">
           <i className="ti ti-info-circle" aria-hidden />
-          <span>Add an image, event title, caption, or tags so AI can find relevant media.</span>
+          <span>Upload or select an image for visual suggestions. Post details are optional context.</span>
         </div>
       )}
 
-      {hasContext && !submissionId && (
+      {hasContext && !submissionId && hasVisualContext && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Saving and preparing selected media...</span>
+        </div>
+      )}
+
+      {hasContext && !submissionId && !hasVisualContext && (
         <div className="ast-idle" role="status">
           <i className="ti ti-device-floppy" style={{ fontSize: 28, color: "var(--mp-muted)" }} aria-hidden />
           <p className="ast-idle-hint">Save your draft first to enable AI media suggestions.</p>
         </div>
       )}
 
-      {hasContext && submissionId && state === "idle" && (
+      {hasContext && submissionId && isPreparingVisualContext && state === "idle" && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Saving and preparing selected media...</span>
+        </div>
+      )}
+
+      {hasContext && submissionId && !isPreparingVisualContext && state === "idle" && (
         <div className="ast-idle">
           <p className="ast-idle-hint">
             AI will scan your media library and surface assets relevant to your selected images and post context.

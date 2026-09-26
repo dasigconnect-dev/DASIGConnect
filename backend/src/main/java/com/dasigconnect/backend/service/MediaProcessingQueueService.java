@@ -87,8 +87,8 @@ public class MediaProcessingQueueService {
         int batchSize = Math.max(1, Math.min(requestedBatchSize, 10));
         repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize,
                 maxJobsPerInstitutionPerBatch, includeAiJobs, includeImageJobs);
-        return repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
-                workerId, MediaProcessingJobStatus.PROCESSING);
+        return repository.findClaimedBatchInPriorityOrder(
+                workerId, MediaProcessingJobStatus.PROCESSING.name());
     }
 
     public void complete(MediaProcessingJob job, String workerId) {

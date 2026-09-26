@@ -1044,6 +1044,11 @@ public class SubmissionService {
         }
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
+        if (asset.getFileType() != null && asset.getFileType().isImage()) {
+            // Older library assets may predate visual embeddings. The image-only
+            // job is idempotent and reuses an existing current-model vector.
+            mediaProcessingQueueService.enqueueImageOnlyAfterCommit(asset.getId());
+        }
         refreshManualPublishingFlag(submission);
 
         Map<String, Object> reuseMetadata = new LinkedHashMap<>();
