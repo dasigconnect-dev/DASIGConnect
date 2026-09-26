@@ -17,6 +17,7 @@ interface MediaAssetsPickerProps {
   caption: string;
   category: string;
   tags: string[];
+  attachedAssetIds?: string[];
   disabled?: boolean;
   onItemClick?: (item: SubmissionMediaItem) => void;
   getItemCaption?: (item: SubmissionMediaItem) => string;
@@ -51,6 +52,7 @@ export default function MediaAssetsPicker({
   caption,
   category,
   tags,
+  attachedAssetIds,
   disabled,
   onItemClick,
   getItemCaption,
@@ -71,8 +73,14 @@ export default function MediaAssetsPicker({
     setVisitedTabs(new Set(visitedTabs).add(activeTab));
   }
 
+  const selectedImageCount = items.filter((item) => item.mediaType === "image").length;
+  const attachedAssetIdSet = new Set(
+    attachedAssetIds ?? items.flatMap((item) => item.assetId ? [item.assetId] : []),
+  );
   const selectedImageAssetIds = items
-    .filter((item) => item.mediaType === "image" && item.assetId)
+    .filter(
+      (item) => item.mediaType === "image" && item.assetId && attachedAssetIdSet.has(item.assetId),
+    )
     .map((item) => item.assetId!);
   // No source tabs means no AI tab to show results in - don't fetch. This is
   // used by the moderator review editor, which must keep its established media
@@ -203,7 +211,8 @@ export default function MediaAssetsPicker({
               caption={caption}
               category={category}
               tags={tags}
-              selectedImageCount={selectedImageAssetIds.length}
+              selectedImageCount={selectedImageCount}
+              readyImageCount={selectedImageAssetIds.length}
               onAddItems={handleAddItems}
               disabled={disabled}
             />

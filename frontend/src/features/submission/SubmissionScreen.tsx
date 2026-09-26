@@ -1767,10 +1767,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     if (!isDirty || busy || fancyTextPreviewActive) return;
-    // Never auto-create a draft. The first save must be explicit (Save Draft /
-    // Submit / advancing to the Media step); autosave only persists edits to a
-    // draft that already exists.
-    if (!form.id) return;
+    // Selecting media is enough to create the initial draft. The media picker
+    // depends on persisted asset IDs for visual AI suggestions, so requiring an
+    // explicit first save would leave a newly selected image unusable there.
+    if (!form.id && !hasMedia) return;
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
@@ -1778,7 +1778,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [busy, fancyTextPreviewActive, form, isAdminComposer, isDirty, scheduledAt]);
+  }, [busy, fancyTextPreviewActive, form, hasMedia, isAdminComposer, isDirty, scheduledAt]);
 
   async function handleSave() {
     await saveDraft();
@@ -3062,6 +3062,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 caption={form.caption}
                 category=""
                 tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
+                attachedAssetIds={form.savedAssets.map((asset) => asset.id)}
                 disabled={!isEditableSubmission}
                 onItemClick={openMediaCaption}
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
