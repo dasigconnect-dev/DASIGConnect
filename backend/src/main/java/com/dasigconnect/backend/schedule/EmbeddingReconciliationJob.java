@@ -26,6 +26,7 @@ public class EmbeddingReconciliationJob {
     private final MediaProcessingQueueService queueService;
     private final ScheduledJobHealthService healthService;
     private final boolean aiConfigured;
+    private final boolean imageEmbeddingConfigured;
     private final int backfillBatchSize;
 
     public EmbeddingReconciliationJob(
@@ -39,6 +40,7 @@ public class EmbeddingReconciliationJob {
         this.queueService = queueService;
         this.healthService = healthService;
         this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
+        this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
         this.backfillBatchSize = Math.max(1, Math.min(backfillBatchSize, 25));
     }
 
@@ -57,8 +59,14 @@ public class EmbeddingReconciliationJob {
                     MediaProcessingQueueService.PROCESSING_VERSION,
                     PageRequest.of(0, availableSlots));
             for (MediaAsset asset : pending) queueService.enqueue(asset.getId());
-            if (!pending.isEmpty()) {
-                log.info("EmbeddingReconciliationJob: enqueued {} incomplete assets", pending.size());
+            int imageSlots = imageEmbeddingConfigured ? availableSlots - pending.size() : 0;
+            List<MediaAsset> missingImages = imageSlots > 0
+                    ? mediaAssetRepository.findReadyImagesMissingImageEmbedding(PageRequest.of(0, imageSlots))
+                    : List.of();
+            for (MediaAsset asset : missingImages) queueService.enqueueImageOnly(asset.getId());
+            if (!pending.isEmpty() || !missingImages.isEmpty()) {
+                log.info("EmbeddingReconciliationJob: enqueued {} incomplete assets and {} missing image embeddings",
+                        pending.size(), missingImages.size());
             }
             healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
         } catch (Exception error) {

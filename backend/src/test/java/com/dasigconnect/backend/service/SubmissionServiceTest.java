@@ -795,6 +795,7 @@ class SubmissionServiceTest {
         submissionService.attachAsset(submissionId, dto, contributorPrincipal);
 
         verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(mediaProcessingQueueService).enqueueImageOnlyAfterCommit(assetId);
         verify(auditLogService).record(
                 any(), eq("MEDIA_ASSET_REUSED"), eq(null), eq(null), eq(assetId), any());
     }
