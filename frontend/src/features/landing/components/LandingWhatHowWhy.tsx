@@ -23,24 +23,37 @@ const THREE_CORE_CHALLENGES: FolderFloatItem[] = [
 
 const SOLUTION_SLIDES = [
   {
-    id: 'submit',
+    id: 'scheduling',
     stepNumber: '01',
-    tabLabel: 'Draft & Assist (Submit Content)',
-    title: 'Draft & Assist',
-    subtitle: 'Centralized Content Submission',
-    description: 'Structured multi-institution authoring workspace with embedded guidelines and media proofing.',
-    image: '/landing-gallery/dasig-submit-content-screenshot.png?v=20260923',
-    alt: 'Draft & Assist — Submit Content Admin View',
+    tabLabel: 'Smart Scheduling',
+    title: 'Smart Scheduling',
+    subtitle: 'Automated Slot Allocation',
+    caption: 'Coordinated calendar scheduling with automated guardrails preventing overlapping posts across member institutions.',
+    howItWorks: 'Contributors select verified regional timeslots, attach organized media albums, and reserve publishing windows with zero coordination friction.',
+    image: '/landing-gallery/dasig-solution-scheduling.png',
+    alt: 'DASIGConnect Content Scheduling and Publishing Slot Allocation',
+  },
+  {
+    id: 'preview',
+    stepNumber: '02',
+    tabLabel: 'Feed Preview',
+    title: 'Feed Preview',
+    subtitle: 'Social Pre-Flight & Readiness',
+    caption: 'Real-time Facebook feed simulation that audits post formatting, hashtags, and media compliance before submission.',
+    howItWorks: 'An intelligent 7-point readiness check inspects caption length, event dates, and aspect ratios to guarantee publish-ready quality.',
+    image: '/landing-gallery/dasig-solution-preview.png',
+    alt: 'DASIGConnect Facebook Feed Preview and Pre-Flight Readiness',
   },
   {
     id: 'review',
-    stepNumber: '02',
-    tabLabel: 'Review & Brand (Validation Queue)',
-    title: 'Review & Brand',
-    subtitle: 'Administrative Validation Queue',
-    description: 'Regional verification pipeline to inspect student drafts, enforce brand compliance, and approve for release.',
-    image: '/landing-gallery/dasig-review-queue-screenshot.png?v=20260923',
-    alt: 'Review & Brand — Validation Queue Admin View',
+    stepNumber: '03',
+    tabLabel: 'Review Queue',
+    title: 'Review Queue',
+    subtitle: 'Regional Validation & Branding',
+    caption: 'Centralized editorial clearance queue where regional administrators inspect, brand, approve, or return submissions.',
+    howItWorks: 'Moderators secure exclusive review locks, verify institution credentials, apply official watermarks, and authorize live Facebook publication.',
+    image: '/landing-gallery/dasig-solution-review.png',
+    alt: 'DASIGConnect Regional Review Queue and Approval Pipeline',
   },
 ];
 
@@ -242,10 +255,10 @@ export default function LandingWhatHowWhy() {
                 margin: '0 auto 28px',
               }}
             >
-              A unified editorial workflow replacing informal handoffs with structured multi-institution drafting and verified regional review.
+              A synchronized regional editorial pipeline — structured scheduling, real-time social pre-flight previews, and centralized multi-institution validation.
             </p>
 
-            {/* Solution Switcher Tabs - Clean horizontal layout without step numbers */}
+            {/* Solution Switcher Tabs */}
             <div className="solution-step-tabs" role="tablist" aria-label="Proposed Solutions">
               {SOLUTION_SLIDES.map((slide, idx) => (
                 <button
@@ -256,14 +269,13 @@ export default function LandingWhatHowWhy() {
                   className={`solution-step-tab-btn ${idx === activeSlideIndex ? 'is-active' : ''}`}
                   onClick={() => setActiveSlideIndex(idx)}
                 >
-                  <span className="step-tab-text">{slide.title}</span>
-                  <span className="step-tab-sub">({slide.subtitle})</span>
+                  <span className="step-tab-text">{slide.tabLabel}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Flat Clean Browser Mockup Showcase Card (Max-width locked to native 1024px to prevent blur) */}
+          {/* Flat Clean Browser Mockup Showcase Card */}
           <div className="solution-flat-card">
             {/* Carousel Viewport Container */}
             <div
@@ -279,7 +291,7 @@ export default function LandingWhatHowWhy() {
                   type="button"
                   className="solution-carousel-arrow is-prev"
                   onClick={prevSlide}
-                  aria-label="Previous screenshot"
+                  aria-label="Previous solution screenshot"
                   title="Previous Screenshot"
                 >
                   <i className="ti ti-chevron-left" />
@@ -290,7 +302,7 @@ export default function LandingWhatHowWhy() {
                   type="button"
                   className="solution-carousel-arrow is-next"
                   onClick={nextSlide}
-                  aria-label="Next screenshot"
+                  aria-label="Next solution screenshot"
                   title="Next Screenshot"
                 >
                   <i className="ti ti-chevron-right" />
@@ -316,15 +328,31 @@ export default function LandingWhatHowWhy() {
                 </div>
               </div>
 
-              {/* Bottom Control & Status Bar */}
+              {/* Bottom Control & Detailed Caption Bar */}
               <div className="solution-carousel-bottom-bar">
-                <div className="carousel-status-tag">
-                  <span className="live-pulse-dot" />
-                  <div className="carousel-label-meta">
+                <div className="solution-caption-block">
+                  <div className="solution-caption-head">
                     <span className="carousel-step-name">{SOLUTION_SLIDES[activeSlideIndex].title}</span>
-                    <span className="carousel-step-divider">&bull;</span>
-                    <span className="carousel-step-sub">{SOLUTION_SLIDES[activeSlideIndex].subtitle}</span>
                   </div>
+
+                  <div className="solution-how-phrase">
+                    <span className="how-badge">
+                      <i className="ti ti-bolt" /> How it works:
+                    </span>
+                    <span className="how-text">{SOLUTION_SLIDES[activeSlideIndex].howItWorks}</span>
+                  </div>
+                </div>
+
+                <div className="solution-carousel-dots" role="tablist" aria-label="Slide indicators">
+                  {SOLUTION_SLIDES.map((slide, idx) => (
+                    <button
+                      key={slide.id}
+                      type="button"
+                      className={`solution-dot ${idx === activeSlideIndex ? 'is-active' : ''}`}
+                      onClick={() => setActiveSlideIndex(idx)}
+                      aria-label={`Switch to slide: ${slide.title}`}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
