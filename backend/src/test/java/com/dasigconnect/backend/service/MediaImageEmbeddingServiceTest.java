@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class MediaImageEmbeddingServiceTest {
@@ -25,9 +26,13 @@ class MediaImageEmbeddingServiceTest {
     @Mock private MediaAssetEmbeddingRepository embeddingRepository;
     @Mock private ClaudeVisionClient imagePreparation;
     @Mock private VoyageAIClient voyageAIClient;
+    @Mock private MediaAiTelemetryService telemetry;
 
     private MediaImageEmbeddingService service() {
-        return new MediaImageEmbeddingService(embeddingRepository, imagePreparation, voyageAIClient);
+        MediaImageEmbeddingService service =
+                new MediaImageEmbeddingService(embeddingRepository, imagePreparation, voyageAIClient);
+        ReflectionTestUtils.setField(service, "mediaAiTelemetry", telemetry);
+        return service;
     }
 
     @Test
@@ -46,6 +51,8 @@ class MediaImageEmbeddingServiceTest {
         verify(voyageAIClient, never()).embedDocument(anyString());
         verify(embeddingRepository, never()).upsert(
                 any(), any(MediaAssetEmbeddingType.class), anyString(), anyString());
+        verify(telemetry).record(eq("VOYAGE_IMAGE_EMBEDDING"), any(Long.class), eq("REUSED"),
+                eq(assetId), eq(null), eq(1), eq(0), eq(1));
     }
 
     @Test

@@ -25,6 +25,9 @@ public class MediaAssetUploadRequestDto {
     @NotNull
     private Long fileSizeBytes;
 
+    @jakarta.validation.constraints.PositiveOrZero
+    private Long r2UploadDurationMs;
+
     private UUID institutionId;
     private UUID albumId;
 
@@ -82,6 +85,14 @@ public class MediaAssetUploadRequestDto {
 
     public void setFileSizeBytes(Long fileSizeBytes) {
         this.fileSizeBytes = fileSizeBytes;
+    }
+
+    public Long getR2UploadDurationMs() {
+        return r2UploadDurationMs;
+    }
+
+    public void setR2UploadDurationMs(Long r2UploadDurationMs) {
+        this.r2UploadDurationMs = r2UploadDurationMs;
     }
 
     public UUID getInstitutionId() {

@@ -10,10 +10,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
+import com.dasigconnect.backend.model.dto.systemhealth.MediaAiStageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
 import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.ManualJobRunner;
+import com.dasigconnect.backend.service.MediaAiTelemetryService;
 import com.dasigconnect.backend.service.SystemHealthService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import com.dasigconnect.backend.service.TokenManagementService;
@@ -46,6 +48,9 @@ class SystemHealthControllerTest {
 
     @MockitoBean
     private AuditLogService auditLogService;
+
+    @MockitoBean
+    private MediaAiTelemetryService mediaAiTelemetryService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -83,6 +88,21 @@ class SystemHealthControllerTest {
     void runJob_withoutAuth_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/system-health/jobs/TokenHealthCheckJob/run"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void mediaAiMetrics_asAdmin_returnsAggregatedMeasurements() throws Exception {
+        when(mediaAiTelemetryService.aggregate(14)).thenReturn(List.of(
+                new MediaAiStageMetricDto("VOYAGE_IMAGE_EMBEDDING", 5, 120.5, 180,
+                        0, 20, 4, 4, 1, 1)));
+
+        mockMvc.perform(get("/api/v1/system-health/media-ai-metrics").param("days", "14"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].stage").value("VOYAGE_IMAGE_EMBEDDING"))
+                .andExpect(jsonPath("$.data[0].providerCallsPerAsset").value(1));
+
+        verify(mediaAiTelemetryService).aggregate(14);
     }
 
     @Test

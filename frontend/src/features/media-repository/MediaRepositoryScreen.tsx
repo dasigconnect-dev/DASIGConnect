@@ -995,18 +995,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       }, signal);
 
       // Reserve the last 10% for the metadata-register call below.
+      const uploadStartedAt = performance.now();
       await putToStorage(
         urlData.signedUrl,
         file,
         (pct) => onProgress?.(Math.round(pct * 0.9)),
         signal,
       );
+      const r2UploadDurationMs = Math.round(performance.now() - uploadStartedAt);
 
       await registerMediaAsset({
         storageUrl: urlData.publicUrl,
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        r2UploadDurationMs,
         contentHash,
         allowDuplicate: metadata.allowDuplicate,
         institutionId,

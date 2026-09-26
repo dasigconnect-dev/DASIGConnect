@@ -65,6 +65,7 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  r2UploadDurationMs?: number;
   contentHash?: string;
   allowDuplicate?: boolean;
   institutionId?: string | null;

@@ -71,6 +71,9 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class MediaAssetService {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
 
@@ -728,6 +731,7 @@ public class MediaAssetService {
     }
 
     public MediaAssetDetailDto upload(MediaAssetUploadRequestDto dto, JwtUserDetails user) {
+        long registrationStartedAt = System.nanoTime();
         MediaFileType fileType;
         try {
             fileType = MediaFileType.valueOf(dto.getFileType().toLowerCase());
@@ -762,6 +766,16 @@ public class MediaAssetService {
         asset.setStatus(fileType.isImage() ? MediaAssetStatus.PROCESSING : MediaAssetStatus.READY);
         asset = mediaAssetRepository.save(asset);
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
+
+        if (mediaAiTelemetry != null) {
+            if (dto.getR2UploadDurationMs() != null) {
+                mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
+                        null, null, 1, 0, 0);
+            }
+            mediaAiTelemetry.record("DB_REGISTRATION",
+                    MediaAiTelemetryService.elapsedMillis(registrationStartedAt), "SUCCESS",
+                    null, null, 1, 0, 0);
+        }
 
         Map<String, Object> auditMeta = new LinkedHashMap<>();
         auditMeta.put("fileName", asset.getFileName());

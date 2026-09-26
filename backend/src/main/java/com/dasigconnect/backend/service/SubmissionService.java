@@ -85,6 +85,9 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class SubmissionService {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
     private static final int MAX_MEDIA_PER_SUBMISSION = 10;
@@ -870,6 +873,7 @@ public class SubmissionService {
      * by ValidationService.
      */
     SubmissionResponseDto attachUploadedMediaTo(Submission submission, AttachMediaDto dto, JwtUserDetails user) {
+        long registrationStartedAt = System.nanoTime();
         UUID submissionId = submission.getId();
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
         if (currentCount >= MAX_MEDIA_PER_SUBMISSION) {
@@ -897,6 +901,15 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        if (mediaAiTelemetry != null) {
+            if (dto.getR2UploadDurationMs() != null) {
+                mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
+                        null, submissionId, 1, 0, 0);
+            }
+            mediaAiTelemetry.record("DB_REGISTRATION",
+                    MediaAiTelemetryService.elapsedMillis(registrationStartedAt), "SUCCESS",
+                    null, submissionId, 1, 0, 0);
+        }
         if (fileType.isImage()) {
             if (stage) {
                 mediaProcessingQueueService.enqueueImageOnlyAfterCommit(asset.getId());

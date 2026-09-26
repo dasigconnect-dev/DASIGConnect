@@ -19,6 +19,9 @@ public class MediaImageEmbeddingService {
     private final ClaudeVisionClient imagePreparation;
     private final VoyageAIClient voyageAIClient;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     public MediaImageEmbeddingService(
             MediaAssetEmbeddingRepository embeddingRepository,
             ClaudeVisionClient imagePreparation,
@@ -34,9 +37,11 @@ public class MediaImageEmbeddingService {
      * semantic embedding, or change the media asset status.
      */
     public boolean generateOrReuse(UUID assetId, String storageUrl) {
+        long startedAt = System.nanoTime();
         String model = voyageAIClient.multimodalModelName();
         if (embeddingRepository.existsCurrentEmbedding(
                 assetId, MediaAssetEmbeddingType.IMAGE, model)) {
+            record(assetId, startedAt, "REUSED", 0, 1);
             return true;
         }
 
@@ -46,6 +51,7 @@ public class MediaImageEmbeddingService {
         } catch (Exception error) {
             log.warn("Failed to fetch image for multimodal embedding for asset {}: {}",
                     assetId, error.getMessage());
+            record(assetId, startedAt, "FAILURE", 0, 0);
             return false;
         }
 
@@ -54,6 +60,7 @@ public class MediaImageEmbeddingService {
             embeddingJson = voyageAIClient.embedImageDocument(image.bytes(), image.mediaType());
         } catch (Exception error) {
             log.warn("Voyage AI image embedding failed for asset {}: {}", assetId, error.getMessage());
+            record(assetId, startedAt, "FAILURE", 1, 0);
             return false;
         }
 
@@ -63,10 +70,21 @@ public class MediaImageEmbeddingService {
                     MediaAssetEmbeddingType.IMAGE,
                     embeddingJson,
                     model);
+            record(assetId, startedAt, "SUCCESS", 1, 0);
             return true;
         } catch (Exception error) {
             log.warn("Failed to store image embedding for asset {}: {}", assetId, error.getMessage());
+            record(assetId, startedAt, "FAILURE", 1, 0);
             return false;
+        }
+    }
+
+    private void record(UUID assetId, long startedAt, String outcome,
+            int providerCalls, int duplicateCallsAvoided) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record("VOYAGE_IMAGE_EMBEDDING",
+                    MediaAiTelemetryService.elapsedMillis(startedAt), outcome,
+                    assetId, null, 1, providerCalls, duplicateCallsAvoided);
         }
     }
 }
