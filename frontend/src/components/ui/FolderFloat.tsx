@@ -181,6 +181,21 @@ export default function FolderFloat({
     }
   }, [n, labelsKey]);
 
+  const [canHover, setCanHover] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const onChange = (e: MediaQueryListEvent) => setCanHover(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   const stopPhysics = useCallback(() => {
     const w = world.current;
     clearTimeout(liveTimer.current);
@@ -190,8 +205,9 @@ export default function FolderFloat({
       w.bodies.forEach((b, i) => {
         const el = pillRefs.current[i];
         if (!el) return;
+        const bh = w.sizes[i]?.h ?? 38;
         el.style.setProperty('--x', `${b.position.x.toFixed(1)}px`);
-        el.style.setProperty('--y', `${(b.position.y - w.sizes[i].h / 2).toFixed(1)}px`);
+        el.style.setProperty('--y', `${(b.position.y - bh / 2).toFixed(1)}px`);
       });
       Composite.clear(w.engine.world, false, true);
       Engine.clear(w.engine);
@@ -221,7 +237,8 @@ export default function FolderFloat({
     };
     w.zone = zone;
     w.bodies = els.map((_el, i) => {
-      const { w: bw, h: bh } = w.sizes[i];
+      const bw = w.sizes[i]?.w ?? 120;
+      const bh = w.sizes[i]?.h ?? 38;
       const b = Bodies.rectangle(pos[i].x, pos[i].y + bh / 2, bw, bh, {
         chamfer: { radius: Math.min(bh / 2 - 1, 16) },
         restitution: 0.2,
@@ -271,8 +288,9 @@ export default function FolderFloat({
       s.bodies.forEach((b, i) => {
         const el = pillRefs.current[i];
         if (!el) return;
+        const bh = s.sizes[i]?.h ?? 38;
         el.style.setProperty('--x', `${b.position.x.toFixed(1)}px`);
-        el.style.setProperty('--y', `${(b.position.y - s.sizes[i].h / 2).toFixed(1)}px`);
+        el.style.setProperty('--y', `${(b.position.y - bh / 2).toFixed(1)}px`);
       });
       s.raf = requestAnimationFrame(tick);
     };
@@ -335,7 +353,8 @@ export default function FolderFloat({
 
   const down = (e: PointerEvent<HTMLButtonElement>, i: number) => {
     const w = world.current;
-    if (!w.live || e.button !== 0) return;
+    const isPointerOk = e.pointerType === 'touch' || e.button === 0;
+    if (!w.live || !isPointerOk) return;
     const b = w.bodies[i];
     if (!b) return;
     const p = pointerAt(e);
@@ -363,7 +382,8 @@ export default function FolderFloat({
     }
     if (!d.moved) return;
     const b = w.bodies[i];
-    const { w: bw, h: bh } = w.sizes[i];
+    const bw = w.sizes[i]?.w ?? 120;
+    const bh = w.sizes[i]?.h ?? 38;
     const z = w.zone;
     const p = pointerAt(e);
     const x = Math.min(z.right - bw / 2, Math.max(z.left + bw / 2, p.x + d.dx));
@@ -384,7 +404,7 @@ export default function FolderFloat({
     if (!d.moved && e.type === 'pointerup') pick(item, i);
   };
 
-  const hover = trigger === 'hover';
+  const hover = trigger === 'hover' && canHover;
 
   return (
     <div
@@ -393,10 +413,18 @@ export default function FolderFloat({
       data-live={live ? '' : undefined}
       data-physics={physics ? '' : undefined}
       data-trigger={trigger}
-      onPointerEnter={hover ? () => set(true) : undefined}
+      onPointerEnter={
+        hover
+          ? (e: React.PointerEvent<HTMLDivElement>) => {
+              if (e.pointerType === 'touch') return;
+              set(true);
+            }
+          : undefined
+      }
       onPointerLeave={
         hover
-          ? () => {
+          ? (e: React.PointerEvent<HTMLDivElement>) => {
+              if (e.pointerType === 'touch') return;
               if (!world.current.drag) set(false);
             }
           : undefined

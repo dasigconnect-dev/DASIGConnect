@@ -400,9 +400,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return date.toISOString();
   }, [form.fastTrack, form.scheduledDate, form.scheduledTime]);
 
+  const isEditableSubmission =
+    form.status === "draft" ||
+    form.status === "needs_revision" ||
+    (form.status === "rejected" && isEditingRejected);
+  const canSubmitCurrentSubmission = isEditableSubmission;
+  const isReadOnlySubmission = !isEditableSubmission;
+
   const readiness = useMemo(
-    () => getReadinessChecklist(form, scheduledAt, lookups, guardRails, guardRailsLoading),
-    [form, guardRails, guardRailsLoading, lookups, scheduledAt],
+    () => getReadinessChecklist(form, scheduledAt, lookups, guardRails, guardRailsLoading, isReadOnlySubmission),
+    [form, guardRails, guardRailsLoading, isReadOnlySubmission, lookups, scheduledAt],
   );
   // At ≤900px the layout stacks; instead of pushing Readiness below the form,
   // the top bar shows a colored score chip that opens it as a bottom sheet.
@@ -468,12 +475,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     previewValidation.blockingErrors.length > 0
       ? previewValidation.blockingErrors[0]
       : undefined;
-  const isEditableSubmission =
-    form.status === "draft" ||
-    form.status === "needs_revision" ||
-    (form.status === "rejected" && isEditingRejected);
-  const canSubmitCurrentSubmission = isEditableSubmission;
-  const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
   const templatesPanelVisible =

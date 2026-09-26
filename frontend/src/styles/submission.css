@@ -6852,10 +6852,10 @@ section.sub-form-section.sub-field-pulse {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 38px;
+  padding: 0 16px;
   border: 1px dashed var(--sub-blue-bdr);
-  border-radius: var(--sub-r);
+  border-radius: 9999px;
   background: var(--sub-surface);
   color: var(--sub-blue);
   font-family: var(--sub-body);
@@ -6863,7 +6863,7 @@ section.sub-form-section.sub-field-pulse {
   font-weight: 700;
   cursor: pointer;
   pointer-events: auto;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .sub-caption-starter-btn i {
   font-size: 16px;
