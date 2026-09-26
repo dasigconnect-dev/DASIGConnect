@@ -298,21 +298,28 @@ body {
 .btn-ghost {
   width: 100%;
   background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border-2);
+  color: #475569;
+  border: 1.5px solid #cbd5e1;
   border-radius: 9999px;
   padding: 12px 24px;
   font-family: var(--ff-body);
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s;
+  transition: all 0.18s ease;
   margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
 }
 
 .btn-ghost:hover {
-  background: var(--input-bg);
-  color: var(--white);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(24, 119, 242, 0.04);
+  color: #1877f2;
+  border-color: #1877f2;
+  outline: 2px solid #1877f2;
+  outline-offset: -1px;
 }
 
 .btn-text {

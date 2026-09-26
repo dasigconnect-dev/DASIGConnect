@@ -260,7 +260,7 @@
   font-family: var(--ff-display);
   font-size: 26px;
   font-weight: 600;
-  color: #1877f2 !important;
+  color: #0f172a !important;
   line-height: 1.25;
   letter-spacing: -0.02em;
   margin-bottom: 8px;
@@ -309,9 +309,9 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #1877f2 !important;
-  background: rgba(24, 119, 242, 0.04);
-  border: 1px solid rgba(24, 119, 242, 0.25) !important;
+  color: #ffffff !important;
+  background: #1877f2 !important;
+  border: 1px solid #1877f2 !important;
   border-radius: 20px;
   padding: 4px 13px;
   display: inline-flex;
@@ -320,26 +320,29 @@
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   cursor: default;
+  box-shadow: 0 1px 3px rgba(24, 119, 242, 0.25);
 }
 
 .member-pill:hover {
-  color: #1877f2 !important;
-  background: #ffffff;
-  border-color: #1877f2 !important;
-  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.14);
+  color: #ffffff !important;
+  background: #166fe5 !important;
+  border-color: #166fe5 !important;
+  box-shadow: 0 3px 8px rgba(24, 119, 242, 0.35);
   transform: translateY(-1px);
 }
 
 .member-pill.others {
-  color: #475569 !important;
-  background: #f8fafc;
-  border-color: #cbd5e1 !important;
+  color: #ffffff !important;
+  background: #1877f2 !important;
+  border-color: #1877f2 !important;
+  opacity: 0.92;
 }
 
 .member-pill.others:hover {
-  color: #1877f2 !important;
-  border-color: #1877f2 !important;
-  background: #ffffff;
+  opacity: 1;
+  color: #ffffff !important;
+  border-color: #166fe5 !important;
+  background: #166fe5 !important;
 }
 
 .member-pill.skeleton {
@@ -444,6 +447,35 @@
 .token-lbl {
   color: #1877f2 !important;
   font-weight: 700 !important;
+}
+
+.btn-ghost,
+.btn-cancel {
+  width: 100%;
+  background: transparent !important;
+  color: #475569 !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 9999px !important;
+  padding: 12px 24px !important;
+  font-family: var(--ff-body) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  margin-top: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  outline: none;
+}
+
+.btn-ghost:hover,
+.btn-cancel:hover {
+  background: rgba(24, 119, 242, 0.04) !important;
+  color: #1877f2 !important;
+  border-color: #1877f2 !important;
+  outline: 2px solid #1877f2 !important;
+  outline-offset: -1px !important;
 }
 
 /* Clean Alert Prompts - No borders or outlines */

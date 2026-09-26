@@ -74,7 +74,7 @@ export default function ForgotScreen({
               {loading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </form>
-          <button type="button" className="btn-ghost" onClick={onBack}>
+          <button type="button" className="btn-ghost btn-cancel" onClick={onBack}>
             Cancel
           </button>
         </RightPanel>
