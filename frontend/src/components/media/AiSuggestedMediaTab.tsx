@@ -103,7 +103,7 @@ export default function AiSuggestedMediaTab({
       {!hasContext && (
         <div className="ast-no-context" role="status">
           <i className="ti ti-info-circle" aria-hidden />
-          <span>Add an image, event title, caption, or tags so AI can find relevant media.</span>
+          <span>Upload or select an image for visual suggestions. Post details are optional context.</span>
         </div>
       )}
 
