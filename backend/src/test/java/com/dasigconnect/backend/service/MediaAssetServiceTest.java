@@ -832,7 +832,7 @@ class MediaAssetServiceTest {
     }
 
     @Test
-    void restore_admin_setsStatusReadyAndClearsDeletedAt() {
+    void restore_admin_marksProcessingAndRequeuesDeletedEmbeddings() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
         asset.setDeletedAt(Instant.now());
@@ -844,8 +844,31 @@ class MediaAssetServiceTest {
         assertEquals(assetId, result.getId());
         assertNull(asset.getDeletedAt());
         assertNull(asset.getDeletedByUserId());
-        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, asset.getStatus());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, asset.getStatus());
         verify(mediaAssetRepository).save(asset);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(assetId);
+    }
+
+    @Test
+    void bulkRestore_admin_requeuesEveryRestoredAsset() {
+        UUID firstId = UUID.randomUUID();
+        UUID secondId = UUID.randomUUID();
+        MediaAsset first = asset(firstId, UUID.randomUUID(), UUID.randomUUID());
+        MediaAsset second = asset(secondId, UUID.randomUUID(), UUID.randomUUID());
+        first.setDeletedAt(Instant.now());
+        second.setDeletedAt(Instant.now());
+        when(mediaAssetRepository.findTrashedById(firstId)).thenReturn(Optional.of(first));
+        when(mediaAssetRepository.findTrashedById(secondId)).thenReturn(Optional.of(second));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        List<UUID> restored = mediaAssetService.bulkRestore(
+                List.of(firstId, secondId), user(UUID.randomUUID(), "admin", null));
+
+        assertEquals(List.of(firstId, secondId), restored);
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, first.getStatus());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, second.getStatus());
+        verify(mediaProcessingQueueService).enqueueAfterCommit(firstId);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(secondId);
     }
 
     @Test
