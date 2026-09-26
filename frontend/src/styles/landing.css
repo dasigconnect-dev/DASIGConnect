@@ -1376,12 +1376,31 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 .step-tab-text {
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
   font-weight: 600;
+  font-size: 0.94rem;
+  letter-spacing: -0.01em;
 }
 
 .step-tab-sub {
   font-size: 0.82rem;
   opacity: 0.85;
+}
+
+.step-tab-badge {
+  font-family: var(--ff-mono, monospace);
+  font-size: 0.76rem;
+  font-weight: 700;
+  opacity: 0.85;
+  background: rgba(15, 23, 42, 0.08);
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-right: 2px;
+}
+
+.solution-step-tab-btn.is-active .step-tab-badge {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 /* Flat Showcase Card - Sized for crisp high-DPI desktop screenshots */
@@ -1598,59 +1617,82 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 /* Bottom Control & Status Bar with Explicit Next / Prev Navigation */
 .solution-carousel-bottom-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 22px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 24px 16px;
   background: #ffffff;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.solution-carousel-container .container-scroll-browser-bar {
+  margin-bottom: 0;
+  padding: 10px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.solution-caption-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.solution-caption-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.carousel-status-tag {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.86rem;
-  color: #334155;
-  flex: 1;
-  min-width: 240px;
+.carousel-step-name {
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 1.32rem;
+  font-weight: 700;
+  color: var(--lp-ink, #07112a);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
-.carousel-label-meta {
+.solution-how-phrase {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  background: #f0f7ff;
+  border: 1px solid rgba(24, 119, 242, 0.16);
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-size: 0.92rem;
+  color: #1e3a8a;
+  line-height: 1.6;
+}
+
+.solution-how-phrase .how-badge {
+  font-weight: 700;
+  color: var(--lp-blue, #1877f2);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.9rem;
 }
 
-.carousel-step-counter {
-  font-family: var(--ff-mono, monospace);
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--lp-blue, #1877f2);
-  background: rgba(24, 119, 242, 0.08);
-  padding: 2px 8px;
-  border-radius: 6px;
-}
-
-.carousel-step-name {
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.carousel-step-divider {
-  color: #cbd5e1;
-}
-
-.carousel-step-sub {
-  color: #64748b;
-  font-size: 0.84rem;
+.solution-how-phrase .how-text {
+  color: #334155;
+  font-size: 0.92rem;
+  flex: 1;
 }
 
 .solution-carousel-dots {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  width: 100%;
+  padding-top: 4px;
 }
 
 .solution-dot {
