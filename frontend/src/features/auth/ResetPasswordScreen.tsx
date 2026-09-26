@@ -4,7 +4,7 @@ import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import { getPasswordRules } from '../../lib/passwordPolicy'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
+import AuthShowcase from './components/AuthShowcase'
 import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 interface ResetPasswordScreenProps {
@@ -62,31 +62,7 @@ export default function ResetPasswordScreen({
     <Screen id="reset-password" active={active}>
       <div className="split">
         <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 - Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Set a new <em>password.</em>
-            </div>
-            <div className="l-desc">
-              Reset links are single-use and time-limited. Once this password is
-              saved, use it the next time you sign in.
-            </div>
-          </div>
+          <AuthShowcase mode="reset" />
         </LeftPanel>
         <RightPanel>
           <button type="button" className="back-btn" onClick={onBack}>
@@ -97,7 +73,7 @@ export default function ResetPasswordScreen({
             <div className="alert alert-warn" style={{ marginBottom: 14 }}>
               <i className="ti ti-alert-triangle"></i>
               <div>
-                <strong style={{ display: 'block', marginBottom: 3, color: '#FCD34D' }}>
+                <strong style={{ display: 'block', marginBottom: 3 }}>
                   You're viewing this inside an app's built-in browser.
                 </strong>
                 Some apps (Messenger, Instagram, etc.) reuse this popup across

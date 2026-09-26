@@ -1,7 +1,7 @@
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
+import AuthShowcase from './components/AuthShowcase'
 
 interface NoAccountScreenProps {
   active: boolean
@@ -16,31 +16,7 @@ export default function NoAccountScreen({
     <Screen id="no-account" active={active}>
       <div className="split">
         <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Invitation-only <em>access.</em>
-            </div>
-            <div className="l-desc">
-              DASIGConnect is a closed platform for DOST Region 7 DASIG member
-              institutions. All accounts are provisioned by Moderators.
-            </div>
-          </div>
+          <AuthShowcase mode="access" />
         </LeftPanel>
         <RightPanel>
           <button type="button" className="back-btn" onClick={onBack}>

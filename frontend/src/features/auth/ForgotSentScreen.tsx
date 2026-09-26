@@ -1,7 +1,7 @@
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
+import AuthShowcase from './components/AuthShowcase'
 
 interface ForgotSentScreenProps {
   active: boolean
@@ -19,31 +19,7 @@ export default function ForgotSentScreen({
     <Screen id="forgot-sent" active={active}>
       <div className="split">
         <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Check your <em>inbox.</em>
-            </div>
-            <div className="l-desc">
-              If your email is registered, a reset link is on its way. The token
-              expires in 60 minutes and invalidates any previous requests.
-            </div>
-          </div>
+          <AuthShowcase mode="recovery-sent" />
         </LeftPanel>
         <RightPanel>
           <div className="success-center">

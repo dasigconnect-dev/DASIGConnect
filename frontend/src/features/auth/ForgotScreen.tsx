@@ -2,7 +2,7 @@ import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
+import AuthShowcase from './components/AuthShowcase'
 
 interface ForgotScreenProps {
   active: boolean
@@ -25,48 +25,7 @@ export default function ForgotScreen({
     <Screen id="forgot" active={active}>
       <div className="split">
         <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Secure account <em>recovery.</em>
-            </div>
-            <div className="l-desc">
-              We'll send a single-use, time-limited reset link to your registered
-              institutional email. Any previous reset tokens are immediately
-              invalidated for security.
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-feat">
-              <div className="l-feat-icon">
-                <i className="ti ti-shield-lock"></i>
-              </div>
-              <div className="l-feat-text">
-                <div className="l-feat-title">
-                  Account Enumeration Protection
-                </div>
-                <div className="l-feat-sub">
-                  We never reveal whether an email exists in our system — you'll
-                  always see the same response.
-                </div>
-              </div>
-            </div>
-          </div>
+          <AuthShowcase mode="recovery" />
         </LeftPanel>
         <RightPanel>
           <button type="button" className="back-btn" onClick={onBack}>

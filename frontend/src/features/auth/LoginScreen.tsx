@@ -5,7 +5,7 @@ import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import Spinner from '../../components/common/Spinner'
 import { listPublicInstitutions, type InstitutionResponse } from '../../api/authApi'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
+import AuthShowcase from './components/AuthShowcase'
 
 interface LoginScreenProps {
   active: boolean
@@ -45,10 +45,12 @@ export default function LoginScreen({
   const showLockout = lockRemaining > 0
   const showAttempts = attempts > 0 && !showLockout
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([])
+  const [loadingInstitutions, setLoadingInstitutions] = useState(true)
 
   useEffect(() => {
     let mounted = true
     const controller = new AbortController()
+    setLoadingInstitutions(true)
 
     listPublicInstitutions(controller.signal)
       .then((res) => {
@@ -59,6 +61,11 @@ export default function LoginScreen({
       .catch(() => {
         if (mounted) {
           setInstitutions([])
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoadingInstitutions(false)
         }
       })
 
@@ -72,118 +79,15 @@ export default function LoginScreen({
     <Screen id="login" active={active}>
       <div className="split">
         <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              One platform.
-              <br />
-              Every <em>institution.</em>
-              <br />
-              One Facebook page.
-            </div>
-            <div className="l-desc">
-              DASIGConnect brings together DOST Region 7 member schools into a
-              single structured workflow — from content submission to Facebook
-              publishing.
-            </div>
-            <div className="l-features">
-              <div className="l-feat">
-                <div className="l-feat-icon">
-                  <i className="ti ti-photo-up"></i>
-                </div>
-                <div className="l-feat-text">
-                  <div className="l-feat-title">
-                    Multi-institution Content Submission
-                  </div>
-                  <div className="l-feat-sub">
-                    Contributors from each HEI submit event photos, videos, and
-                    captions in one place.
-                  </div>
-                </div>
-              </div>
-              <div className="l-feat">
-                <div className="l-feat-icon">
-                  <i className="ti ti-clipboard-check"></i>
-                </div>
-                <div className="l-feat-text">
-                  <div className="l-feat-title">Validation Workflow</div>
-                  <div className="l-feat-sub">
-                    Moderators review and approve content before it reaches the
-                    scheduler.
-                  </div>
-                </div>
-              </div>
-              <div className="l-feat">
-                <div className="l-feat-icon">
-                  <i className="ti ti-calendar-event"></i>
-                </div>
-                <div className="l-feat-text">
-                  <div className="l-feat-title">AI-Assisted Scheduling</div>
-                  <div className="l-feat-sub">
-                    AI-generated captions and smart scheduling push content to
-                    the DASIG Facebook page on time.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div
-              className="divider-text"
-              style={{
-                fontSize: 10,
-                letterSpacing: '0.15em',
-                textTransform: 'uppercase',
-                color: 'var(--muted-2)',
-                marginBottom: 10,
-              }}
-            >
-              Member Institutions
-            </div>
-            <div className="l-members">
-              {institutions.slice(0, 5).map((inst) => (
-                <div key={inst.id} className="member-pill" title={inst.name}>
-                  {inst.institutionCode || inst.name}
-                </div>
-              ))}
-              {institutions.length > 5 && (
-                <div className="member-pill">+ others</div>
-              )}
-            </div>
-          </div>
+          <AuthShowcase
+            mode="pipeline"
+            institutions={institutions}
+            loadingInstitutions={loadingInstitutions}
+          />
         </LeftPanel>
         <RightPanel>
           <div style={{ marginBottom: 20 }}>
-            <Link
-              to="/"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: '0.85rem',
-                color: 'var(--muted, #7a90b8)',
-                textDecoration: 'none',
-                fontWeight: 500,
-                transition: 'color 0.2s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--muted, #7a90b8)')}
-            >
+            <Link to="/" className="back-link">
               <i className="ti ti-arrow-left"></i>
               Back to Overview
             </Link>
@@ -197,13 +101,15 @@ export default function LoginScreen({
             </div>
           </div>
 
-          <div
-            id="login-err-alert"
-            className={`alert alert-err${loginError ? '' : ' hidden'}`}
-          >
-            <i className="ti ti-alert-circle"></i>
-            <span id="login-err-msg">{loginError}</span>
-          </div>
+          {Boolean(loginError) && (
+            <div
+              id="login-err-alert"
+              className="alert alert-err"
+            >
+              <i className="ti ti-alert-circle"></i>
+              <span id="login-err-msg">{loginError}</span>
+            </div>
+          )}
 
           <div id="lockout-box" className={`lockout-box${showLockout ? '' : ' hidden'}`}>
             <i className="ti ti-lock lock-ico"></i>

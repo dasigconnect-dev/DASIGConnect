@@ -28,3 +28,9 @@
     transparent 100%
   );
 }
+
+.shapegrid-bg-wrap.auth-grid {
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+  opacity: 0.95;
+}
