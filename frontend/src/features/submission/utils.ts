@@ -464,6 +464,7 @@ export function getReadinessChecklist(
   lookups: SubmissionLookups,
   guardRails: GuardRailResult | null,
   guardRailsLoading: boolean,
+  isAlreadySubmitted?: boolean,
 ) {
   const fileCount = form.files.length + form.savedAssets.length;
   const mediaTags = effectiveMediaTags(form);
@@ -610,20 +611,35 @@ export function getReadinessChecklist(
       + (recommendedComplete / recommended.length) * 25,
   );
 
+  const isSubmitted = isAlreadySubmitted ?? (
+    Boolean(form.id) &&
+    form.status !== "draft" &&
+    form.status !== "needs_revision"
+  );
+  const isRejected = form.status === "rejected" && isSubmitted;
+
+  let grade = "Incomplete";
+  let description = "Complete the required items before sending for approval.";
+
+  if (isRejected) {
+    grade = "Rejected";
+    description = "This submission was reviewed and rejected.";
+  } else if (isSubmitted) {
+    grade = "Submitted";
+    description = "Required checks passed. Post has been submitted.";
+  } else if (requiredComplete === required.length) {
+    grade = "Ready to submit";
+    description = "Required checks pass. Recommended items can still improve the post.";
+  }
+
   return {
     score,
     required,
     recommended,
     requiredComplete,
     recommendedComplete,
-    grade:
-      requiredComplete === required.length
-        ? "Ready to submit"
-        : "Incomplete",
-    description:
-      requiredComplete === required.length
-        ? "Required checks pass. Recommended items can still improve the post."
-        : "Complete the required items before sending for approval.",
+    grade,
+    description,
   };
 }
 

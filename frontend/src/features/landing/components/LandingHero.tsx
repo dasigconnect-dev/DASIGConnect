@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import type { User } from '../../../types/auth.types';
 import DriftWall, { type DriftWallItem } from '../../../components/ui/DriftWall';
@@ -92,6 +93,19 @@ const HERO_MEDIA_ITEMS: DriftWallItem[] = [
 ];
 
 export default function LandingHero({ user }: LandingHeroProps) {
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobile = windowWidth <= 768;
+  const isTablet = windowWidth > 768 && windowWidth <= 1024;
+
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -205,19 +219,19 @@ export default function LandingHero({ user }: LandingHeroProps) {
           <div className="hero-driftwall-frame">
             <DriftWall
               items={HERO_MEDIA_ITEMS}
-              columns={4}
-              tileWidth={205}
-              tileHeight={140}
-              gap={18}
-              tilt={14}
-              turn={-12}
+              columns={isMobile ? 2 : isTablet ? 3 : 4}
+              tileWidth={isMobile ? 140 : isTablet ? 170 : 205}
+              tileHeight={isMobile ? 96 : isTablet ? 116 : 140}
+              gap={isMobile ? 12 : 18}
+              tilt={isMobile ? 10 : 14}
+              turn={isMobile ? -8 : -12}
               perspective={1200}
-              depth={95}
-              speed={28}
+              depth={isMobile ? 60 : 95}
+              speed={isMobile ? 20 : 28}
               direction="up"
               variance={0.42}
               parallax={0.55}
-              lift={50}
+              lift={isMobile ? 32 : 50}
               fade={0.65}
               dim={0.92}
               overlayColor="transparent"

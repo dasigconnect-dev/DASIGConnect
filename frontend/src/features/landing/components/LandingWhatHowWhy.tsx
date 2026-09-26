@@ -21,11 +21,30 @@ const THREE_CORE_CHALLENGES: FolderFloatItem[] = [
   },
 ];
 
+const MOBILE_CORE_CHALLENGES: FolderFloatItem[] = [
+  {
+    label: 'Delayed Content Publishing',
+    value: 'delays',
+    icon: 'ti ti-clock-pause',
+  },
+  {
+    label: 'Fragmented Coordination',
+    value: 'coordination',
+    icon: 'ti ti-message-2-share',
+  },
+  {
+    label: 'Lack of Validation Workflow',
+    value: 'validation',
+    icon: 'ti ti-shield-x',
+  },
+];
+
 const SOLUTION_SLIDES = [
   {
     id: 'scheduling',
     stepNumber: '01',
     tabLabel: 'Smart Scheduling',
+    mobileLabel: 'Scheduling',
     title: 'Smart Scheduling',
     subtitle: 'Automated Slot Allocation',
     caption: 'Coordinated calendar scheduling with automated guardrails preventing overlapping posts across member institutions.',
@@ -37,6 +56,7 @@ const SOLUTION_SLIDES = [
     id: 'preview',
     stepNumber: '02',
     tabLabel: 'Feed Preview',
+    mobileLabel: 'Feed Preview',
     title: 'Feed Preview',
     subtitle: 'Social Pre-Flight & Readiness',
     caption: 'Real-time Facebook feed simulation that audits post formatting, hashtags, and media compliance before submission.',
@@ -48,6 +68,7 @@ const SOLUTION_SLIDES = [
     id: 'review',
     stepNumber: '03',
     tabLabel: 'Review Queue',
+    mobileLabel: 'Review',
     title: 'Review Queue',
     subtitle: 'Regional Validation & Branding',
     caption: 'Centralized editorial clearance queue where regional administrators inspect, brand, approve, or return submissions.',
@@ -60,7 +81,18 @@ const SOLUTION_SLIDES = [
 export default function LandingWhatHowWhy() {
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
   const touchStartX = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobile = windowWidth <= 768;
 
   // Live Auto-play carousel rotation (pauses on hover)
   useEffect(() => {
@@ -115,27 +147,27 @@ export default function LandingWhatHowWhy() {
             <div className="folder-showcase-wrap">
               <div className="folder-float-container">
                 <FolderFloat
-                  items={THREE_CORE_CHALLENGES}
+                  items={isMobile ? MOBILE_CORE_CHALLENGES : THREE_CORE_CHALLENGES}
                   label="Institutional Bottlenecks"
                   sublabel="3 Core Challenges"
-                  trigger="hover"
+                  trigger={isMobile ? 'click' : 'hover'}
                   defaultOpen={true}
                   closeOnSelect={false}
                   physics={true}
-                  drift={0.35}
+                  drift={isMobile ? 0.2 : 0.35}
                   folderColor="#0c1d3d"
                   frontColor="#1877f2"
                   paperColor="#ffffff"
                   itemColor="#ffffff"
                   itemTextColor="#0f172a"
                   labelColor="#ffffff"
-                  width={260}
-                  height={170}
+                  width={isMobile ? 220 : 260}
+                  height={isMobile ? 148 : 170}
                   radius={16}
-                  spread={280}
-                  lift={72}
-                  rowGap={80}
-                  tilt={5}
+                  spread={isMobile ? 130 : 280}
+                  lift={isMobile ? 48 : 72}
+                  rowGap={isMobile ? 64 : 80}
+                  tilt={isMobile ? 3 : 5}
                   flapAngle={34}
                   restAngle={16}
                   openDuration={520}
@@ -148,7 +180,11 @@ export default function LandingWhatHowWhy() {
                 <span className="folder-hint-icon">
                   <i className="ti ti-hand-grab"></i>
                 </span>
-                <span>Hover or drag the floating bottleneck notes</span>
+                <span>
+                  {isMobile
+                    ? 'Tap the folder to toggle, or drag the notes'
+                    : 'Hover or drag the floating bottleneck notes'}
+                </span>
               </div>
             </div>
 
@@ -269,7 +305,7 @@ export default function LandingWhatHowWhy() {
                   className={`solution-step-tab-btn ${idx === activeSlideIndex ? 'is-active' : ''}`}
                   onClick={() => setActiveSlideIndex(idx)}
                 >
-                  <span className="step-tab-text">{slide.tabLabel}</span>
+                  <span className="step-tab-text">{isMobile ? slide.mobileLabel : slide.tabLabel}</span>
                 </button>
               ))}
             </div>

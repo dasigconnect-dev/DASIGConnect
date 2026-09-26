@@ -148,6 +148,41 @@ export const AccordionGallery: React.FC<AccordionGalleryProps> = ({
     firstRunRef.current = false;
   }, [applyLayout]);
 
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+  const mobileTrackRef = useRef<HTMLDivElement>(null);
+  const [mobileActiveIndex, setMobileActiveIndex] = useState(defaultIndex);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleMobileScroll = () => {
+    const el = mobileTrackRef.current;
+    if (!el) return;
+    const cardWidth = el.offsetWidth * 0.85;
+    const scrollPos = el.scrollLeft;
+    const newIdx = Math.round(scrollPos / cardWidth);
+    if (newIdx >= 0 && newIdx < count && newIdx !== mobileActiveIndex) {
+      setMobileActiveIndex(newIdx);
+    }
+  };
+
+  const scrollToMobileCard = (idx: number) => {
+    const el = mobileTrackRef.current;
+    if (!el) return;
+    const targetCard = el.children[idx] as HTMLElement;
+    if (targetCard) {
+      targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      setMobileActiveIndex(idx);
+    }
+  };
+
   useEffect(() => () => {
     tlRef.current?.kill();
   }, []);
@@ -172,6 +207,108 @@ export const AccordionGallery: React.FC<AccordionGalleryProps> = ({
       setActive((i - 1 + count) % count);
     }
   };
+
+  if (isMobile) {
+    return (
+      <div className={`ag-mobile-gallery-wrapper ${className}`}>
+        <div
+          ref={mobileTrackRef}
+          className="ag-mobile-track"
+          onScroll={handleMobileScroll}
+          role="list"
+          aria-label="Developers carousel"
+        >
+          {items.map((item) => (
+            <div className="ag-mobile-card" key={item.name} role="listitem">
+              <div className="ag-mobile-media-frame">
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="ag-mobile-card-img"
+                  draggable={false}
+                />
+                <div className="ag-mobile-card-overlay" aria-hidden="true" />
+              </div>
+
+              <div className="ag-mobile-card-content">
+                <div className="ag-member-header">
+                  <div className="ag-member-badge">{item.initials}</div>
+                  <div className="ag-member-meta">
+                    <div className="ag-member-name-row">
+                      <span className="ag-member-name">{item.name}</span>
+                      <i className="ti ti-circle-check-filled ag-verify-check" title="Verified Contributor" />
+                    </div>
+                    <span className="ag-member-role">{item.role}</span>
+                  </div>
+                </div>
+
+                {item.tagline && <p className="ag-member-bio">{item.tagline}</p>}
+
+                {item.stats && item.stats.length > 0 && (
+                  <div className="ag-member-stats">
+                    {item.stats.map((s) => (
+                      <div className="ag-stat-item" key={s.label}>
+                        <span className="ag-stat-val">
+                          {s.isStar && <i className="ti ti-star-filled" />}
+                          {s.value}
+                        </span>
+                        <span className="ag-stat-lbl">{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="ag-member-actions">
+                  <span className="ag-btn-contact">
+                    <i className="ti ti-mail" />
+                    {item.contactLabel || 'Connect'}
+                  </span>
+                  <span className="ag-btn-icon" title={item.institution || 'CIT-U'}>
+                    <i className="ti ti-school" />
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Mobile Indicator Dots & Nav Buttons */}
+        <div className="ag-mobile-controls">
+          <button
+            type="button"
+            className="ag-mobile-nav-arrow"
+            onClick={() => scrollToMobileCard(Math.max(0, mobileActiveIndex - 1))}
+            disabled={mobileActiveIndex === 0}
+            aria-label="Previous developer"
+          >
+            <i className="ti ti-chevron-left" />
+          </button>
+
+          <div className="ag-mobile-dots" role="tablist" aria-label="Developer cards pagination">
+            {items.map((item, idx) => (
+              <button
+                key={item.name}
+                type="button"
+                className={`ag-mobile-dot ${idx === mobileActiveIndex ? 'is-active' : ''}`}
+                onClick={() => scrollToMobileCard(idx)}
+                aria-label={`Jump to ${item.name}`}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="ag-mobile-nav-arrow"
+            onClick={() => scrollToMobileCard(Math.min(count - 1, mobileActiveIndex + 1))}
+            disabled={mobileActiveIndex === count - 1}
+            aria-label="Next developer"
+          >
+            <i className="ti ti-chevron-right" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
