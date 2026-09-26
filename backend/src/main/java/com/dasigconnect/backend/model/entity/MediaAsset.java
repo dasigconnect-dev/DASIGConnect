@@ -132,6 +132,25 @@ public class MediaAsset {
     @Column(name = "composition_signals")
     private String[] compositionSignals;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 30)
+    private MediaAssetSourceType sourceType = MediaAssetSourceType.USER_UPLOAD;
+
+    @Column(name = "source_page_id", length = 100)
+    private String sourcePageId;
+
+    @Column(name = "source_post_id", length = 150)
+    private String sourcePostId;
+
+    @Column(name = "source_media_id", length = 150)
+    private String sourceMediaId;
+
+    @Column(name = "system_managed", nullable = false)
+    private boolean systemManaged;
+
+    @Column(name = "imported_at")
+    private Instant importedAt;
+
     // embedding VECTOR(1024) — managed via native queries; Hibernate does not map pgvector type natively
     // Use MediaAssetRepository.updateEmbedding() for writes and cosine search for reads
     @Column(name = "embedding_generated_at")
@@ -166,6 +185,9 @@ public class MediaAsset {
         }
         if (status == null) {
             status = MediaAssetStatus.PROCESSING;
+        }
+        if (sourceType == null) {
+            sourceType = MediaAssetSourceType.USER_UPLOAD;
         }
         createdAt = Instant.now();
     }
@@ -402,6 +424,18 @@ public class MediaAsset {
     public void setVisualQualitySignals(String[] value) { this.visualQualitySignals = value; }
     public String[] getCompositionSignals() { return compositionSignals; }
     public void setCompositionSignals(String[] value) { this.compositionSignals = value; }
+    public MediaAssetSourceType getSourceType() { return sourceType; }
+    public void setSourceType(MediaAssetSourceType value) { this.sourceType = value; }
+    public String getSourcePageId() { return sourcePageId; }
+    public void setSourcePageId(String value) { this.sourcePageId = value; }
+    public String getSourcePostId() { return sourcePostId; }
+    public void setSourcePostId(String value) { this.sourcePostId = value; }
+    public String getSourceMediaId() { return sourceMediaId; }
+    public void setSourceMediaId(String value) { this.sourceMediaId = value; }
+    public boolean isSystemManaged() { return systemManaged; }
+    public void setSystemManaged(boolean value) { this.systemManaged = value; }
+    public Instant getImportedAt() { return importedAt; }
+    public void setImportedAt(Instant value) { this.importedAt = value; }
 
     public Instant getEmbeddingGeneratedAt() {
         return embeddingGeneratedAt;
