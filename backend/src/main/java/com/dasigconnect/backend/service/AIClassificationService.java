@@ -50,6 +50,9 @@ public class AIClassificationService {
     private final VoyageAIClient voyageAIClient;
     private final MediaImageEmbeddingService mediaImageEmbeddingService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
                                    AssetTagRepository assetTagRepository,
@@ -100,15 +103,22 @@ public class AIClassificationService {
         boolean requiresStructuredRefresh = requiredProcessingVersion != null
                 && !requiredProcessingVersion.equals(asset.getAiProcessingVersion());
         if (asset.getAiClassifiedAt() == null || requiresStructuredRefresh) {
+            long classificationStartedAt = System.nanoTime();
             try {
                 result = claudeVisionClient.classifyMedia(List.of(storageUrl));
                 persistClassification(assetId, result);
                 persistSuggestedTags(assetId, result.suggestedTags());
+                recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+                        classificationStartedAt, "SUCCESS");
             } catch (Exception error) {
+                recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+                        classificationStartedAt, "FAILURE");
                 log.warn("AI classification failed for asset {}: {}", assetId, error.getMessage());
                 mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
                 return false;
             }
+        } else {
+            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, System.nanoTime(), "REUSED", 0, 1);
         }
 
         if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
@@ -116,8 +126,9 @@ public class AIClassificationService {
             return false;
         }
 
-        if (result != null || mediaAssetEmbeddingRepository
-                .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty()) {
+        boolean needsSemanticEmbedding = result != null || mediaAssetEmbeddingRepository
+                .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty();
+        if (needsSemanticEmbedding) {
             MediaClassificationDto classification = result;
             List<String> tagLabels = assetTagRepository
                     .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
@@ -133,6 +144,9 @@ public class AIClassificationService {
                 mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
                 return false;
             }
+        } else {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId,
+                    System.nanoTime(), "REUSED", 0, 1);
         }
 
         mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
@@ -232,10 +246,12 @@ public class AIClassificationService {
     }
 
     private boolean generateAndStoreEmbeddingInternal(UUID assetId, String embeddingText) {
+        long startedAt = System.nanoTime();
         String embeddingJson;
         try {
             embeddingJson = voyageAIClient.embedDocument(embeddingText);
         } catch (Exception e) {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "FAILURE");
             log.warn("Voyage AI embedding failed for asset {}: {}", assetId, e.getMessage());
             return false;
         }
@@ -247,11 +263,25 @@ public class AIClassificationService {
                     embeddingJson,
                     voyageAIClient.modelName());
             mediaAssetRepository.updateEmbedding(assetId, embeddingJson, voyageAIClient.modelName());
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "SUCCESS");
             log.info("Embedding stored for asset {}", assetId);
             return true;
         } catch (Exception e) {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "FAILURE");
             log.warn("Failed to store embedding for asset {}: {}", assetId, e.getMessage());
             return false;
+        }
+    }
+
+    private void recordProviderStage(String stage, UUID assetId, long startedAt, String outcome) {
+        recordProviderStage(stage, assetId, startedAt, outcome, 1, 0);
+    }
+
+    private void recordProviderStage(String stage, UUID assetId, long startedAt, String outcome,
+            int providerCalls, int duplicateCallsAvoided) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record(stage, MediaAiTelemetryService.elapsedMillis(startedAt), outcome,
+                    assetId, null, 1, providerCalls, duplicateCallsAvoided);
         }
     }
 

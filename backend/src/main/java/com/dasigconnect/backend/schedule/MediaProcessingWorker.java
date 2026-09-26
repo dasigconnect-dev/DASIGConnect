@@ -10,6 +10,7 @@ import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.MediaImageEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -34,6 +35,9 @@ public class MediaProcessingWorker {
     private final int batchSize;
     private final boolean aiConfigured;
     private final boolean imageEmbeddingConfigured;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
 
     public MediaProcessingWorker(
             MediaProcessingQueueService queue,
@@ -75,6 +79,12 @@ public class MediaProcessingWorker {
     }
 
     private void process(MediaProcessingJob job, String workerId) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record("QUEUE_DELAY",
+                    Math.max(0, Duration.between(job.getCreatedAt(), Instant.now()).toMillis()),
+                    "SUCCESS", job.getAssetId(), job.getSubmissionId(),
+                    job.getAttemptCount(), 0, 0);
+        }
         try {
             if (job.getJobType() == MediaProcessingJobType.BUILD_SUBMISSION_CONTEXT) {
                 contextService.rebuild(job.getSubmissionId());
@@ -102,10 +112,19 @@ public class MediaProcessingWorker {
                 throw new IllegalStateException("AI media processing did not complete");
             }
             mediaAssetRepository.markProcessingReady(asset.getId(), job.getProcessingVersion());
+            if (mediaAiTelemetry != null && asset.getCreatedAt() != null) {
+                mediaAiTelemetry.record("READY_LATENCY",
+                        Math.max(0, Duration.between(asset.getCreatedAt(), Instant.now()).toMillis()),
+                        "SUCCESS", asset.getId(), null, job.getAttemptCount(), 0, 0);
+            }
             submissionMediaAssetRepository.findSubmissionIdsByMediaAssetId(asset.getId())
                     .forEach(queue::enqueueSubmissionContext);
             queue.complete(job, workerId);
         } catch (Exception error) {
+            if (mediaAiTelemetry != null) {
+                mediaAiTelemetry.record("READY_LATENCY", 0, "FAILURE",
+                        job.getAssetId(), job.getSubmissionId(), job.getAttemptCount(), 0, 0);
+            }
             log.warn("Media processing attempt {} failed for asset {}: {}",
                     job.getAttemptCount(), job.getAssetId(), error.getMessage());
             queue.fail(job, workerId, error);

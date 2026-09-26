@@ -32,6 +32,9 @@ public class AIRecommendationController {
     private final AIRecommendationService aiRecommendationService;
     private final AiAdoptionTrackingService adoptionTracking;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
+
     public AIRecommendationController(AIRecommendationService aiRecommendationService,
                                       AiAdoptionTrackingService adoptionTracking) {
         this.aiRecommendationService = aiRecommendationService;
@@ -57,11 +60,26 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody @Valid MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        AIRecommendationService.MediaSuggestionBatch batch =
-                aiRecommendationService.suggestMediaBatch(id, dto, user);
-        return ResponseEntity.ok()
-                .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
-                .body(ApiResponse.success(batch.results()));
+        long startedAt = System.nanoTime();
+        try {
+            AIRecommendationService.MediaSuggestionBatch batch =
+                    aiRecommendationService.suggestMediaBatch(id, dto, user);
+            recordSuggestionMetric(id, startedAt, "SUCCESS");
+            return ResponseEntity.ok()
+                    .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
+                    .body(ApiResponse.success(batch.results()));
+        } catch (RuntimeException error) {
+            recordSuggestionMetric(id, startedAt, "FAILURE");
+            throw error;
+        }
+    }
+
+    private void recordSuggestionMetric(UUID submissionId, long startedAt, String outcome) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record("AI_SUGGESTION_QUERY",
+                    com.dasigconnect.backend.service.MediaAiTelemetryService.elapsedMillis(startedAt),
+                    outcome, null, submissionId, 1, 0, 0);
+        }
     }
 
     /** Lightweight readiness check used by the composer's bounded background refresh. */

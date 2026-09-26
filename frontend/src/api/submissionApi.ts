@@ -263,6 +263,7 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
       },
       { signal },
     );
+    const uploadStartedAt = performance.now();
     const upload = await fetchWithDeadline(signedUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -273,12 +274,14 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
       const msg = await upload.text().catch(() => "");
       throw new Error(msg || "Media upload to storage failed.");
     }
+    const r2UploadDurationMs = Math.round(performance.now() - uploadStartedAt);
     responses.push(
       await api.post(`/submissions/${id}/media`, {
         storageUrl: publicUrl,
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        r2UploadDurationMs,
       }, { signal }),
     );
   }

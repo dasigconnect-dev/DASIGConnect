@@ -10,6 +10,8 @@ import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.model.dto.systemhealth.MediaAiStageMetricDto;
+import com.dasigconnect.backend.service.MediaAiTelemetryService;
 import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
@@ -42,16 +44,19 @@ public class SystemHealthController {
     private final TokenManagementService tokenManagementService;
     private final ManualJobRunner manualJobRunner;
     private final AuditLogService auditLogService;
+    private final MediaAiTelemetryService mediaAiTelemetryService;
 
     public SystemHealthController(
             SystemHealthService systemHealthService,
             TokenManagementService tokenManagementService,
             ManualJobRunner manualJobRunner,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            MediaAiTelemetryService mediaAiTelemetryService) {
         this.systemHealthService = systemHealthService;
         this.tokenManagementService = tokenManagementService;
         this.manualJobRunner = manualJobRunner;
         this.auditLogService = auditLogService;
+        this.mediaAiTelemetryService = mediaAiTelemetryService;
     }
 
     @GetMapping("/summary")
@@ -77,6 +82,12 @@ public class SystemHealthController {
     @GetMapping("/operational-metrics")
     public ResponseEntity<ApiResponse<List<OperationalMetricDto>>> operationalMetrics() {
         return ResponseEntity.ok(ApiResponse.success(systemHealthService.operationalMetrics()));
+    }
+
+    @GetMapping("/media-ai-metrics")
+    public ResponseEntity<ApiResponse<List<MediaAiStageMetricDto>>> mediaAiMetrics(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "30") int days) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAiTelemetryService.aggregate(days)));
     }
 
     @GetMapping("/tokens")
