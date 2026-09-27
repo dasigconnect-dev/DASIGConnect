@@ -84,7 +84,7 @@ export function useSubmissions(
   );
 
   return {
-    submissions: query.data?.pages.flatMap((page) => page.items) ?? [],
+    submissions: query.data?.pages?.flatMap((page) => page.items) ?? [],
     counts: firstPage?.counts ?? emptySubmissionCounts,
     totalCount: firstPage?.totalCount ?? 0,
     hasNextPage: Boolean(query.hasNextPage),

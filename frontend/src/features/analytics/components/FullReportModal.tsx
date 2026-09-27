@@ -186,7 +186,7 @@ export default function FullReportModal({
     (p) => p.value !== 0 || (p.secondaryValue ?? 0) !== 0,
   );
   const defaultTab: ActiveTab =
-    dailyHasData || !(report && report.aggregateRows.length > 0) ? "daily" : "detail";
+    dailyHasData || !((report?.aggregateRows?.length ?? 0) > 0) ? "daily" : "detail";
   const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : defaultTab;
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = reportQuery;
 
@@ -202,7 +202,7 @@ export default function FullReportModal({
     return () => observer.disconnect();
   }, [
     activeTab,
-    report?.aggregateRows.length,
+    report?.aggregateRows?.length,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,

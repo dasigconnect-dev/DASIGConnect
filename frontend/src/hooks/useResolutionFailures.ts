@@ -149,7 +149,7 @@ export function useResolutionFailures(
         },
       },
       (current) => {
-        if (!current?.pages.length) return current;
+        if (!current?.pages?.length) return current;
         const matched = current.pages.some((page) =>
           page.items.some((item) => item.submissionId === submissionId));
         const pages = current.pages.map((page) => ({
@@ -321,7 +321,7 @@ export function useResolutionFailures(
   }
 
   return {
-    failures: failuresQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    failures: failuresQuery.data?.pages?.flatMap((page) => page.items) ?? [],
     loading: failuresQuery.isLoading,
     error: failuresQuery.error && !failuresQuery.data
       ? "Could not load failed publications. Please try again."

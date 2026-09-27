@@ -1,14 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import Screen from '../../components/layout/Screen'
-import LeftPanel from '../../components/layout/LeftPanel'
-import RightPanel from '../../components/layout/RightPanel'
 import Spinner from '../../components/common/Spinner'
-import { listPublicInstitutions, type InstitutionResponse } from '../../api/authApi'
-import AuthShowcase from './components/AuthShowcase'
 
 interface LoginScreenProps {
-  active: boolean
+  active?: boolean
   email: string
   password: string
   showPassword: boolean
@@ -26,7 +21,6 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({
-  active,
   email,
   password,
   showPassword,
@@ -44,54 +38,15 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   const showLockout = lockRemaining > 0
   const showAttempts = attempts > 0 && !showLockout
-  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([])
-  const [loadingInstitutions, setLoadingInstitutions] = useState(true)
-
-  useEffect(() => {
-    let mounted = true
-    const controller = new AbortController()
-    setLoadingInstitutions(true)
-
-    listPublicInstitutions(controller.signal)
-      .then((res) => {
-        if (mounted && Array.isArray(res.data)) {
-          setInstitutions(res.data)
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setInstitutions([])
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoadingInstitutions(false)
-        }
-      })
-
-    return () => {
-      mounted = false
-      controller.abort()
-    }
-  }, [])
 
   return (
-    <Screen id="login" active={active}>
-      <div className="split">
-        <LeftPanel>
-          <AuthShowcase
-            mode="pipeline"
-            institutions={institutions}
-            loadingInstitutions={loadingInstitutions}
-          />
-        </LeftPanel>
-        <RightPanel>
-          <div style={{ marginBottom: 20 }}>
-            <Link to="/" className="back-link">
-              <i className="ti ti-arrow-left"></i>
-              Back to Overview
-            </Link>
-          </div>
+    <>
+      <div style={{ marginBottom: 20 }}>
+        <Link to="/" className="back-link">
+          <i className="ti ti-arrow-left"></i>
+          Back to Overview
+        </Link>
+      </div>
 
           <div className="form-head">
             <div className="form-title">Welcome back.</div>
@@ -188,12 +143,21 @@ export default function LoginScreen({
 
             <button
               type="submit"
-              className="btn-primary"
+              className={`btn-primary${loading ? ' is-loading' : ''}`}
               disabled={loading}
+              aria-busy={loading}
             >
-              <i className="ti ti-login"></i>
-              <span>{loading ? 'Signing In' : 'Sign In'}</span>
-              {loading && <Spinner size="xs" color="white" aria-label="Signing in" />}
+              {loading ? (
+                <>
+                  <Spinner size="xs" color="white" aria-label="Signing in" />
+                  <span>Signing In...</span>
+                </>
+              ) : (
+                <>
+                  <i className="ti ti-login"></i>
+                  <span>Sign In</span>
+                </>
+              )}
             </button>
           </form>
 
@@ -210,9 +174,7 @@ export default function LoginScreen({
               Learn how to get access
             </button>
           </div>
-        </RightPanel>
-      </div>
-    </Screen>
+    </>
   )
 }
 

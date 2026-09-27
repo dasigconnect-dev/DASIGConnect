@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, useNavigate, Navigate } from "react-router-dom";
 import DashboardLayout from "../components/layout/DashboardLayout";
+import AuthLayout from "../components/layout/AuthLayout";
 import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
@@ -85,77 +86,77 @@ function App() {
           <Routes>
             {/* ── Public ─────────────────────────────────────────────── */}
             <Route path="/" element={<LandingPage user={currentUser} />} />
-            <Route
-              path="/login"
-              element={
-                <LoginScreen
-                  active={true}
-                  email={auth.login.email}
-                  password={auth.login.password}
-                  showPassword={auth.login.showPassword}
-                  loginError={auth.login.error}
-                  attempts={auth.login.attempts}
-                  lockRemaining={auth.login.lockRemaining}
-                  onEmailChange={auth.login.setEmail}
-                  onPasswordChange={auth.login.setPassword}
-                  onTogglePassword={auth.login.toggleShowPassword}
-                  onLogin={() => void auth.login.submit()}
-                  onForgot={() => navigate("/forgot-password")}
-                  onNoAccount={() => navigate("/no-account")}
-                  onRequestReset={() => navigate("/forgot-password")}
-                  loading={auth.login.loading}
-                />
-              }
-            />
-            <Route
-              path="/forgot-password"
-              element={
-                <ForgotScreen
-                  active={true}
-                  email={passwordReset.forgot.email}
-                  onEmailChange={passwordReset.forgot.setEmail}
-                  onSubmit={() => void passwordReset.forgot.submit()}
-                  onBack={backToLogin}
-                  loading={passwordReset.forgot.loading}
-                />
-              }
-            />
-            <Route
-              path="/forgot-password-sent"
-              element={<ForgotSentScreen active={true} email={passwordReset.forgot.sentEmail} onBack={backToLogin} />}
-            />
-            <Route path="/reset-password" element={resetPasswordScreen} />
-            <Route path="/forgot-password/reset" element={resetPasswordScreen} />
-            <Route
-              path="/invite"
-              element={
-                <InviteScreen
-                  active={true}
-                  state={invite.state}
-                  email={invite.email}
-                  roleLabel={invite.roleLabel}
-                  institution={invite.institution}
-                  firstName={invite.firstName}
-                  lastName={invite.lastName}
-                  password={invite.password}
-                  confirmPassword={invite.confirmPassword}
-                  rules={invite.rules}
-                  inviteCountdown={invite.countdown}
-                  onFirstNameChange={invite.setFirstName}
-                  onLastNameChange={invite.setLastName}
-                  onPasswordChange={invite.setPassword}
-                  onConfirmPasswordChange={invite.setConfirmPassword}
-                  onTogglePassword={invite.toggleShowPassword}
-                  onToggleConfirmPassword={invite.toggleShowConfirmPassword}
-                  onActivate={() => void invite.activate()}
-                  onBackToLogin={backToLogin}
-                  showPassword={invite.showPassword}
-                  showConfirmPassword={invite.showConfirmPassword}
-                  loading={invite.loading}
-                />
-              }
-            />
-            <Route path="/no-account" element={<NoAccountScreen active={true} onBack={backToLogin} />} />
+            {/* ── Public Auth (Shared static left panel) ─────────────── */}
+            <Route element={<AuthLayout />}>
+              <Route
+                path="/login"
+                element={
+                  <LoginScreen
+                    email={auth.login.email}
+                    password={auth.login.password}
+                    showPassword={auth.login.showPassword}
+                    loginError={auth.login.error}
+                    attempts={auth.login.attempts}
+                    lockRemaining={auth.login.lockRemaining}
+                    onEmailChange={auth.login.setEmail}
+                    onPasswordChange={auth.login.setPassword}
+                    onTogglePassword={auth.login.toggleShowPassword}
+                    onLogin={() => void auth.login.submit()}
+                    onForgot={() => navigate("/forgot-password")}
+                    onNoAccount={() => navigate("/no-account")}
+                    onRequestReset={() => navigate("/forgot-password")}
+                    loading={auth.login.loading}
+                  />
+                }
+              />
+              <Route
+                path="/forgot-password"
+                element={
+                  <ForgotScreen
+                    email={passwordReset.forgot.email}
+                    onEmailChange={passwordReset.forgot.setEmail}
+                    onSubmit={() => void passwordReset.forgot.submit()}
+                    onBack={backToLogin}
+                    loading={passwordReset.forgot.loading}
+                  />
+                }
+              />
+              <Route
+                path="/forgot-password-sent"
+                element={<ForgotSentScreen email={passwordReset.forgot.sentEmail} onBack={backToLogin} />}
+              />
+              <Route path="/reset-password" element={resetPasswordScreen} />
+              <Route path="/forgot-password/reset" element={resetPasswordScreen} />
+              <Route
+                path="/invite"
+                element={
+                  <InviteScreen
+                    state={invite.state}
+                    email={invite.email}
+                    roleLabel={invite.roleLabel}
+                    institution={invite.institution}
+                    firstName={invite.firstName}
+                    lastName={invite.lastName}
+                    password={invite.password}
+                    confirmPassword={invite.confirmPassword}
+                    rules={invite.rules}
+                    inviteCountdown={invite.countdown}
+                    onFirstNameChange={invite.setFirstName}
+                    onLastNameChange={invite.setLastName}
+                    onPasswordChange={invite.setPassword}
+                    onConfirmPasswordChange={invite.setConfirmPassword}
+                    onTogglePassword={invite.toggleShowPassword}
+                    onToggleConfirmPassword={invite.toggleShowConfirmPassword}
+                    onActivate={() => void invite.activate()}
+                    onBackToLogin={backToLogin}
+                    showPassword={invite.showPassword}
+                    showConfirmPassword={invite.showConfirmPassword}
+                    loading={invite.loading}
+                  />
+                }
+              />
+              <Route path="/no-account" element={<NoAccountScreen onBack={backToLogin} />} />
+            </Route>
 
             {/* ── Signed in: dashboard layout ────────────────────────── */}
             <Route

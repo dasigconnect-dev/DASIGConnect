@@ -79,7 +79,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
     meta: authenticatedQueryMeta,
   });
 
-  const submissions = submissionsQuery.data?.pages.flatMap((page) => page.items) ?? EMPTY_SUBMISSIONS;
+  const submissions = submissionsQuery.data?.pages?.flatMap((page) => page.items) ?? EMPTY_SUBMISSIONS;
   const institutions = institutionsQuery.data ?? EMPTY_INSTITUTIONS;
   const loading = submissionsQuery.isLoading;
   const loadError = submissionsQuery.isError && !submissionsQuery.data;

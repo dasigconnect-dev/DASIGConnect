@@ -61,7 +61,6 @@ function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
       id: e.id,
       title: eventTitle(e),
       start: e.scheduledAt,
-      end: e.scheduledAt,
       allDay: false,
       backgroundColor: color.bg,
       borderColor: color.bg,
@@ -203,7 +202,7 @@ export default function CalendarView({
 
   return (
     <div className={`cal-container${isBusy ? " cal-container-busy" : ""}`}>
-      {isBusy && <CalendarLoadingOverlay />}
+      {isBusy && events.length === 0 && <CalendarLoadingOverlay />}
       {!isBusy && events.length === 0 && <CalendarEmptyOverlay />}
       <FullCalendar
         ref={calendarRef}
@@ -219,6 +218,7 @@ export default function CalendarView({
         }
         datesSet={onDatesSet}
         headerToolbar={false}
+        allDaySlot={false}
         height="auto"
         dayMaxEvents={3}
         fixedWeekCount={false}
@@ -228,10 +228,17 @@ export default function CalendarView({
         slotMaxTime={showFullDay ? "24:00:00" : "20:00:00"}
         scrollTime={`${Math.max(new Date().getHours() - 1, showFullDay ? 0 : 8).toString().padStart(2, "0")}:00:00`}
         nowIndicator
-        defaultTimedEventDuration="00:00:00"
+        defaultTimedEventDuration="01:00:00"
         nextDayThreshold="24:00:00"
-        forceEventDuration={false}
+        forceEventDuration={true}
         eventDisplay="block"
+        slotLabelInterval="01:00:00"
+        slotLabelFormat={{
+          hour: "numeric",
+          minute: "2-digit",
+          omitZeroMinute: true,
+          meridiem: "short",
+        }}
         editable={draggable}
         eventStartEditable={draggable}
         eventDurationEditable={false}

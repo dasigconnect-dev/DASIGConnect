@@ -1949,13 +1949,28 @@
 }
 
 .fc .fc-timegrid-slot-label {
-  color: #7890ad;
-  font-size: 11px;
-  font-weight: 700;
+  vertical-align: middle;
 }
 
-.fc .fc-timegrid-axis {
-  background: #fbfdff;
+.fc .fc-timegrid-slot-label-cushion {
+  display: inline-block !important;
+  color: #334e6b !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  white-space: nowrap !important;
+  padding: 0 4px !important;
+}
+
+.fc-theme-standard th.fc-timegrid-axis,
+.fc .fc-timegrid-axis-chunk {
+  background: #f8fbff;
+}
+
+.fc .fc-timegrid-col.fc-timegrid-axis {
+  background: transparent !important;
+  pointer-events: none !important;
 }
 
 .fc .fc-timegrid-axis-cushion {
@@ -3178,7 +3193,7 @@
   }
 
   .fc-timegrid {
-    min-width: 540px;
+    min-width: 560px;
   }
 }
 
@@ -3207,6 +3222,64 @@
 
   .cal-refresh-btn {
     padding: 0 10px;
+  }
+
+  /* Week view on mobile: smooth horizontal scrolling with visible time labels */
+  .fc-timegrid {
+    min-width: 580px;
+  }
+
+  .fc-theme-standard th.fc-timegrid-axis {
+    background: #f8fbff !important;
+  }
+
+  .fc .fc-col-header-cell.fc-day-today {
+    background: #eff6ff !important;
+  }
+
+  .fc .fc-col-header-cell.fc-day-today .fc-col-header-cell-cushion {
+    color: var(--d-blue, #1877f2) !important;
+    font-weight: 700 !important;
+  }
+
+  .fc .fc-timegrid-event {
+    border-radius: 8px !important;
+    margin: 1px !important;
+    border: 1px solid rgba(24, 119, 242, 0.2) !important;
+    box-shadow: 0 2px 6px rgba(10, 22, 40, 0.08) !important;
+  }
+
+  .fc .fc-timegrid-event .cal-event-pill {
+    padding: 4px 6px !important;
+    gap: 5px !important;
+    font-size: 10.5px !important;
+    line-height: 1.25 !important;
+  }
+
+  .fc .fc-timegrid-event .cal-event-dot {
+    width: 5px !important;
+    height: 13px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .fc .fc-timegrid-event .cal-event-title {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .fc .fc-timegrid-event .cal-event-meta {
+    display: block !important;
+    font-size: 9px !important;
+    opacity: 0.85 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   /* Compact FullCalendar month cells */
@@ -4013,6 +4086,18 @@
     height: 44px;
     padding: 0;
     font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cal-pill-btn i,
+  .cal-refresh-btn i {
+    font-size: 20px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .cal-pill-btn {

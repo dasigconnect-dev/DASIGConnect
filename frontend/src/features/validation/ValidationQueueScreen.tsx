@@ -90,9 +90,10 @@ import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 import "../../styles/validation.css";
 import { formatRejectionReason, REJECTION_REASONS } from "../../lib/rejectionReason";
-// Reused Submit Content authoring components (AI caption button, engagement
-// panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
 import "../../styles/submission.css";
+import { CalendarDateField } from "../submission/components/CalendarDateField";
+import { TimePickerField } from "../submission/components/TimePickerField";
+import { dateToInputValue } from "../submission/utils";
 import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import {
@@ -342,12 +343,29 @@ export default function ValidationQueueScreen({
   // Pending "clear the selection after Back"; cancelled if a card is opened
   // before the slide-out finishes, so it can't wipe the new selection.
   const mobileBackTimer = useRef<number | null>(null);
+  const savedScrollYRef = useRef(0);
   useEffect(() => {
     if (mobileView === "review" && mobileBackTimer.current) {
       window.clearTimeout(mobileBackTimer.current);
       mobileBackTimer.current = null;
     }
   }, [mobileView]);
+
+  useEffect(() => {
+    if (!isDesktop) {
+      if (mobileView === "review") {
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+          document.body.style.overflow = prevOverflow;
+        };
+      } else if (mobileView === "queue" && savedScrollYRef.current > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, savedScrollYRef.current);
+        });
+      }
+    }
+  }, [mobileView, isDesktop]);
   const [showDetails, setShowDetails] = useState(true);
   const [mediaIndex, setMediaIndex] = useState(0);
   const [renderedModal, setRenderedModal] = useState<DecisionModal>(null);
@@ -429,10 +447,10 @@ export default function ValidationQueueScreen({
             && "view" in params && params.view === "queue-page";
         },
       },
-      (current) => current?.pages.length
+      (current) => current?.pages?.length
         ? {
             pages: [current.pages[0]],
-            pageParams: [current.pageParams[0] ?? 0],
+            pageParams: [current.pageParams?.[0] ?? 0],
           }
         : current,
     );
@@ -755,7 +773,7 @@ export default function ValidationQueueScreen({
           .then((lockStatus) => {
             if (requestId !== openRequestRef.current) return;
             const lock = lockStatus.data;
-            if (lock?.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
+            if (lock?.lockedByEmail?.toLowerCase() === user.email.toLowerCase()) {
               setLocks((prev) => ({ ...prev, [summary.id]: lock }));
               setLockNotice("");
             } else {
@@ -841,6 +859,7 @@ export default function ValidationQueueScreen({
       .then((detail) => {
         if (!active) return;
         void openSubmission(detail);
+        if (!isDesktop) savedScrollYRef.current = window.scrollY;
         setMobileView("review");
       })
       .catch((err: unknown) => {
@@ -1232,10 +1251,24 @@ export default function ValidationQueueScreen({
     return missing;
   }, [editForm]);
 
+  // ── Business rule: Edits require at least one changed field to save ─────────
+  const hasEditChanges = useMemo(() => {
+    if (!editMode || !selected) return false;
+    return describeEditChanges().length > 0;
+  }, [
+    editMode,
+    selected,
+    editForm,
+    fastTrackChanged,
+    scheduleChanged,
+    editScheduledAtIso,
+  ]);
+
   // Only an admin can bypass a hard block — with a reason. Moderators cannot
-  // save a blocked slot at all.
+  // save a blocked slot at all. Saving requires at least one field to have been modified.
   const canSaveEdit =
     !editSaving &&
+    hasEditChanges &&
     editMissingFields.length === 0 &&
     (!hardBlocked || (isAdmin && overrideReason.trim().length >= 10));
 
@@ -1671,6 +1704,7 @@ export default function ValidationQueueScreen({
                         scheduledAt: item.scheduledAt ?? undefined,
                         fastTrack: item.fastTrack,
                       });
+                      if (!isDesktop) savedScrollYRef.current = window.scrollY;
                       setMobileView("review");
                     }}
                     title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
@@ -1771,6 +1805,7 @@ export default function ValidationQueueScreen({
                     key={item.id}
                     type="button"
                     onClick={() => {
+                      if (!isDesktop) savedScrollYRef.current = window.scrollY;
                       void openSubmission(item);
                       setMobileView("review");
                     }}
@@ -2088,12 +2123,11 @@ export default function ValidationQueueScreen({
                                   </button>
                                 )}
                               </div>
-                              <input
+                              <CalendarDateField
                                 id="val-edit-event-date"
-                                type="date"
                                 value={editForm.eventDate}
-                                aria-invalid={!editForm.eventDate || undefined}
-                                onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
+                                placeholder="Select event date"
+                                onChange={(value) => setEditForm((f) => ({ ...f, eventDate: value }))}
                               />
                             </div>
                           </div>
@@ -2131,11 +2165,13 @@ export default function ValidationQueueScreen({
                                   onPreviewSelection={(next) => setEditForm((f) => ({ ...f, caption: next }))}
                                   onRestoreSelection={setCaptionSelection}
                                 />
+                                <div className="val-edit-tool-sep" aria-hidden="true" />
                                 <AiCaptionButton
                                   state={aiCaption.state}
                                   canSuggest={aiCaption.canSuggest}
                                   rateLimitReset={aiCaption.rateLimitReset}
                                   notice={aiCaption.notice}
+                                  hideInlineNotice
                                   onSuggest={() => setCaptionPromptOpen(true)}
                                 />
                                 <CheckWritingButton
@@ -2144,6 +2180,12 @@ export default function ValidationQueueScreen({
                                   onCheck={() => void proofread.check(editForm.caption)}
                                 />
                               </div>
+                              {aiCaption.notice && (
+                                <div className="val-edit-caption-notice" role="alert">
+                                  <i className="ti ti-info-circle" aria-hidden="true" />
+                                  <span>{aiCaption.notice}</span>
+                                </div>
+                              )}
                               <textarea
                                 ref={editCaptionRef}
                                 rows={7}
@@ -2343,22 +2385,29 @@ export default function ValidationQueueScreen({
                             </button>
                           )}
                           <div className="val-edit-row">
-                            <label className="val-edit-field">
-                              <span>Publish date</span>
-                              <input
-                                type="date"
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-scheduled-date">Publish date</label>
+                              </div>
+                              <CalendarDateField
+                                id="val-edit-scheduled-date"
                                 value={editForm.scheduledDate}
-                                onChange={(e) => setEditForm({ ...editForm, scheduledDate: e.target.value })}
+                                placeholder="Pick a date"
+                                minValue={dateToInputValue(new Date())}
+                                onChange={(value) => setEditForm((f) => ({ ...f, scheduledDate: value }))}
                               />
-                            </label>
-                            <label className="val-edit-field">
-                              <span>Publish time</span>
-                              <input
-                                type="time"
+                            </div>
+                            <div className="val-edit-field">
+                              <div className="val-edit-label-row">
+                                <label htmlFor="val-edit-scheduled-time">Publish time</label>
+                              </div>
+                              <TimePickerField
+                                id="val-edit-scheduled-time"
                                 value={editForm.scheduledTime}
-                                onChange={(e) => setEditForm({ ...editForm, scheduledTime: e.target.value })}
+                                placeholder="Pick a time"
+                                onChange={(value) => setEditForm((f) => ({ ...f, scheduledTime: value }))}
                               />
-                            </label>
+                            </div>
                           </div>
 
                           {scheduleChanged && (
@@ -2554,6 +2603,15 @@ export default function ValidationQueueScreen({
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={!canSaveEdit}
+                    title={
+                      !hasEditChanges
+                        ? "Make changes to the post to save"
+                        : editMissingFields.length > 0
+                        ? `Please provide ${editMissingFields.join(", ")}`
+                        : hardBlocked && !isAdmin
+                        ? "Publish slot is blocked"
+                        : undefined
+                    }
                     onClick={() => setReviewChangesOpen(true)}
                   >
                     <i className="ti ti-device-floppy" />
@@ -2629,7 +2687,7 @@ export default function ValidationQueueScreen({
                   </button>
                   <button
                     id="val-btn-approve"
-                    className="val-btn val-btn-primary"
+                    className="val-btn val-btn-primary val-btn-success"
                     type="button"
                     disabled={isSelfReview}
                     title={isSelfReview ? "Your own submission must be reviewed by another moderator." : undefined}
@@ -2854,10 +2912,17 @@ export default function ValidationQueueScreen({
           dialogClassName="val-modal--wide"
         >
           <div className="val-reject-revise-hint">
-            <i className="ti ti-pencil-exclamation" aria-hidden="true" />
-            <span>Only needs fixes?</span>
-            <button type="button" onClick={() => openDecisionModal("revise")}>
-              Request Revision instead
+            <div className="val-reject-revise-hint-content">
+              <i className="ti ti-pencil" aria-hidden="true" />
+              <span>Needs minor changes?</span>
+            </div>
+            <button
+              type="button"
+              className="val-reject-revise-btn"
+              onClick={() => openDecisionModal("revise")}
+            >
+              <span>Request Revision</span>
+              <i className="ti ti-arrow-right" aria-hidden="true" />
             </button>
           </div>
 
@@ -3931,7 +3996,7 @@ function DecisionDialog({
             <p>{body}</p>
           </div>
         </div>
-        {children}
+        {children && <div className="val-modal-body">{children}</div>}
         <div className="val-modal-actions">
           <button type="button" className="ghost" onClick={onCancel}>
             Cancel
