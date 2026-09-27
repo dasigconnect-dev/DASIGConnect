@@ -904,7 +904,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
               >
               <div className="settings-card-body settings-password-grid">
                 <div className="settings-field">
-                  <label htmlFor="settings-current-password">Current password</label>
+                  <div className="settings-field-head">
+                    <label htmlFor="settings-current-password">Current password</label>
+                    {resetLinkSent ? (
+                      <span className="settings-field-hint is-success settings-forgot-pw-btn">
+                        <i className="ti ti-mail-check" /> Reset link sent
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="settings-field-action-btn settings-forgot-pw-btn"
+                        disabled={resetLinkSending}
+                        onClick={() => void handleSendResetLink()}
+                      >
+                        <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
+                        {resetLinkSending ? "Sending…" : "Forgot your password?"}
+                      </button>
+                    )}
+                  </div>
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-current-password"
@@ -929,21 +946,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showCurrentPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
-                  {resetLinkSent ? (
-                    <span className="settings-field-hint is-success settings-forgot-pw-btn">
-                      <i className="ti ti-mail-check" /> Reset link sent to {user.email}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="settings-field-action-btn settings-forgot-pw-btn"
-                      disabled={resetLinkSending}
-                      onClick={() => void handleSendResetLink()}
-                    >
-                      <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
-                      {resetLinkSending ? "Sending…" : "Forgot your password?"}
-                    </button>
-                  )}
                 </div>
                 <div className="settings-field">
                   <label htmlFor="settings-new-password">New password</label>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CAPTION_CHAR_LIMIT } from "../utils";
 
@@ -35,6 +35,7 @@ interface Props {
   ) => void;
   onRestoreSelection: (nextSelection: FancyTextSelection) => void;
   onPreviewStateChange?: (active: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
   /** Show the styles panel regardless of internal state (the composer guide's view-only preview). */
   forceOpen?: boolean;
 }
@@ -113,14 +114,31 @@ export default function FancyTextTool({
   onPreviewSelection,
   onRestoreSelection,
   onPreviewStateChange,
+  onOpenChange,
   forceOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const panelOpen = open || forceOpen;
+  const containerRef = useRef<HTMLDivElement>(null);
   const baseCaptionRef = useRef<string | null>(null);
   const baseSelectionRef = useRef<FancyTextSelection | null>(null);
   const lastPreviewCaptionRef = useRef<string | null>(null);
   const previewingRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        closePanel({ restorePreview: true });
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [open]);
 
   const isPreviewingCurrentCaption =
     previewingRef.current && caption === lastPreviewCaptionRef.current;
@@ -182,6 +200,7 @@ export default function FancyTextTool({
     lastPreviewCaptionRef.current = null;
     onPreviewStateChange?.(false);
     setOpen(true);
+    onOpenChange?.(true);
     onRestoreSelection(selection);
   }
 
@@ -205,6 +224,7 @@ export default function FancyTextTool({
     baseCaptionRef.current = null;
     baseSelectionRef.current = null;
     setOpen(false);
+    onOpenChange?.(false);
     if (options.restoreSelection !== false) onRestoreSelection(nextSelection);
   }
 
@@ -232,7 +252,7 @@ export default function FancyTextTool({
   }
 
   return (
-    <div className={`fancy-text-tool${panelOpen ? " is-open" : ""}`}>
+    <div ref={containerRef} className={`fancy-text-tool${panelOpen ? " is-open" : ""}`}>
       <button
         type="button"
         className="fancy-text-trigger"
@@ -242,7 +262,6 @@ export default function FancyTextTool({
         title="Open Fancy text"
         onMouseDown={(event) => {
           event.preventDefault();
-          event.stopPropagation();
           onRestoreSelection(selection);
         }}
         onClick={(event) => {

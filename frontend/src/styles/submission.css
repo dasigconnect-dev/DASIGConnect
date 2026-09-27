@@ -4575,7 +4575,7 @@ textarea.sub-finput {
     order: 1;
     width: 100%;
     box-sizing: border-box;
-    padding: 16px 14px 40px;
+    padding: 16px 14px calc(84px + env(safe-area-inset-bottom, 0px));
     overflow: visible;
     position: relative;
     z-index: 10;
@@ -6718,37 +6718,77 @@ section.sub-form-section.sub-field-pulse {
    ========================================================================== */
 @media (max-width: 900px) {
   .sub-guard-panel {
-    position: sticky;
-    bottom: 0;
-    z-index: 20; /* above the canvas (10); below open popovers (600) and the sheet (3100) */
-    box-shadow: 0 -6px 20px rgba(12, 29, 61, 0.08);
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    border-top: 1px solid var(--sub-border) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    z-index: 500 !important; /* above the canvas (10); below open popovers (600), guides (1000+) and the sheet (3100) */
+    box-shadow: 0 -4px 20px rgba(12, 29, 61, 0.08) !important;
   }
   .sub-guard-actions {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
     box-shadow: none;
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
   }
   .sub-guard-actions .sub-unaddressed-revision-notice {
     margin-bottom: 0;
   }
   .sub-guard-actions .sub-step-panel-actions {
+    display: flex;
+    align-items: center;
     margin: 0;
     padding: 0;
     border: none;
-    gap: 10px;
+    gap: 8px;
+    width: 100%;
   }
   .sub-guard-actions .sub-step-panel-btn {
     height: 44px;
     min-height: 44px;
-    font-size: 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border-radius: 999px;
+    box-sizing: border-box;
   }
-  /* Previous stays compact; the forward action (Next / Submit) gets the room. */
+  /* Preview and Previous stay compact; the forward action (Next / Submit) gets the room. */
+  .sub-guard-actions .sub-step-panel-preview {
+    flex: 0 0 auto;
+    padding: 0 14px;
+    background: #ffffff;
+    border: 1px solid var(--sub-border-2, #cbd5e1);
+    color: var(--sub-text-2, #334155);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+  .sub-guard-actions .sub-step-panel-preview:hover:not(:disabled) {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .sub-guard-actions .sub-step-panel-preview.is-active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+  }
   .sub-guard-actions .sub-step-panel-btn.secondary {
     flex: 0 0 auto;
-    padding: 0 16px;
+    padding: 0 14px;
   }
   .sub-guard-actions .sub-step-panel-btn.primary,
   .sub-guard-actions .sub-step-panel-btn.locked,
@@ -6757,7 +6797,7 @@ section.sub-form-section.sub-field-pulse {
     min-width: 0;
   }
   .sub-guard-actions .sub-guard-submit-btn {
-    width: auto;
+    width: 100%;
     height: 44px;
     min-height: 44px;
   }

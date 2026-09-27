@@ -159,6 +159,7 @@ interface EditFormState {
   scheduledTime: string;
   media: EditMediaItem[];
   removedAssetIds: string[];
+  initialAssetIds?: string[];
   /** A10: optional moderator note when attaching Library media not originally submitted. */
   mediaAddNote: string;
   /**
@@ -180,6 +181,7 @@ function emptyEditForm(): EditFormState {
     scheduledTime: "",
     media: [],
     removedAssetIds: [],
+    initialAssetIds: [],
     mediaAddNote: "",
     fastTrack: false,
   };
@@ -201,6 +203,7 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
   // Both halves in local time — a UTC date paired with local hours put
   // early-morning slots on the previous day.
   const scheduled = isoToLocalDateTime(summary.scheduledAt ?? "");
+  const initialAssetIds = (summary.mediaAssets ?? []).map((a) => a.id);
   return {
     eventTitle: summary.eventTitle || "",
     eventDate: summary.eventDate ? summary.eventDate.slice(0, 10) : "",
@@ -210,6 +213,7 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
     scheduledTime: scheduled.time,
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
+    initialAssetIds,
     mediaAddNote: "",
     fastTrack: Boolean(summary.fastTrack),
   };
@@ -248,12 +252,16 @@ function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): E
     };
   });
   const survivingKeys = new Set(next.map((i) => i.clientId));
-  const dropped = form.media.filter((m) => !survivingKeys.has(m.key) && m.assetId);
+  const initialSet = new Set(form.initialAssetIds ?? []);
+  // Only assets that were part of the initial saved submission are tracked as removed
+  const dropped = form.media.filter(
+    (m) => !survivingKeys.has(m.key) && m.assetId && initialSet.has(m.assetId),
+  );
   const presentAssetIds = new Set(media.map((m) => m.assetId).filter(Boolean));
   const removedAssetIds = [
     ...form.removedAssetIds,
     ...dropped.map((m) => m.assetId as string),
-  ].filter((id) => !presentAssetIds.has(id));
+  ].filter((id) => initialSet.has(id) && !presentAssetIds.has(id));
   return { ...form, media, removedAssetIds };
 }
 
@@ -382,6 +390,7 @@ export default function ValidationQueueScreen({
   const [editForm, setEditForm] = useState<EditFormState>(emptyEditForm());
   const [editedThisSession, setEditedThisSession] = useState(false);
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({ start: 0, end: 0 });
+  const [fancyTextOpen, setFancyTextOpen] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [editTab, setEditTab] = useState<"details" | "media" | "schedule">("details");
@@ -1071,7 +1080,11 @@ export default function ValidationQueueScreen({
     queueMicrotask(() => {
       setEditForm((f) =>
         f.media.length === 0 && f.removedAssetIds.length === 0
-          ? { ...f, media: assets.map(savedAssetToMediaItem) }
+          ? {
+              ...f,
+              media: assets.map(savedAssetToMediaItem),
+              initialAssetIds: assets.map((a) => a.id),
+            }
           : f,
       );
     });
@@ -1174,11 +1187,12 @@ export default function ValidationQueueScreen({
       });
     }
     const saved = base.media;
-    const savedIds = saved.map((m) => m.assetId);
-    const formIds = editForm.media.map((m) => m.assetId);
-    const added = formIds.filter((id) => id && !savedIds.includes(id)).length;
-    const removed = editForm.removedAssetIds.length;
-    const kept = formIds.filter((id) => id && savedIds.includes(id));
+    const savedIds = saved.map((m) => m.assetId).filter((id): id is string => Boolean(id));
+    const formIds = editForm.media.map((m) => m.assetId).filter((id): id is string => Boolean(id));
+    const added = formIds.filter((id) => !savedIds.includes(id)).length;
+    // An asset is only truly removed if it was saved originally and is no longer present
+    const removed = savedIds.filter((id) => !formIds.includes(id)).length;
+    const kept = formIds.filter((id) => savedIds.includes(id));
     const reordered = kept.join() !== savedIds.filter((id) => kept.includes(id)).join();
     const itemEdits = editForm.media.filter((m) => {
       const before = saved.find((b) => b.assetId && b.assetId === m.assetId);
@@ -1404,9 +1418,11 @@ export default function ValidationQueueScreen({
         }
       }
 
-      // 3. detach removed assets
+      // 3. detach removed assets: only detach assets that were originally attached
       for (const assetId of editForm.removedAssetIds) {
-        await detachValidationAsset(id, assetId).catch(() => undefined);
+        if (attached.has(assetId)) {
+          await detachValidationAsset(id, assetId).catch(() => undefined);
+        }
       }
 
       // 4. reorder + per-item caption / skip-watermark. Re-read to learn the
@@ -2153,8 +2169,8 @@ export default function ValidationQueueScreen({
                                 {Array.from(editForm.caption).length.toLocaleString()} / {CAPTION_CHAR_LIMIT.toLocaleString()}
                               </span>
                             </div>
-                            <div className="val-edit-caption-box">
-                              <div className="val-edit-caption-tools">
+                            <div className={`val-edit-caption-box${fancyTextOpen ? " is-fancy-open" : ""}`}>
+                              <div className={`val-edit-caption-tools${fancyTextOpen ? " is-fancy-open" : ""}`}>
                                 <FancyTextTool
                                   caption={editForm.caption}
                                   selection={captionSelection}
@@ -2162,8 +2178,12 @@ export default function ValidationQueueScreen({
                                     setEditForm((f) => ({ ...f, caption: next }));
                                     setCaptionSelection(sel);
                                   }}
-                                  onPreviewSelection={(next) => setEditForm((f) => ({ ...f, caption: next }))}
+                                  onPreviewSelection={(next, sel) => {
+                                    setEditForm((f) => ({ ...f, caption: next }));
+                                    if (sel) setCaptionSelection(sel);
+                                  }}
                                   onRestoreSelection={setCaptionSelection}
+                                  onOpenChange={setFancyTextOpen}
                                 />
                                 <div className="val-edit-tool-sep" aria-hidden="true" />
                                 <AiCaptionButton

@@ -2759,13 +2759,8 @@
   border-bottom: 1px solid var(--val-border);
   background: var(--val-surface-2);
   border-radius: 10px 10px 0 0;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-.val-edit-caption-box .val-edit-caption-tools::-webkit-scrollbar {
-  display: none;
+  flex-wrap: wrap;
+  overflow: visible !important;
 }
 
 .val-edit-caption-tools > * {
@@ -2775,6 +2770,7 @@
 .val-edit-caption-tools .fancy-text-tool {
   flex-shrink: 0 !important;
   display: inline-flex !important;
+  position: relative !important;
 }
 
 .val-edit-caption-tools .ai-caption-control {
@@ -2918,11 +2914,29 @@
 .val-edit-caption-tools {
   position: relative;
   z-index: 4;
+  overflow: visible !important;
+}
+
+.val-edit-caption-box.is-fancy-open,
+.val-edit-caption-tools.is-fancy-open,
+.val-edit-caption-box:has(.fancy-text-tool.is-open),
+.val-edit-caption-tools:has(.fancy-text-tool.is-open) {
+  position: relative;
+  z-index: 100 !important;
+  overflow: visible !important;
 }
 
 .val-edit-caption-tools .fancy-text-panel {
-  left: 0;
-  right: auto;
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  left: 0 !important;
+  right: auto !important;
+  width: min(340px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px) !important;
+  box-sizing: border-box !important;
+  z-index: 1005 !important;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(12, 29, 61, 0.22);
 }
 
 .val-edit-hashtags {
@@ -4227,10 +4241,8 @@
     width: 100%;
     justify-content: flex-start;
     gap: 6px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap;
+    overflow: visible !important;
   }
   .val-modal-overlay {
     padding: 14px 10px;
