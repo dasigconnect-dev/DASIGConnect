@@ -4676,6 +4676,12 @@ textarea.sub-finput {
     box-shadow: 0 16px 40px rgba(12, 29, 61, 0.22);
     overscroll-behavior: contain;
   }
+  .sub-time-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .sub-time-stepper {
+    min-width: 0;
+  }
   .sub-date-field.is-open,
   .sub-time-field.is-open,
   .sub-dropdown-field.is-open {
@@ -5401,7 +5407,8 @@ textarea.sub-finput {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
+  min-width: max-content;
+  flex-shrink: 0;
 }
 
 .ai-caption-btn {
@@ -5436,6 +5443,13 @@ textarea.sub-finput {
 .ai-caption-btn--error {
   border-color: var(--sub-gold);
   color: var(--sub-gold);
+}
+.ai-caption-btn--unavailable {
+  border-color: var(--sub-border, #e2e8f0);
+  background: var(--sub-surface-2, #f8fafc);
+  color: var(--sub-muted, #64748b);
+  cursor: not-allowed;
+  opacity: 0.85;
 }
 .ai-caption-notice {
   max-width: 260px;

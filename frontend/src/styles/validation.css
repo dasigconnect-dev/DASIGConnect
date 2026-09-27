@@ -1959,6 +1959,7 @@
   border-radius: 14px;
   box-shadow: 0 6px 24px rgba(16, 24, 40, 0.05);
   box-sizing: border-box;
+  overflow: visible;
 }
 
 /* legacy edit head — no longer rendered, kept harmless */
@@ -1991,7 +1992,7 @@
   padding: 4px;
   background: #f1f5f9;
   border: 1px solid var(--val-border);
-  border-radius: 12px;
+  border-radius: 9999px;
 }
 .val-edit-tab {
   flex: 1;
@@ -2002,7 +2003,7 @@
   min-height: 40px;
   padding: 0 10px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 9999px;
   background: transparent;
   color: var(--val-muted);
   font-family: inherit;
@@ -2435,10 +2436,8 @@
   cursor: not-allowed;
 }
 
-/* Primary Button (Approve / Confirm / Send Revision Request) */
+/* Primary Button (Confirm / Start Review / Send Revision Request) */
 .val-btn-primary,
-.val-btn.success,
-.val-modal-actions .success,
 .val-modal-actions .warn {
   background: #1877f2;
   color: #ffffff;
@@ -2447,11 +2446,46 @@
 }
 
 .val-btn-primary:hover:not(:disabled),
-.val-btn.success:hover:not(:disabled),
-.val-modal-actions .success:hover:not(:disabled),
 .val-modal-actions .warn:hover:not(:disabled) {
   background: #166fe5;
   box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
+}
+
+/* Success / Approve Button (Green) */
+#val-btn-approve,
+.val-btn-success,
+.val-btn.success,
+.val-modal-actions .success {
+  background: #16a34a;
+  color: #ffffff;
+  border: 1px solid #15803d;
+  box-shadow: 0 1px 3px rgba(22, 163, 74, 0.25);
+}
+
+#val-btn-approve:hover:not(:disabled),
+.val-btn-success:hover:not(:disabled),
+.val-btn.success:hover:not(:disabled),
+.val-modal-actions .success:hover:not(:disabled) {
+  background: #15803d;
+  border-color: #166534;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.35);
+}
+
+#val-btn-approve:active:not(:disabled),
+.val-btn-success:active:not(:disabled),
+.val-btn.success:active:not(:disabled),
+.val-modal-actions .success:active:not(:disabled) {
+  background: #166534;
+  border-color: #14532d;
+  transform: translateY(1px);
+}
+
+#val-btn-approve:disabled,
+.val-btn-success:disabled,
+.val-btn.success:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* Secondary Button (Neutral Action / Request Revision toolbar) */
@@ -2487,6 +2521,7 @@
   background: #ffffff;
   color: #dc2626;
   border: 1px solid #fecaca;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .val-btn-danger-outline:hover:not(:disabled) {
@@ -2495,10 +2530,40 @@
   color: #b91c1c;
 }
 
+.val-btn-danger-outline:active:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.val-modal-actions .danger:hover:not(:disabled),
+.val-modal-actions .danger:focus-visible:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+}
+
+.val-modal-actions .danger:active:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+  transform: translateY(1px);
+}
+
+.val-modal-actions .danger:disabled {
+  background: #ffffff;
+  color: #dc2626;
+  border-color: #fecaca;
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
 /* Subtle / Ghost (Unlock) */
 .val-btn-subtle,
-.val-btn.ghost,
-.val-modal-actions .ghost {
+.val-btn.ghost {
   background: transparent;
   color: #64748b;
   border: 1px solid transparent;
@@ -2508,6 +2573,31 @@
 .val-btn.ghost:hover:not(:disabled) {
   background: #f1f5f9;
   color: #1e293b;
+}
+
+/* Modal Actions Cancel (Blue Outline Pill with Solid Hover) */
+.val-modal-actions .ghost {
+  background: #ffffff;
+  color: #1877f2;
+  border: 1px solid #93c5fd;
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px rgba(24, 119, 242, 0.08);
+  transition: all 0.15s ease;
+}
+
+.val-modal-actions .ghost:hover:not(:disabled),
+.val-modal-actions .ghost:focus-visible:not(:disabled) {
+  background: #1877f2;
+  border-color: #1877f2;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.28);
+}
+
+.val-modal-actions .ghost:active:not(:disabled) {
+  background: #166fe5;
+  border-color: #166fe5;
+  color: #ffffff;
+  transform: translateY(1px);
 }
 
 .val-edit-grid {
@@ -2565,6 +2655,84 @@
   border-color: var(--val-red-bdr);
 }
 
+/* Custom calendar date and time pickers in edit panel */
+.val-edit-field .sub-date-field,
+.val-edit-field .sub-time-field {
+  width: 100%;
+  position: relative;
+}
+
+.val-edit-field:has(.is-open),
+.val-edit-field .sub-date-field.is-open,
+.val-edit-field .sub-time-field.is-open {
+  position: relative;
+  z-index: 100;
+}
+
+.val-edit-field .sub-date-popover,
+.val-edit-field .sub-time-popover {
+  z-index: 110;
+}
+
+.val-edit-field .sub-date-trigger,
+.val-edit-field .sub-time-trigger {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--val-text);
+  background: var(--val-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.val-edit-field .sub-date-trigger:hover:not(:disabled),
+.val-edit-field .sub-time-trigger:hover:not(:disabled) {
+  border-color: var(--val-border-2);
+  background: var(--val-surface);
+}
+
+.val-edit-field .sub-date-trigger.open,
+.val-edit-field .sub-time-trigger.open {
+  border-color: var(--val-blue);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
+  background: var(--val-surface);
+}
+
+.val-edit-field .sub-date-trigger .placeholder,
+.val-edit-field .sub-time-trigger .placeholder {
+  color: var(--val-muted);
+}
+
+/* Popover alignments inside the edit panel */
+.val-edit-row--title .sub-date-popover {
+  right: 0;
+  left: auto;
+  width: 310px;
+  min-width: 290px;
+  max-width: min(100vw - 32px, 360px);
+}
+
+.val-edit-row > :last-child .sub-time-popover {
+  right: 0;
+  left: auto;
+  width: 310px;
+  min-width: 280px;
+  max-width: min(100vw - 32px, 360px);
+}
+
+.val-edit-row > :first-child .sub-date-popover {
+  left: 0;
+  right: auto;
+  width: 310px;
+  min-width: 290px;
+  max-width: min(100vw - 32px, 360px);
+}
+
 /* Caption: toolbar + textarea read as one control */
 .val-edit-caption-box {
   position: relative;
@@ -2584,11 +2752,134 @@
   border-color: var(--val-red-bdr);
 }
 .val-edit-caption-box .val-edit-caption-tools {
-  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--val-border);
   background: var(--val-surface-2);
   border-radius: 10px 10px 0 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.val-edit-caption-box .val-edit-caption-tools::-webkit-scrollbar {
+  display: none;
+}
+
+.val-edit-caption-tools > * {
+  flex-shrink: 0 !important;
+}
+
+.val-edit-caption-tools .fancy-text-tool {
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+}
+
+.val-edit-caption-tools .ai-caption-control {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+  min-width: max-content !important;
+}
+
+.val-edit-caption-tools .proof-check-btn {
+  flex-shrink: 0 !important;
+}
+
+/* Tool group separator */
+.val-edit-tool-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--val-border, #e2e8f0);
+  margin: 0 2px;
+  flex-shrink: 0 !important;
+}
+
+/* Harmonized, sleek toolbar pill buttons */
+.val-edit-caption-tools .fancy-text-trigger,
+.val-edit-caption-tools .ai-caption-btn,
+.val-edit-caption-tools .proof-check-btn {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(12, 29, 61, 0.04);
+}
+
+.val-edit-caption-tools .fancy-text-trigger {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+.val-edit-caption-tools .fancy-text-trigger:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.val-edit-caption-tools .ai-caption-btn {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.val-edit-caption-tools .ai-caption-btn:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.val-edit-caption-tools .ai-caption-btn.ai-caption-btn--unavailable,
+.val-edit-caption-tools .ai-caption-btn.ai-caption-btn--error {
+  border: 1px solid #e2e8f0 !important;
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  opacity: 0.85 !important;
+}
+
+.val-edit-caption-tools .proof-check-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+.val-edit-caption-tools .proof-check-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+/* Dedicated, elegant alert strip below toolbar */
+.val-edit-caption-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fef3c7;
+  color: #92400e;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.val-edit-caption-notice i {
+  font-size: 15px;
+  color: #d97706;
+  flex-shrink: 0;
+}
+
 .val-edit-field .val-edit-caption-box textarea,
 .val-edit-field .val-edit-caption-box textarea:hover,
 .val-edit-field .val-edit-caption-box textarea:focus {
@@ -2733,6 +3024,10 @@
   text-align: left;
 }
 
+.val-modal-body {
+  display: contents;
+}
+
 .val-modal-header .val-modal-icon {
   margin-bottom: 0;
   width: 44px;
@@ -2828,39 +3123,75 @@
 .val-modal small.ok { color: var(--val-green); }
 .val-modal small.err { color: var(--val-red); }
 
-/* ── Reject dialog ── */
+/* ── Reject dialog — Revision suggestion hint ── */
 .val-reject-revise-hint {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 8px;
-  margin: 12px 0 10px;
-  padding: 8px 10px;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 9px 13px;
   border-radius: 10px;
-  border: 1px solid var(--val-amber-bdr, #fde68a);
-  background: var(--val-amber-dim, #fffbeb);
-  color: #92400e;
-  font-size: 13px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   text-align: left;
+  transition: all 0.15s ease;
 }
-.val-reject-revise-hint > i {
-  font-size: 16px;
+
+.val-reject-revise-hint:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
-.val-reject-revise-hint > button {
-  margin-left: auto;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  background: #ffffff;
-  color: #92400e;
-  font: inherit;
+
+.val-reject-revise-hint-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.val-reject-revise-hint-content i {
+  font-size: 15px;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.val-reject-revise-hint-content span {
   font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
+  font-weight: 500;
+  color: #475569;
 }
-.val-reject-revise-hint > button:hover {
-  background: #fef3c7;
+
+.val-reject-revise-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  color: #2563eb;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.val-reject-revise-btn:hover {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.val-reject-revise-btn i {
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+
+.val-reject-revise-btn:hover i {
+  transform: translateX(2px);
 }
 
 .val-reason-list {
@@ -3113,8 +3444,14 @@
 }
 
 .val-modal-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.val-modal-actions button[aria-busy="true"],
+.val-modal-actions button:disabled[aria-busy="true"] {
   cursor: wait;
-  opacity: 0.78;
+  opacity: 0.8;
 }
 
 @keyframes valModalOverlayIn {
@@ -3420,10 +3757,12 @@
   .val-page {
     position: relative;
     width: 100%;
-    height: calc(100vh - 56px);
-    height: calc(100dvh - 56px);
-    overflow: hidden;
-    grid-template-columns: none;
+    min-height: calc(100vh - 58px);
+    min-height: calc(100dvh - 58px);
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    grid-template-columns: none !important;
   }
 
   .val-collapse-btn,
@@ -3482,66 +3821,77 @@
     min-width: 0 !important;
   }
 
-  /* 1. Mobile Queue List Panel */
+  /* 1. Mobile Queue List Panel: whole page scrolls down smoothly just like My Submissions */
   .val-queue-panel {
-    position: absolute;
-    top: 0;
-    left: 0;
+    position: relative;
+    top: auto;
+    left: auto;
     width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
+    display: block !important;
     border-right: none;
     border-bottom: none;
     background: var(--val-bg);
-    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
-                opacity 0.28s ease,
-                visibility 0.32s ease;
-    will-change: transform, opacity;
     z-index: 1;
   }
   .val-queue-list {
-    flex: 1 1 auto;
-    max-height: none;
-    overflow-y: auto;
-    padding-bottom: 36px;
-    -webkit-overflow-scrolling: touch;
+    flex: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding-bottom: 80px;
   }
 
   /* 2. Mobile Review Detail Panel */
   .val-review-panel {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
     background: var(--val-bg);
+    z-index: 100 !important;
+    animation: none;
     transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
                 opacity 0.28s ease,
                 visibility 0.32s ease;
-    will-change: transform, opacity;
-    z-index: 2;
-    /* The desktop fade-in's fill-mode would pin opacity/transform at their
-       end values and override the queue/review slide states below. */
-    animation: none;
   }
   .val-scroll {
-    flex: 1 1 auto;
-    overflow-y: auto;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 18px 16px 120px;
+    padding: 16px 14px 20px !important;
   }
 
   /* When on queue list view */
+  .val-page.val-mobile-view--queue {
+    height: auto !important;
+    min-height: calc(100vh - 58px);
+    min-height: calc(100dvh - 58px);
+    overflow: visible !important;
+    display: block !important;
+  }
   .val-page.val-mobile-view--queue .val-queue-panel {
-    transform: translateX(0);
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
+    display: block !important;
+    position: relative !important;
+    height: auto !important;
+    overflow: visible !important;
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
   }
   .val-page.val-mobile-view--queue .val-review-panel {
+    display: none !important;
     transform: translateX(100%);
     opacity: 0;
     visibility: hidden;
@@ -3549,52 +3899,24 @@
   }
 
   /* When on review detail view */
+  .val-page.val-mobile-view--review {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+    z-index: 100 !important;
+    display: block !important;
+  }
   .val-page.val-mobile-view--review .val-queue-panel {
-    transform: translateX(-25%);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
+    display: none !important;
   }
   .val-page.val-mobile-view--review .val-review-panel {
-    transform: translateX(0);
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-
-
-
-
-  .val-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 18px 16px calc(140px + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* When on queue list view */
-  .val-page.val-mobile-view--queue .val-queue-panel {
-    transform: translateX(0);
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-  .val-page.val-mobile-view--queue .val-review-panel {
-    transform: translateX(100%);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  /* When on review detail view */
-  .val-page.val-mobile-view--review .val-queue-panel {
-    transform: translateX(-25%);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .val-page.val-mobile-view--review .val-review-panel {
+    display: flex !important;
     transform: translateX(0);
     opacity: 1;
     visibility: visible;
@@ -3609,7 +3931,7 @@
 
   .val-scroll {
     min-height: 0;
-    padding: 12px 12px calc(130px + env(safe-area-inset-bottom, 0px));
+    padding: 14px 12px 18px !important;
   }
   .val-notice {
     padding: 8px 12px !important;
@@ -3641,17 +3963,29 @@
     grid-template-columns: 1fr;
   }
   .val-action-bar {
-    position: sticky;
-    bottom: 0;
-    flex-shrink: 0;
-    z-index: 60;
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    z-index: 20 !important;
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
-    padding: 10px 14px max(12px, env(safe-area-inset-bottom, 12px));
+    padding: 10px 14px max(14px, env(safe-area-inset-bottom, 14px)) !important;
     background: rgba(255, 255, 255, 0.98);
     backdrop-filter: blur(12px);
+    border-top: 1px solid #e2e8f0;
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  }
+  .val-action-bar.val-action-bar--readonly {
+    justify-content: flex-start;
+    background: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding: 12px 14px max(14px, env(safe-area-inset-bottom, 14px)) !important;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.04) !important;
   }
   .val-action-bar span {
     flex-basis: auto;
@@ -3678,42 +4012,8 @@
 }
 
 @media (max-width: 640px) {
-  .val-queue-header {
-    padding: 12px 14px 10px;
-  }
-  .val-title-row {
-    margin-bottom: 8px;
-  }
-  .val-title-row h1 {
-    font-size: 18px;
-  }
-  .val-tabs {
-    gap: 2px;
-    padding: 2px;
-  }
-  .val-tabs button {
-    padding: 5px 3px;
-    font-size: 11px;
-    gap: 3px;
-  }
-  .val-tabs span {
-    font-size: 10px;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-  }
-  .val-queue-list {
-    padding: 8px;
-  }
-  .val-queue-item {
-    padding: 10px 12px;
-    margin-bottom: 6px;
-  }
-  .val-qi-title {
-    font-size: 13px;
-  }
   .val-scroll {
-    padding: 14px 12px 120px;
+    padding: 12px 10px 16px !important;
   }
   .val-review-header {
     gap: 12px;
@@ -3762,7 +4062,7 @@
     font-size: 10.5px;
   }
   .val-action-bar {
-    padding: 10px 14px max(14px, env(safe-area-inset-bottom, 14px));
+    padding: 10px 14px max(14px, env(safe-area-inset-bottom, 14px)) !important;
     gap: 10px;
   }
   .val-action-hint {
@@ -3812,32 +4112,292 @@
   }
   .val-edit-field input,
   .val-edit-field textarea,
-  .val-edit-field select {
+  .val-edit-field select,
+  .val-edit-field .sub-date-trigger,
+  .val-edit-field .sub-time-trigger {
     font-size: 16px;
+  }
+  .val-scroll {
+    overflow-x: hidden;
+  }
+  .val-edit-grid-panel,
+  .val-edit-body,
+  .val-edit-field {
+    overflow: visible !important;
+  }
+  .val-edit-field .sub-time-popover,
+  .val-edit-field .sub-date-popover,
+  .val-edit-row--title .sub-date-popover,
+  .val-edit-row > :first-child .sub-date-popover,
+  .val-edit-row > :last-child .sub-time-popover {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 10px !important;
+    overflow-x: hidden;
+    z-index: 120 !important;
+  }
+  .val-edit-field .sub-time-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto !important;
+    gap: 6px !important;
+  }
+  .val-edit-field .sub-time-stepper {
+    padding: 5px 4px !important;
+    gap: 3px !important;
+    grid-template-columns: 24px minmax(0, 1fr) 24px !important;
+    min-width: 0 !important;
+  }
+  .val-edit-field .sub-time-stepper button {
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 6px !important;
+  }
+  .val-edit-field .sub-time-stepper button i {
+    font-size: 13px !important;
+  }
+  .val-edit-field .sub-time-stepper strong {
+    font-size: 17px !important;
+  }
+  .val-edit-field .sub-time-stepper span {
+    font-size: 8px !important;
+    letter-spacing: 0.04em !important;
+  }
+  .val-edit-field .sub-time-period {
+    min-width: 44px !important;
+    gap: 4px !important;
+  }
+  .val-edit-field .sub-time-period button {
+    padding: 2px 4px !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+  }
+  .val-edit-field .sub-time-quick {
+    gap: 5px !important;
+    margin-top: 8px !important;
+  }
+  .val-edit-field .sub-time-quick button {
+    height: 28px !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+  }
+  .val-edit-field .sub-time-head {
+    margin-bottom: 8px !important;
+    gap: 8px !important;
+  }
+  .val-edit-field .sub-time-title {
+    font-size: 12px !important;
+  }
+  .val-edit-field .sub-time-hint {
+    font-size: 10px !important;
+  }
+  .val-edit-field .sub-time-preview {
+    font-size: 11px !important;
+    padding: 3px 7px !important;
+  }
+  .val-edit-field .sub-time-actions,
+  .val-edit-field .sub-date-actions {
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+  }
+  .val-edit-field .sub-time-actions button,
+  .val-edit-field .sub-date-actions button {
+    font-size: 11px !important;
+    padding: 4px 6px !important;
+  }
+  .val-edit-field .sub-date-popover-head {
+    padding: 2px 2px 8px !important;
+  }
+  .val-edit-field .sub-date-nav {
+    width: 28px !important;
+    height: 28px !important;
+  }
+  .val-edit-field .sub-date-month {
+    font-size: 12px !important;
+  }
+  .val-edit-field .sub-date-grid {
+    gap: 3px !important;
+  }
+  .val-edit-field .sub-date-day {
+    height: 30px !important;
+    font-size: 11px !important;
   }
   .val-edit-caption-tools {
     width: 100%;
     justify-content: flex-start;
     gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
   .val-modal-overlay {
-    padding: 12px;
+    padding: 14px 10px;
+    align-items: center;
+    justify-content: center;
   }
   .val-modal {
     width: 100%;
-    border-radius: 12px;
-    padding: 18px 14px;
+    max-width: 420px;
+    max-height: min(88dvh, 600px);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 14px 14px;
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(12, 29, 61, 0.28);
+    overflow: hidden;
+    box-sizing: border-box;
   }
-  .val-modal-actions {
-    flex-direction: column-reverse;
+  .val-modal.val-modal--wide {
+    width: 100%;
+    max-width: 420px;
+  }
+  .val-modal-header {
+    flex-shrink: 0;
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+  .val-modal-header .val-modal-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .val-modal-header-text h3 {
+    font-size: 15px;
+    line-height: 1.25;
+    margin: 0 0 2px;
+  }
+  .val-modal-header-text p {
+    font-size: 12px;
+    line-height: 1.35;
+    margin: 0;
+  }
+  .val-modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+    margin-right: -2px;
+  }
+  .val-reject-revise-hint {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 7px 11px;
+    margin: 2px 0 10px;
+    border-radius: 8px;
+  }
+  .val-reject-revise-hint-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .val-reject-revise-hint-content i {
+    font-size: 13px;
+    color: #2563eb;
+    flex-shrink: 0;
+  }
+  .val-reject-revise-hint-content span {
+    font-size: 11.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .val-reject-revise-btn {
+    min-height: 26px;
+    padding: 2px 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .val-reason-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .val-reason-option {
+    min-height: 36px;
+    padding: 6px 10px;
+    border-radius: 8px;
     gap: 8px;
   }
+  .val-reason-option input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+  }
+  .val-reason-option strong {
+    font-size: 12.5px;
+    line-height: 1.25;
+  }
+  .val-reason-option small {
+    font-size: 11px;
+    line-height: 1.2;
+    margin-top: 1px;
+  }
+  .val-reject-note {
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .val-reject-note > span {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .val-reject-note .val-modal-input {
+    padding: 7px 10px;
+    font-size: 13px;
+    min-height: 50px;
+    border-radius: 8px;
+  }
+  .val-revision-form {
+    margin-top: 6px;
+    gap: 12px;
+  }
+  .val-revision-chip {
+    padding: 4px 10px;
+    font-size: 11.5px;
+  }
+  .val-modal-actions {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--val-border);
+  }
   .val-modal-actions button {
-    width: 100%;
-    min-height: 38px;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 13.5px;
+    border-radius: 8px;
+  }
+  .val-modal-actions .ghost {
+    flex: 1 1 35%;
+  }
+  .val-modal-actions .danger,
+  .val-modal-actions .warn,
+  .val-modal-actions .success {
+    flex: 2 1 65%;
   }
   .val-history-modal {
     max-height: 90vh;
+    max-height: 90dvh;
     border-radius: 12px;
   }
   .val-history-header {
@@ -3852,6 +4412,7 @@
   }
   .val-libpick {
     height: min(94vh, 760px);
+    height: min(94dvh, 760px);
     border-radius: 12px;
   }
   .val-libpick-head {
@@ -4655,13 +5216,6 @@
 }
 
 /* ── Submit Content authoring tools inside moderator edit mode ──────────── */
-.val-edit-caption-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 /* Reused pickers/panels sit flush in the edit body */
 .val-edit-body .mp-root,
 .val-edit-body .sub-engagement-panel {
@@ -5344,12 +5898,12 @@
 
 @media (max-width: 860px) {
   .val-page .val-queue-header {
-    padding: 16px 16px 0;
-    background: transparent;
-    border-bottom: none;
+    display: contents;
   }
   .val-page .val-title-row {
-    margin-bottom: 14px;
+    padding: 16px 16px 0 !important;
+    margin: 0 0 14px 0 !important;
+    box-sizing: border-box !important;
   }
   .val-page .val-title-row h1 {
     font-size: 24px;
@@ -5359,17 +5913,29 @@
     margin-top: 2px;
   }
   .val-page .val-toolbar-card {
+    position: sticky;
+    top: 58px;
+    z-index: 30;
     gap: 12px;
-    margin-bottom: 12px;
+    width: auto !important;
+    max-width: 100% !important;
+    margin: 0 16px 12px !important;
     padding: 12px 14px;
+    box-sizing: border-box !important;
     background: #ffffff;
     border: 1px solid var(--val-border, #dde3ee);
     border-radius: 14px;
-    box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
+    box-shadow: 0 4px 14px rgba(12, 29, 61, 0.08);
   }
   .val-page .val-tabs {
     gap: 8px;
     padding: 2px 2px 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .val-page .val-tabs::-webkit-scrollbar {
+    display: none;
   }
   .val-page .val-tabs button {
     min-height: 36px;
@@ -5378,6 +5944,7 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 600;
+    flex-shrink: 0;
   }
   .val-page .val-tabs button:not(.active) {
     background: #f1f5f9;
@@ -5432,16 +5999,63 @@
     font-weight: 700;
   }
   .val-page .val-queue-list {
-    padding: 0 16px 60px;
+    overflow: visible !important;
+    max-height: none !important;
+    flex: none !important;
+    width: 100% !important;
+    padding: 0 16px 80px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
   }
   .val-page .val-queue-item {
+    width: 100% !important;
+    box-sizing: border-box !important;
     padding: 14px 16px;
-    margin-bottom: 10px;
+    margin: 0 0 10px 0 !important;
     border-radius: 14px;
     box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
   }
   .val-page .val-qi-title {
     font-size: 15px;
     font-weight: 650;
+  }
+}
+
+@media (max-width: 768px) {
+  .val-page .val-toolbar-card {
+    top: 50px;
+  }
+}
+
+@media (max-width: 480px) {
+  .val-page .val-title-row {
+    padding: 14px 12px 0 !important;
+    margin-bottom: 10px !important;
+  }
+  .val-page .val-title-row h1 {
+    font-size: 20px;
+  }
+  .val-page .val-toolbar-card {
+    margin: 0 12px 10px !important;
+    padding: 10px 12px;
+  }
+  .val-page .val-tabs {
+    gap: 6px;
+  }
+  .val-page .val-tabs button {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 12.5px;
+  }
+  .val-page .val-queue-list {
+    padding: 0 12px 80px !important;
+  }
+  .val-page .val-queue-item {
+    padding: 12px 14px;
+    margin: 0 0 8px 0 !important;
+  }
+  .val-page .val-qi-title {
+    font-size: 14px;
   }
 }

@@ -971,7 +971,11 @@
   top: 0;
   right: 0;
   bottom: 0;
+  height: 100%;
   height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  box-sizing: border-box;
   z-index: 10000;
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
@@ -1042,8 +1046,14 @@
 }
 
 .med-panel-body {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
@@ -1117,10 +1127,14 @@
   border: none;
   background: transparent;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   line-height: 1.35;
   padding: 2px 4px;
   border-radius: 4px;
   transition: background 0.15s, box-shadow 0.15s;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .med-editable-title:focus {
@@ -1131,8 +1145,18 @@
 
 div.med-editable-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.med-editable-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-break: anywhere;
 }
 
 div.med-editable-title.editable {
@@ -1144,7 +1168,8 @@ div.med-editable-title.editable:hover {
 }
 
 .med-editable-title-icon {
-  flex: none;
+  flex-shrink: 0;
+  margin-top: 4px;
   color: var(--med-muted);
   opacity: 0;
   transition: opacity 0.15s;
@@ -1157,8 +1182,15 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 /* Meta grid */
 .med-meta-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.med-meta-grid > div {
+  min-width: 0;
 }
 
 .med-meta-key {
@@ -1172,6 +1204,8 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   font-size: 13px;
   font-weight: 500;
   color: var(--med-text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* AI tags */
@@ -1284,11 +1318,13 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 /* Panel actions */
 .med-panel-actions {
   padding: 16px 24px;
+  padding-bottom: max(16px, calc(16px + env(safe-area-inset-bottom, 0px)));
   border-top: 1px solid var(--med-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
+  background: var(--med-surface-0);
 }
 
 .med-panel-action-row {
@@ -1343,6 +1379,7 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   width: 90%;
   max-width: 540px;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   box-shadow: 0 24px 60px rgba(10, 22, 40, 0.2), 0 4px 16px rgba(10, 22, 40, 0.04);
   animation: dc-modal-pop-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -2010,11 +2047,15 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 .med-sel-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .med-sel-info { flex: 1; min-width: 0; }
 .med-sel-name {
-  font: 600 13px var(--med-ff-body);
+  font: 600 13px/1.35 var(--med-ff-body);
   color: var(--med-text);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .med-sel-meta { font: 400 11px var(--med-ff-body); color: var(--med-muted); margin-top: 2px; }
 .med-sel-row-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
@@ -3276,13 +3317,35 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   .med-panel {
     width: 100vw;
     max-width: 100vw;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
   }
   .med-panel-header {
     padding: 12px 16px;
     min-height: 50px;
+    flex-shrink: 0;
   }
   .med-panel-body {
+    flex: 1 1 0;
+    min-height: 0;
     padding: 14px 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  .med-panel-actions {
+    padding: 12px 16px;
+    padding-bottom: max(14px, calc(12px + env(safe-area-inset-bottom, 0px)));
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--med-surface-0);
   }
   .med-panel-action-row {
     flex-direction: column;

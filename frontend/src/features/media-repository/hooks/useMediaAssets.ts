@@ -103,8 +103,8 @@ export function useMediaAssets(
   }, [queryClient]);
 
   return {
-    assets: enabled ? query.data?.pages.flatMap((page) => page.items) ?? [] : [],
-    totalCount: query.data?.pages.at(-1)?.totalCount ?? 0,
+    assets: enabled ? query.data?.pages?.flatMap((page) => page.items) ?? [] : [],
+    totalCount: query.data?.pages?.at(-1)?.totalCount ?? 0,
     hasNextPage: Boolean(query.hasNextPage),
     loadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,

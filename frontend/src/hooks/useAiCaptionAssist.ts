@@ -160,7 +160,10 @@ export function useAiCaptionAssist(
       );
       setState(timedOut ? "error-timeout" : "error-unavailable");
       cooldownRef.current = setTimeout(() => {
-        if (requestIdRef.current === request.id) setState("idle");
+        if (requestIdRef.current === request.id) {
+          setState("idle");
+          setNotice(null);
+        }
       }, 5000);
       return null;
     } finally {

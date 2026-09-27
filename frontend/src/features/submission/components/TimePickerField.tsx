@@ -31,13 +31,15 @@ function TimeStepper({
 
 export function TimePickerField({
   value,
-  placeholder,
+  placeholder = "Pick a time",
   readOnly,
+  id,
   onChange,
 }: {
   value: string;
-  placeholder: string;
+  placeholder?: string;
   readOnly?: boolean;
+  id?: string;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -97,6 +99,7 @@ export function TimePickerField({
       ref={rootRef}
     >
       <button
+        id={id}
         className={`sub-time-trigger ${open ? "open" : ""}`}
         type="button"
         disabled={readOnly}

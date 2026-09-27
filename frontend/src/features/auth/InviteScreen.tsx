@@ -1,9 +1,5 @@
 import type { FormEvent } from 'react'
 import { useMemo, useState } from 'react'
-import Screen from '../../components/layout/Screen'
-import LeftPanel from '../../components/layout/LeftPanel'
-import RightPanel from '../../components/layout/RightPanel'
-import AuthShowcase from './components/AuthShowcase'
 import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 type InviteState = 'form' | 'expired' | 'already' | 'success'
@@ -23,7 +19,7 @@ interface InviteRules {
 }
 
 interface InviteScreenProps {
-  active: boolean
+  active?: boolean
   state: InviteState
   email: string
   roleLabel: string
@@ -48,7 +44,6 @@ interface InviteScreenProps {
 }
 
 export default function InviteScreen({
-  active,
   state,
   email,
   roleLabel,
@@ -86,13 +81,8 @@ export default function InviteScreen({
   }
 
   return (
-    <Screen id="invite" active={active}>
-      <div className="split">
-        <LeftPanel>
-          <AuthShowcase mode="activation" />
-        </LeftPanel>
-        <RightPanel>
-          {showInAppBrowserNotice && (
+    <>
+      {showInAppBrowserNotice && (
             <div className="alert alert-warn" style={{ marginBottom: 14 }}>
               <i className="ti ti-alert-triangle"></i>
               <div>
@@ -451,8 +441,6 @@ export default function InviteScreen({
               </button>
             </div>
           </div>
-        </RightPanel>
-      </div>
-    </Screen>
+    </>
   )
 }

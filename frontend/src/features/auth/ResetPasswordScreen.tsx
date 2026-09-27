@@ -1,14 +1,10 @@
 import type { FormEvent } from 'react'
 import { useMemo, useState } from 'react'
-import Screen from '../../components/layout/Screen'
-import LeftPanel from '../../components/layout/LeftPanel'
-import RightPanel from '../../components/layout/RightPanel'
 import { getPasswordRules } from '../../lib/passwordPolicy'
-import AuthShowcase from './components/AuthShowcase'
 import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 interface ResetPasswordScreenProps {
-  active: boolean
+  active?: boolean
   password: string
   confirmPassword: string
   showPassword: boolean
@@ -25,7 +21,6 @@ interface ResetPasswordScreenProps {
 }
 
 export default function ResetPasswordScreen({
-  active,
   password,
   confirmPassword,
   showPassword,
@@ -59,13 +54,8 @@ export default function ResetPasswordScreen({
   }
 
   return (
-    <Screen id="reset-password" active={active}>
-      <div className="split">
-        <LeftPanel>
-          <AuthShowcase mode="reset" />
-        </LeftPanel>
-        <RightPanel>
-          <button type="button" className="back-btn" onClick={onBack}>
+    <>
+      <button type="button" className="back-btn" onClick={onBack}>
             <i className="ti ti-arrow-left"></i> Back to sign in
           </button>
 
@@ -205,8 +195,6 @@ export default function ResetPasswordScreen({
               </button>
             </form>
           )}
-        </RightPanel>
-      </div>
-    </Screen>
+    </>
   )
 }

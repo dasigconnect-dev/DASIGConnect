@@ -478,6 +478,53 @@
   outline-offset: -1px !important;
 }
 
+.btn-primary {
+  width: 100% !important;
+  background: #1877f2 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  padding: 12px 24px !important;
+  font-family: var(--ff-body) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  letter-spacing: 0.01em !important;
+  transition: background 0.18s, transform 0.1s !important;
+  margin-top: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  opacity: 1 !important;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1565d8 !important;
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.99) !important;
+}
+
+.btn-primary:disabled {
+  background: #93c5fd !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+.btn-primary[aria-busy="true"],
+.btn-primary[aria-busy="true"]:disabled,
+.btn-primary.is-loading,
+.btn-primary.is-loading:disabled {
+  background: #1877f2 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  cursor: wait !important;
+}
+
 /* Clean Alert Prompts - No borders or outlines */
 .alert {
   border-radius: 10px !important;

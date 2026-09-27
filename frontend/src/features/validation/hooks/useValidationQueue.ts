@@ -119,7 +119,7 @@ export function useValidationQueue(
   }, [queryClient, queryKey]);
 
   return {
-    queue: query.data?.pages.flatMap((page) => page.items) ?? [],
+    queue: query.data?.pages?.flatMap((page) => page.items) ?? [],
     counts: firstPage?.counts ?? countsQuery.data,
     totalCount: firstPage?.totalCount ?? 0,
     hasNextPage: Boolean(query.hasNextPage),
