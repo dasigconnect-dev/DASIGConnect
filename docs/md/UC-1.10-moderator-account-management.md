@@ -16,7 +16,7 @@
 4. The system creates or updates the invitee's account record in `PENDING` state, reusing an existing `PENDING`, `PENDING_EMAIL_UNDELIVERED`, `CANCELLED`, or `EXPIRED` record for that email if one exists (an existing `ACTIVE` account, or a re-invitation targeting an `INACTIVE` account, returns a conflict error — the latter must go through Reactivation, A3), and marks any older unused invitation tokens for the same email as used.
 5. The system dispatches an activation email containing the activation link with the raw token.
 6. The invitee completes activation by setting their password.
-7. The account transitions to `ACTIVE`, receives the Moderator role, remains institutionless, and gains network-wide review privileges (UC-2.4) plus the Contributor-management privileges defined in UC-1.3.
+7. The account transitions to `ACTIVE`, receives the Moderator role, remains institutionless, and gains network-wide access to the UC-2.4 Approval Workflow plus the Contributor-management privileges defined in UC-1.3.
 
 ## Alternative Flows
 
@@ -38,4 +38,4 @@ A new Moderator account exists in `PENDING` or `ACTIVE` state; an existing Moder
 
 ---
 
-_Verified against the running code as of 2026-09-10. Primary sources: `InvitationService`, `UserService` (`updateStatus`, `removeUser`, `erasePersonalData`, `changeRole`), `InvitationController`, `UserController`. The `(UC-2.4)` cross-reference in Main Flow step 7 is carried over from the source document as given and has not been independently verified against this repo's own UC numbering conventions._
+_Verified against the running code as of 2026-09-10. Primary sources: `InvitationService`, `UserService` (`updateStatus`, `removeUser`, `erasePersonalData`, `changeRole`), `InvitationController`, `UserController`._

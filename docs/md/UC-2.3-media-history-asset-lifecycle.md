@@ -6,7 +6,7 @@
 
 **Actor(s):** Contributor, Moderator, Administrator — all three roles can browse visible media assets. Moderators and Administrators are network-wide; Contributors are limited to their institution and the shared default library where applicable.
 
-> **Numbering note:** The current project documentation also uses UC-2.3 for Notifications in the Module 2 implementation summary. This document describes the media-history/lifecycle capability that is implemented alongside UC-2.1 and UC-2.2. The numbering should be reconciled in the project SRS before final submission.
+> **Legacy reference:** Older implementation notes may call the notification infrastructure “UC-2.3.” In the authoritative SRS numbering, this document is **UC-2.3 Media History & Asset Lifecycle**; notifications are documented separately under the current notification implementation materials.
 
 ## Precondition(s)
 
@@ -90,7 +90,7 @@ The capability depends on the following UC-2.1 and UC-2.2 features:
 - Add to Draft and New Submission actions;
 - a maximum of 10 media assets per submission;
 - bulk deletion and 30-day media retention purge;
-- once-per-session Network View access auditing.
+- role-scoped Network View browsing; Network View access itself is not audit-logged.
 
 ## Known Limitations
 
