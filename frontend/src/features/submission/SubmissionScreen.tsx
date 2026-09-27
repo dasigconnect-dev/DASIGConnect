@@ -59,6 +59,7 @@ import {
   type ComposerTourPanel,
   saveDraftTourSteps,
 } from "../onboarding/tours/submissionTour";
+import { hasSeenTour } from "../onboarding/tourStorage";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -569,7 +570,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     screenId: "save-draft-prompt",
     steps: saveDraftTourSteps,
     autoStartDelayMs: 400,
-    canStart: isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
+    canStart:
+      isDirty &&
+      !busy &&
+      !isReadOnlySubmission &&
+      !composerTourProps.isOpen &&
+      hasSeenTour("submission-composer"),
   });
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
@@ -3378,7 +3384,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {isCompactLayout ? (
               // ≤900px: the sticky bottom bar is the step navigation —
-              // Previous / Next, with Submit taking Next's place on the last
+              // Preview / Previous / Next, with Submit taking Next's place on the last
               // step. Save Draft stays in the page header (#btn-save-draft).
               <StepPanelActions
                 activeStep={activeStep}
@@ -3386,6 +3392,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 isDetailsComplete={isDetailsComplete}
                 onStepChange={handleStepNav}
                 finalAction={submitButton}
+                onPreview={() => {
+                  if (centerMode === "preview") {
+                    handleEditPreviewDetails();
+                  } else {
+                    setCenterMode("preview");
+                  }
+                }}
+                previewActive={centerMode === "preview"}
+                previewDisabled={busy || Boolean(hydratingId)}
               />
             ) : (
               <>

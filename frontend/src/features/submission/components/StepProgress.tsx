@@ -75,6 +75,9 @@ export function StepPanelActions({
   isDetailsComplete,
   onStepChange,
   finalAction,
+  onPreview,
+  previewActive = false,
+  previewDisabled = false,
 }: {
   activeStep: ProgressStep;
   hasMedia: boolean;
@@ -82,6 +85,9 @@ export function StepPanelActions({
   onStepChange: (step: ProgressStep) => void;
   /** Rendered in place of Next on the last step (the phone bottom bar passes Submit). */
   finalAction?: ReactNode;
+  onPreview?: () => void;
+  previewActive?: boolean;
+  previewDisabled?: boolean;
 }) {
   const order: ProgressStep[] = ["media", "details", "schedule"];
   const index = order.indexOf(activeStep);
@@ -101,6 +107,19 @@ export function StepPanelActions({
 
   return (
     <div className="sub-step-panel-actions">
+      {onPreview && (
+        <button
+          type="button"
+          className={`sub-step-panel-btn sub-step-panel-preview${previewActive ? " is-active" : ""}`}
+          onClick={onPreview}
+          disabled={previewDisabled}
+          title={previewActive ? "Back to editing details" : "Preview how followers see this post on Facebook"}
+          aria-label={previewActive ? "Back to editing" : "Preview on Facebook"}
+        >
+          <i className={previewActive ? "ti ti-arrow-left" : "ti ti-brand-facebook"}></i>
+          <span>{previewActive ? "Edit" : "Preview"}</span>
+        </button>
+      )}
       {previous && (
         <button
           type="button"

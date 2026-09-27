@@ -316,11 +316,20 @@
   margin-bottom: 0;
 }
 
-.settings-forgot-pw-btn {
-  align-self: flex-start;
-  margin-top: 2px;
+.settings-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
 }
 
+.settings-forgot-pw-btn {
+  align-self: center;
+  margin: 0;
+}
+
+.settings-field-head > label,
 .settings-field > label,
 .settings-field > div > label,
 .settings-label,
@@ -330,6 +339,52 @@
   font-weight: 650;
   letter-spacing: 0.065em;
   text-transform: uppercase;
+}
+
+/* Password rules checklist with crisp contrast */
+.settings-password-grid .pw-rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+@media (max-width: 600px) {
+  .settings-password-grid .pw-rules {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+.settings-password-grid .pw-rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  line-height: 1.3;
+  transition: color 0.15s ease;
+}
+
+.settings-password-grid .pw-rule i {
+  font-size: 14px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.settings-password-grid .pw-rule.pass {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.settings-password-grid .pw-rule.pass i {
+  color: #16a34a;
 }
 
 .settings-toggle-row,

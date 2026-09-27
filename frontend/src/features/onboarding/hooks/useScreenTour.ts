@@ -21,6 +21,19 @@ interface UseScreenTourOptions {
   onStepChange?: (step: TourStep | null) => void;
 }
 
+let activeTourScreenId: string | null = null;
+const tourActiveSubscribers = new Set<(activeId: string | null) => void>();
+
+function setActiveTourScreenId(id: string | null) {
+  if (activeTourScreenId === id) return;
+  activeTourScreenId = id;
+  tourActiveSubscribers.forEach((cb) => cb(activeTourScreenId));
+}
+
+export function getActiveTourScreenId(): string | null {
+  return activeTourScreenId;
+}
+
 export function useScreenTour({
   screenId,
   steps,
@@ -54,11 +67,29 @@ export function useScreenTour({
     });
   }, []);
 
+  // Guarantee that only one tour can be active at a time across the entire app
+  useEffect(() => {
+    const handleActiveTourChange = (activeId: string | null) => {
+      if (activeId !== null && activeId !== screenId) {
+        setIsActive(false);
+      }
+    };
+    tourActiveSubscribers.add(handleActiveTourChange);
+    return () => {
+      tourActiveSubscribers.delete(handleActiveTourChange);
+      if (activeTourScreenId === screenId) {
+        setActiveTourScreenId(null);
+      }
+    };
+  }, [screenId]);
+
   const startTour = useCallback(
     (force = false) => {
       if (!steps || steps.length === 0) return;
       if (!force && (!isGloballyEnabled || hasSeenTour(screenId))) return;
+      if (!force && activeTourScreenId !== null && activeTourScreenId !== screenId) return;
 
+      setActiveTourScreenId(screenId);
       setCurrentStepIndex(0);
       setIsActive(true);
     },
@@ -67,6 +98,9 @@ export function useScreenTour({
 
   const stopTour = useCallback(
     (markSeen = true) => {
+      if (activeTourScreenId === screenId) {
+        setActiveTourScreenId(null);
+      }
       setIsActive(false);
       if (markSeen) {
         markTourAsSeen(screenId);
@@ -88,11 +122,19 @@ export function useScreenTour({
   // it, a guide the account already dismissed would flash on every login
   // while the profile fetch is still in flight.
   useEffect(() => {
-    if (!canStart || !preferencesLoaded || !isGloballyEnabled || hasSeenTour(screenId) || steps.length === 0) {
+    if (
+      !canStart ||
+      !preferencesLoaded ||
+      !isGloballyEnabled ||
+      hasSeenTour(screenId) ||
+      steps.length === 0 ||
+      (activeTourScreenId !== null && activeTourScreenId !== screenId)
+    ) {
       return;
     }
 
     timerRef.current = window.setTimeout(() => {
+      if (activeTourScreenId !== null && activeTourScreenId !== screenId) return;
       startTour(false);
     }, autoStartDelayMs);
 
