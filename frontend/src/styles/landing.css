@@ -897,17 +897,27 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 }
 
 /* ==========================================================================
-   SECTION 6: CTA & FOOTER (Harmonious White Theme with Moving Box Grid)
+   SECTION 6: CTA & FOOTER (Seamless Continuous Dark Architecture with GridScan)
    ========================================================================== */
-.landing-cta-zone {
+.landing-dark-zone {
   position: relative;
-  background: var(--lp-white, #ffffff);
+  background: var(--lp-ink, #0a1628);
   overflow: hidden;
-  border-top: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.landing-dark-zone-gridscan {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.92;
 }
 
 .cta-editorial-section {
-  padding: 100px 0 60px;
+  padding: 110px 0 54px;
   background: transparent;
   position: relative;
   z-index: 1;
@@ -917,30 +927,32 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   background: transparent;
   border-radius: 0;
   padding: 0;
-  color: var(--lp-ink);
+  color: #ffffff;
   text-align: center;
 }
 
 .cta-editorial-banner h2 {
   font-family: var(--ff-display);
-  font-size: clamp(2.5rem, 5vw, 3.8rem);
+  font-size: clamp(2.5rem, 5vw, 4rem);
   font-weight: 700;
   letter-spacing: -0.03em;
-  color: var(--lp-ink);
+  color: #ffffff;
   margin-bottom: 16px;
-  line-height: 1.08;
+  line-height: 1.05;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
 }
 
 .cta-editorial-banner h2 em {
   font-style: italic;
-  color: var(--lp-blue);
+  color: #60a5fa;
 }
 
 .cta-editorial-banner p {
   font-size: 1.1rem;
-  color: var(--lp-light-muted);
+  color: rgba(255, 255, 255, 0.8);
   max-width: 580px;
   margin: 0 auto 36px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   line-height: 1.6;
 }
 
@@ -952,13 +964,28 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   flex-wrap: wrap;
 }
 
+.landing-dark-zone .btn-editorial-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.landing-dark-zone .btn-editorial-secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
 /* Footer */
 .landing-footer {
   position: relative;
   z-index: 1;
   background: transparent;
-  border-top: none;
-  padding: 28px 0 36px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 32px 0 40px;
 }
 
 .landing-footer .landing-container {
@@ -971,7 +998,7 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   align-items: center;
   justify-content: space-between;
   font-size: 0.84rem;
-  color: var(--lp-light-muted);
+  color: rgba(255, 255, 255, 0.75);
   flex-wrap: wrap;
   gap: 16px;
   line-height: 1.6;
@@ -988,18 +1015,17 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   background: none;
   border: none;
   padding: 0;
-  color: var(--lp-light-muted);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
-  transition: color 0.15s ease;
-  font-family: var(--ff-body);
+  transition: color 0.2s ease;
 }
 
 .footer-privacy-btn:hover {
-  color: var(--lp-blue);
+  color: #38bdf8;
 }
 
 /* Privacy Modal */
