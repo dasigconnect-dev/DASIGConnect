@@ -24,7 +24,7 @@ class EmbeddingReconciliationJobTest {
     private EmbeddingReconciliationJob job(boolean aiConfigured) {
         return new EmbeddingReconciliationJob(
                 mediaAssetRepository, queue, health,
-                aiConfigured ? "test-key" : "", "", 10);
+                aiConfigured ? "test-key" : "", aiConfigured ? "voyage-key" : "", 10);
     }
 
     @Test
@@ -44,6 +44,23 @@ class EmbeddingReconciliationJobTest {
 
         verify(queue).enqueue(firstId);
         verify(queue).enqueue(secondId);
+    }
+
+    @Test
+    void reconcile_readyImagesWithoutVisualVectors_areIdempotentlyEnqueued() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findNeedingProcessingVersion(
+                eq(MediaProcessingQueueService.PROCESSING_VERSION), any()))
+                .thenReturn(List.of());
+        when(mediaAssetRepository.findReadyImagesMissingImageEmbedding(any()))
+                .thenReturn(List.of(asset));
+
+        job(true).reconcile();
+
+        verify(queue).enqueueImageOnly(assetId);
     }
 
     @Test

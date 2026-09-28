@@ -100,13 +100,15 @@ class MediaProcessingQueueServiceTest {
 
     @Test
     void claimBatch_capsRequestedWork() {
-        when(repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
-                "worker", MediaProcessingJobStatus.PROCESSING)).thenReturn(List.of());
+        when(repository.findClaimedBatchInPriorityOrder(
+                "worker", MediaProcessingJobStatus.PROCESSING.name())).thenReturn(List.of());
 
         assertThat(service.claimBatch("worker", 100, false, true)).isEmpty();
 
         verify(repository).claimBatch(
                 eq("worker"), any(), any(), eq(10), eq(2), eq(false), eq(true));
+        verify(repository).findClaimedBatchInPriorityOrder(
+                "worker", MediaProcessingJobStatus.PROCESSING.name());
     }
 
     @Test

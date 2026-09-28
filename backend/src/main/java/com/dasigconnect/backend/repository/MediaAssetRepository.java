@@ -407,6 +407,29 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findNeedingProcessingVersion(
             @Param("processingVersion") String processingVersion, Pageable pageable);
 
+    @Query(value = """
+        SELECT ma.*
+        FROM media_assets ma
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_asset_embeddings embedding
+              WHERE embedding.asset_id = ma.id
+                AND embedding.embedding_type = 'image'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type = 'EMBED_IMAGE_ONLY'
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findReadyImagesMissingImageEmbedding(Pageable pageable);
+
     /**
      * Returns id + cosine similarity score for top nearest neighbours.
      */

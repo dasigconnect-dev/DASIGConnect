@@ -14,7 +14,7 @@ export interface UseAiMediaSuggestionsReturn {
   fetch: () => void;
 }
 
-const PROCESSING_RETRY_DELAYS_MS = [3_000, 6_000, 12_000, 24_000] as const;
+const PROCESSING_RETRY_DELAYS_MS = [2_000, 4_000, 6_000, 10_000, 15_000] as const;
 
 export function hasSufficientMediaContext(eventTitle: string, caption: string, category: string, tags: string[]) {
   return [eventTitle, caption, category, ...tags].join(" ").trim().length >= 10;
