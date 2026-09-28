@@ -55,18 +55,29 @@ public class EmbeddingReconciliationJob {
                 healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
                 return;
             }
-            List<MediaAsset> pending = mediaAssetRepository.findNeedingProcessingVersion(
-                    MediaProcessingQueueService.PROCESSING_VERSION,
-                    PageRequest.of(0, availableSlots));
+            List<MediaAsset> draftImages = imageEmbeddingConfigured
+                    ? mediaAssetRepository.findDraftImagesMissingImageEmbedding(
+                            PageRequest.of(0, availableSlots))
+                    : List.of();
+            for (MediaAsset asset : draftImages) queueService.enqueueImageOnly(asset.getId());
+            int classificationSlots = availableSlots - draftImages.size();
+            List<MediaAsset> pending = classificationSlots > 0
+                    ? mediaAssetRepository.findNeedingProcessingVersion(
+                            MediaProcessingQueueService.PROCESSING_VERSION,
+                            PageRequest.of(0, classificationSlots))
+                    : List.of();
             for (MediaAsset asset : pending) queueService.enqueue(asset.getId());
-            int imageSlots = imageEmbeddingConfigured ? availableSlots - pending.size() : 0;
+            int imageSlots = imageEmbeddingConfigured
+                    ? classificationSlots - pending.size()
+                    : 0;
             List<MediaAsset> missingImages = imageSlots > 0
                     ? mediaAssetRepository.findReadyImagesMissingImageEmbedding(PageRequest.of(0, imageSlots))
                     : List.of();
             for (MediaAsset asset : missingImages) queueService.enqueueImageOnly(asset.getId());
-            if (!pending.isEmpty() || !missingImages.isEmpty()) {
-                log.info("EmbeddingReconciliationJob: enqueued {} incomplete assets and {} missing image embeddings",
-                        pending.size(), missingImages.size());
+            if (!draftImages.isEmpty() || !pending.isEmpty() || !missingImages.isEmpty()) {
+                log.info("EmbeddingReconciliationJob: enqueued {} draft images, {} incomplete assets, "
+                                + "and {} missing library image embeddings",
+                        draftImages.size(), pending.size(), missingImages.size());
             }
             healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
         } catch (Exception error) {

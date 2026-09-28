@@ -174,7 +174,8 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
         SET status = CASE WHEN rerun_requested THEN 'PENDING' ELSE 'COMPLETED' END,
             attempt_count = CASE WHEN rerun_requested THEN 0 ELSE attempt_count END,
             next_attempt_at = CASE WHEN rerun_requested THEN :completedAt ELSE next_attempt_at END,
-            completed_at = CASE WHEN rerun_requested THEN NULL ELSE :completedAt END,
+            completed_at = CASE WHEN rerun_requested THEN NULL::timestamptz
+                                ELSE CAST(:completedAt AS timestamptz) END,
             lease_until = NULL, claimed_by = NULL, last_error = NULL,
             rerun_requested = FALSE,
             updated_at = :completedAt

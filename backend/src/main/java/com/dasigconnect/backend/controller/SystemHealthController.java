@@ -11,6 +11,7 @@ import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
 import com.dasigconnect.backend.model.dto.systemhealth.MediaAiStageMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.MediaEmbeddingCoverageDto;
 import com.dasigconnect.backend.service.MediaAiTelemetryService;
 import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.ManualJobRunner;
@@ -88,6 +89,11 @@ public class SystemHealthController {
     public ResponseEntity<ApiResponse<List<MediaAiStageMetricDto>>> mediaAiMetrics(
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "30") int days) {
         return ResponseEntity.ok(ApiResponse.success(mediaAiTelemetryService.aggregate(days)));
+    }
+
+    @GetMapping("/media-ai-coverage")
+    public ResponseEntity<ApiResponse<List<MediaEmbeddingCoverageDto>>> mediaAiCoverage() {
+        return ResponseEntity.ok(ApiResponse.success(mediaAiTelemetryService.embeddingCoverage()));
     }
 
     @GetMapping("/tokens")

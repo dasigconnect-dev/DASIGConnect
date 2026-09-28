@@ -36,6 +36,8 @@ class EmbeddingReconciliationJobTest {
         MediaAsset second = new MediaAsset();
         second.setId(secondId);
         when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any()))
+                .thenReturn(List.of());
         when(mediaAssetRepository.findNeedingProcessingVersion(
                 eq(MediaProcessingQueueService.PROCESSING_VERSION), any()))
                 .thenReturn(List.of(first, second));
@@ -52,6 +54,8 @@ class EmbeddingReconciliationJobTest {
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
         when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any()))
+                .thenReturn(List.of());
         when(mediaAssetRepository.findNeedingProcessingVersion(
                 eq(MediaProcessingQueueService.PROCESSING_VERSION), any()))
                 .thenReturn(List.of());
@@ -61,6 +65,22 @@ class EmbeddingReconciliationJobTest {
         job(true).reconcile();
 
         verify(queue).enqueueImageOnly(assetId);
+    }
+
+    @Test
+    void reconcile_draftImagesAreRecoveredBeforeBackgroundWork() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(queue.availableBackfillSlots(10)).thenReturn(1);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any()))
+                .thenReturn(List.of(asset));
+
+        job(true).reconcile();
+
+        verify(queue).enqueueImageOnly(assetId);
+        verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
+        verify(mediaAssetRepository, never()).findReadyImagesMissingImageEmbedding(any());
     }
 
     @Test
