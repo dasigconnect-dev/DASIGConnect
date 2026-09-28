@@ -1,17 +1,22 @@
 package com.dasigconnect.backend.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.dasigconnect.backend.model.dto.systemhealth.MediaEmbeddingCoverageDto;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -56,5 +61,17 @@ class MediaAiTelemetryServiceTest {
 
         assertThatCode(() -> service.record("QUEUE_DELAY", 10, "SUCCESS",
                 UUID.randomUUID(), null, 1, 0, 0)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void embeddingCoverage_groupsEligibleImagesWithoutExposingContent() {
+        MediaAiTelemetryService service = new MediaAiTelemetryService(jdbcTemplate, transactionManager);
+        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers
+                .<RowMapper<MediaEmbeddingCoverageDto>>any())).thenReturn(List.of());
+
+        assertThat(service.embeddingCoverage()).isEmpty();
+
+        verify(jdbcTemplate).query(anyString(), org.mockito.ArgumentMatchers
+                .<RowMapper<MediaEmbeddingCoverageDto>>any());
     }
 }

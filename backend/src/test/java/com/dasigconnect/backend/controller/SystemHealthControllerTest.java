@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.MediaAiStageMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.MediaEmbeddingCoverageDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
 import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.JWTService;
@@ -21,6 +22,7 @@ import com.dasigconnect.backend.service.TenantScopeService;
 import com.dasigconnect.backend.service.TokenManagementService;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -103,6 +105,24 @@ class SystemHealthControllerTest {
                 .andExpect(jsonPath("$.data[0].providerCallsPerAsset").value(1));
 
         verify(mediaAiTelemetryService).aggregate(14);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void mediaAiCoverage_asAdmin_returnsInstitutionAndStatusBreakdown() throws Exception {
+        UUID institutionId = UUID.randomUUID();
+        when(mediaAiTelemetryService.embeddingCoverage()).thenReturn(List.of(
+                new MediaEmbeddingCoverageDto(institutionId, "DASIG Central Visayas", "READY",
+                        10, 8, 9, 80, 90)));
+
+        mockMvc.perform(get("/api/v1/system-health/media-ai-coverage"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].institutionId").value(institutionId.toString()))
+                .andExpect(jsonPath("$.data[0].assetStatus").value("READY"))
+                .andExpect(jsonPath("$.data[0].imageCoveragePercent").value(80))
+                .andExpect(jsonPath("$.data[0].semanticCoveragePercent").value(90));
+
+        verify(mediaAiTelemetryService).embeddingCoverage();
     }
 
     @Test

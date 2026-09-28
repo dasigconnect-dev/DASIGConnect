@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.systemhealth.MediaAiStageMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.MediaEmbeddingCoverageDto;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -80,6 +81,55 @@ public class MediaAiTelemetryService {
                         round(rs.getDouble("provider_calls_per_asset")),
                         rs.getLong("duplicate_calls_avoided")),
                 Timestamp.from(cutoff));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MediaEmbeddingCoverageDto> embeddingCoverage() {
+        return jdbcTemplate.query("""
+                WITH asset_scope AS (
+                    SELECT asset.id,
+                           asset.status,
+                           COALESCE(asset.institution_id,
+                                    MIN(submission.institution_id::text)::uuid) AS institution_id
+                    FROM media_assets asset
+                    LEFT JOIN submission_media_assets selected_media
+                      ON selected_media.media_asset_id = asset.id
+                    LEFT JOIN submissions submission
+                      ON submission.id = selected_media.submission_id
+                    WHERE asset.deleted_at IS NULL
+                      AND asset.file_type IN ('jpeg', 'png', 'webp', 'gif')
+                    GROUP BY asset.id, asset.status, asset.institution_id
+                ), embedding_flags AS (
+                    SELECT scoped.id,
+                           scoped.status,
+                           scoped.institution_id,
+                           BOOL_OR(embedding.embedding_type = 'image') AS has_image,
+                           BOOL_OR(embedding.embedding_type = 'semantic') AS has_semantic
+                    FROM asset_scope scoped
+                    LEFT JOIN media_asset_embeddings embedding ON embedding.asset_id = scoped.id
+                    GROUP BY scoped.id, scoped.status, scoped.institution_id
+                )
+                SELECT flags.institution_id,
+                       COALESCE(institution.name, 'Unassigned') AS institution_name,
+                       flags.status AS asset_status,
+                       COUNT(*) AS eligible_assets,
+                       COUNT(*) FILTER (WHERE flags.has_image) AS image_embeddings,
+                       COUNT(*) FILTER (WHERE flags.has_semantic) AS semantic_embeddings,
+                       100.0 * COUNT(*) FILTER (WHERE flags.has_image) / COUNT(*) AS image_coverage,
+                       100.0 * COUNT(*) FILTER (WHERE flags.has_semantic) / COUNT(*) AS semantic_coverage
+                FROM embedding_flags flags
+                LEFT JOIN institutions institution ON institution.id = flags.institution_id
+                GROUP BY flags.institution_id, institution.name, flags.status
+                ORDER BY institution_name, asset_status
+                """, (rs, rowNum) -> new MediaEmbeddingCoverageDto(
+                        rs.getObject("institution_id", UUID.class),
+                        rs.getString("institution_name"),
+                        rs.getString("asset_status"),
+                        rs.getLong("eligible_assets"),
+                        rs.getLong("image_embeddings"),
+                        rs.getLong("semantic_embeddings"),
+                        round(rs.getDouble("image_coverage")),
+                        round(rs.getDouble("semantic_coverage"))));
     }
 
     public static long elapsedMillis(long startedNanos) {
