@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.dasigconnect.backend.model.dto.systemhealth.MediaEmbeddingCoverageDto;
+import com.dasigconnect.backend.external.VoyageAIClient;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 class MediaAiTelemetryServiceTest {
 
     @Mock private JdbcTemplate jdbcTemplate;
+    @Mock private VoyageAIClient voyageAIClient;
 
     private final PlatformTransactionManager transactionManager = new PlatformTransactionManager() {
         @Override
@@ -44,7 +46,8 @@ class MediaAiTelemetryServiceTest {
 
     @Test
     void record_clampsCountersAndPersistsContentFreeMeasurement() {
-        MediaAiTelemetryService service = new MediaAiTelemetryService(jdbcTemplate, transactionManager);
+        MediaAiTelemetryService service = new MediaAiTelemetryService(
+                jdbcTemplate, transactionManager, voyageAIClient);
         UUID assetId = UUID.randomUUID();
 
         service.record("VOYAGE_IMAGE_EMBEDDING", -20, "SUCCESS", assetId,
@@ -55,7 +58,8 @@ class MediaAiTelemetryServiceTest {
 
     @Test
     void record_databaseFailureDoesNotEscapeIntoMediaPipeline() {
-        MediaAiTelemetryService service = new MediaAiTelemetryService(jdbcTemplate, transactionManager);
+        MediaAiTelemetryService service = new MediaAiTelemetryService(
+                jdbcTemplate, transactionManager, voyageAIClient);
         doThrow(new RuntimeException("metrics unavailable"))
                 .when(jdbcTemplate).update(anyString(), any(Object[].class));
 
@@ -65,13 +69,14 @@ class MediaAiTelemetryServiceTest {
 
     @Test
     void embeddingCoverage_groupsEligibleImagesWithoutExposingContent() {
-        MediaAiTelemetryService service = new MediaAiTelemetryService(jdbcTemplate, transactionManager);
+        MediaAiTelemetryService service = new MediaAiTelemetryService(
+                jdbcTemplate, transactionManager, voyageAIClient);
         when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers
-                .<RowMapper<MediaEmbeddingCoverageDto>>any())).thenReturn(List.of());
+                .<RowMapper<MediaEmbeddingCoverageDto>>any(), any(Object[].class))).thenReturn(List.of());
 
         assertThat(service.embeddingCoverage()).isEmpty();
 
         verify(jdbcTemplate).query(anyString(), org.mockito.ArgumentMatchers
-                .<RowMapper<MediaEmbeddingCoverageDto>>any());
+                .<RowMapper<MediaEmbeddingCoverageDto>>any(), any(Object[].class));
     }
 }

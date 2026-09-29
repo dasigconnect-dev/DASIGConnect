@@ -30,6 +30,7 @@ public class EmbeddingReconciliationJob {
     private final boolean retrievalConfigured;
     private final boolean imageEmbeddingConfigured;
     private final int backfillBatchSize;
+    private final int backfillPerInstitution;
 
     public EmbeddingReconciliationJob(
             MediaAssetRepository mediaAssetRepository,
@@ -38,7 +39,8 @@ public class EmbeddingReconciliationJob {
             VoyageAIClient voyageAIClient,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey,
-            @Value("${app.media-processing.backfill-batch-size:10}") int backfillBatchSize) {
+            @Value("${app.media-processing.backfill-batch-size:10}") int backfillBatchSize,
+            @Value("${app.media-processing.backfill-per-institution:2}") int backfillPerInstitution) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.queueService = queueService;
         this.healthService = healthService;
@@ -46,6 +48,7 @@ public class EmbeddingReconciliationJob {
         this.retrievalConfigured = !voyageApiKey.isBlank();
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
         this.backfillBatchSize = Math.max(1, Math.min(backfillBatchSize, 25));
+        this.backfillPerInstitution = Math.max(1, Math.min(backfillPerInstitution, 10));
     }
 
     @Scheduled(fixedDelayString = "${app.media-processing.reconcile-delay-ms:300000}")
@@ -71,26 +74,24 @@ public class EmbeddingReconciliationJob {
                             PageRequest.of(0, classificationSlots))
                     : List.of();
             for (MediaAsset asset : pending) queueService.enqueue(asset.getId());
-            int imageSlots = imageEmbeddingConfigured
+            int backfillSlots = imageEmbeddingConfigured
                     ? classificationSlots - pending.size()
                     : 0;
-            List<MediaAsset> missingImages = imageSlots > 0
-                    ? mediaAssetRepository.findReadyImagesMissingImageEmbedding(PageRequest.of(0, imageSlots))
-                    : List.of();
-            for (MediaAsset asset : missingImages) queueService.enqueueImageOnly(asset.getId());
-            int semanticSlots = imageSlots - missingImages.size();
-            List<MediaAsset> missingSemantic = semanticSlots > 0
-                    ? mediaAssetRepository.findReadyAssetsMissingCurrentSemanticEmbedding(
+            List<MediaAsset> backfill = backfillSlots > 0
+                    ? mediaAssetRepository.findFairReadyImagesNeedingCurrentEmbeddings(
+                            voyageAIClient.multimodalModelName(),
+                            MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION,
                             voyageAIClient.modelName(),
                             MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
-                            PageRequest.of(0, semanticSlots))
+                            MediaProcessingQueueService.PROCESSING_VERSION,
+                            backfillPerInstitution,
+                            PageRequest.of(0, backfillSlots))
                     : List.of();
-            for (MediaAsset asset : missingSemantic) queueService.enqueueSemanticOnly(asset.getId());
-            if (!draftImages.isEmpty() || !pending.isEmpty()
-                    || !missingImages.isEmpty() || !missingSemantic.isEmpty()) {
+            for (MediaAsset asset : backfill) queueService.enqueueBackfill(asset.getId());
+            if (!draftImages.isEmpty() || !pending.isEmpty() || !backfill.isEmpty()) {
                 log.info("EmbeddingReconciliationJob: enqueued {} draft images, {} incomplete assets, "
-                                + "{} missing library image embeddings, and {} stale semantic embeddings",
-                        draftImages.size(), pending.size(), missingImages.size(), missingSemantic.size());
+                                + "and {} institution-fair historical backfills",
+                        draftImages.size(), pending.size(), backfill.size());
             }
             healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
         } catch (Exception error) {

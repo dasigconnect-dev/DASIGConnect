@@ -39,6 +39,9 @@ public class MediaProcessingJob {
     @Column(name = "max_attempts", nullable = false)
     private int maxAttempts;
 
+    @Column(nullable = false)
+    private int priority;
+
     @Column(name = "next_attempt_at", nullable = false)
     private Instant nextAttemptAt;
 
@@ -68,6 +71,7 @@ public class MediaProcessingJob {
     public MediaProcessingJobStatus getStatus() { return status; }
     public int getAttemptCount() { return attemptCount; }
     public int getMaxAttempts() { return maxAttempts; }
+    public int getPriority() { return priority; }
     public Instant getNextAttemptAt() { return nextAttemptAt; }
     public Instant getLeaseUntil() { return leaseUntil; }
     public String getClaimedBy() { return claimedBy; }

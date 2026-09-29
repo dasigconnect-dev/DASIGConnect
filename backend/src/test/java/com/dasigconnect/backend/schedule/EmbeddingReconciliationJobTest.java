@@ -26,7 +26,7 @@ class EmbeddingReconciliationJobTest {
     private EmbeddingReconciliationJob job(boolean aiConfigured) {
         return new EmbeddingReconciliationJob(
                 mediaAssetRepository, queue, health, voyage,
-                aiConfigured ? "test-key" : "", aiConfigured ? "voyage-key" : "", 10);
+                aiConfigured ? "test-key" : "", aiConfigured ? "voyage-key" : "", 10, 2);
     }
 
     @Test
@@ -51,7 +51,7 @@ class EmbeddingReconciliationJobTest {
     }
 
     @Test
-    void reconcile_readyImagesWithoutVisualVectors_areIdempotentlyEnqueued() {
+    void reconcile_historicalAssetsUseLowPriorityFullBackfill() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
@@ -61,12 +61,19 @@ class EmbeddingReconciliationJobTest {
         when(mediaAssetRepository.findNeedingProcessingVersion(
                 eq(MediaProcessingQueueService.PROCESSING_VERSION), any()))
                 .thenReturn(List.of());
-        when(mediaAssetRepository.findReadyImagesMissingImageEmbedding(any()))
+        when(voyage.multimodalModelName()).thenReturn("voyage-multimodal-3.5");
+        when(voyage.modelName()).thenReturn("voyage-4-lite");
+        when(mediaAssetRepository.findFairReadyImagesNeedingCurrentEmbeddings(
+                eq("voyage-multimodal-3.5"),
+                eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION),
+                eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION),
+                eq(MediaProcessingQueueService.PROCESSING_VERSION), eq(2), any()))
                 .thenReturn(List.of(asset));
 
         job(true).reconcile();
 
-        verify(queue).enqueueImageOnly(assetId);
+        verify(queue).enqueueBackfill(assetId);
     }
 
     @Test
@@ -82,7 +89,9 @@ class EmbeddingReconciliationJobTest {
 
         verify(queue).enqueueImageOnly(assetId);
         verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
-        verify(mediaAssetRepository, never()).findReadyImagesMissingImageEmbedding(any());
+        verify(mediaAssetRepository, never()).findFairReadyImagesNeedingCurrentEmbeddings(
+                any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyInt(), any());
     }
 
     @Test
@@ -102,22 +111,25 @@ class EmbeddingReconciliationJobTest {
     }
 
     @Test
-    void reconcile_staleSemanticEmbedding_isIdempotentlyEnqueued() {
+    void reconcile_staleEmbedding_isIncludedInFullBackfill() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
+        when(voyage.multimodalModelName()).thenReturn("voyage-multimodal-3.5");
         when(voyage.modelName()).thenReturn("voyage-4-lite");
         when(queue.availableBackfillSlots(10)).thenReturn(10);
         when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any())).thenReturn(List.of());
         when(mediaAssetRepository.findNeedingProcessingVersion(any(), any())).thenReturn(List.of());
-        when(mediaAssetRepository.findReadyImagesMissingImageEmbedding(any())).thenReturn(List.of());
-        when(mediaAssetRepository.findReadyAssetsMissingCurrentSemanticEmbedding(
+        when(mediaAssetRepository.findFairReadyImagesNeedingCurrentEmbeddings(
+                eq("voyage-multimodal-3.5"),
+                eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION),
                 eq("voyage-4-lite"),
-                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), any()))
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION),
+                eq(MediaProcessingQueueService.PROCESSING_VERSION), eq(2), any()))
                 .thenReturn(List.of(asset));
 
         job(true).reconcile();
 
-        verify(queue).enqueueSemanticOnly(assetId);
+        verify(queue).enqueueBackfill(assetId);
     }
 }

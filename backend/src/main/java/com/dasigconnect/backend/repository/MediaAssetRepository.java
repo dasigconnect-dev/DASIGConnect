@@ -407,17 +407,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("""
         SELECT m FROM MediaAsset m
         WHERE m.deletedAt IS NULL
-          AND (
-              m.status IS NULL
-              OR m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
-          )
-          AND (
-              m.status IN (
-                  com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING,
-                  com.dasigconnect.backend.model.entity.MediaAssetStatus.FAILED
-              )
-              OR m.aiProcessingVersion IS NULL
-              OR m.aiProcessingVersion <> :processingVersion
+          AND m.status IN (
+              com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING,
+              com.dasigconnect.backend.model.entity.MediaAssetStatus.FAILED
           )
           AND NOT EXISTS (
               SELECT job.id FROM MediaProcessingJob job
@@ -510,6 +502,67 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findReadyAssetsMissingCurrentSemanticEmbedding(
             @Param("embeddingModel") String embeddingModel,
             @Param("processingVersion") String processingVersion,
+            Pageable pageable);
+
+    @Query(value = """
+        WITH eligible AS (
+            SELECT ma.id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ma.institution_id
+                       ORDER BY ma.created_at ASC, ma.id ASC
+                   ) AS institution_rank
+            FROM media_assets ma
+            WHERE ma.deleted_at IS NULL
+              AND ma.status = 'READY'
+              AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+              AND ma.storage_url IS NOT NULL
+              AND (
+                  NOT EXISTS (
+                      SELECT 1 FROM media_asset_embeddings image_embedding
+                      WHERE image_embedding.asset_id = ma.id
+                        AND image_embedding.embedding_type = 'image'
+                        AND image_embedding.model = :imageModel
+                        AND image_embedding.processing_version = :imageVersion
+                        AND image_embedding.source_revision = 0
+                        AND image_embedding.source_input_hash =
+                            encode(digest(btrim(ma.storage_url), 'sha256'), 'hex')
+                  )
+                  OR NOT EXISTS (
+                      SELECT 1 FROM media_asset_embeddings semantic_embedding
+                      WHERE semantic_embedding.asset_id = ma.id
+                        AND semantic_embedding.embedding_type = 'semantic'
+                        AND semantic_embedding.model = :semanticModel
+                        AND semantic_embedding.processing_version = :semanticVersion
+                        AND semantic_embedding.source_revision = ma.semantic_revision
+                  )
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM media_processing_jobs job
+                  WHERE job.asset_id = ma.id
+                    AND (
+                        (job.job_type = 'RETRIEVAL_EMBEDDINGS'
+                            AND job.processing_version = :retrievalVersion)
+                        OR (job.job_type = 'EMBED_IMAGE_ONLY'
+                            AND job.processing_version = :imageVersion)
+                        OR (job.job_type = 'EMBED_SEMANTIC_ONLY'
+                            AND job.processing_version = :semanticVersion)
+                    )
+                    AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+              )
+        )
+        SELECT ma.*
+        FROM eligible candidate
+        JOIN media_assets ma ON ma.id = candidate.id
+        WHERE candidate.institution_rank <= :perInstitutionLimit
+        ORDER BY candidate.institution_rank, ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findFairReadyImagesNeedingCurrentEmbeddings(
+            @Param("imageModel") String imageModel,
+            @Param("imageVersion") String imageVersion,
+            @Param("semanticModel") String semanticModel,
+            @Param("semanticVersion") String semanticVersion,
+            @Param("retrievalVersion") String retrievalVersion,
+            @Param("perInstitutionLimit") int perInstitutionLimit,
             Pageable pageable);
 
     /**

@@ -25,6 +25,7 @@ public class MediaProcessingQueueService {
     public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
     public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v1";
     public static final String CONTEXT_VERSION = "submission-context-v1";
+    public static final int BACKFILL_PRIORITY = 100;
     private static final int MAX_ERROR_LENGTH = 500;
     private static final Logger log = LoggerFactory.getLogger(MediaProcessingQueueService.class);
 
@@ -62,6 +63,11 @@ public class MediaProcessingQueueService {
                 enqueueSafely(assetId);
             }
         });
+    }
+
+    public void enqueueBackfill(UUID assetId) {
+        repository.enqueueBackfill(
+                assetId, PROCESSING_VERSION, maxAttempts, BACKFILL_PRIORITY);
     }
 
     public void enqueueEnrichment(UUID assetId) {
