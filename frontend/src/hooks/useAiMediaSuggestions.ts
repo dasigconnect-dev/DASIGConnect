@@ -20,6 +20,7 @@ export interface UseAiMediaSuggestionsReturn {
   state: AiMediaSuggestState;
   results: MediaSuggestResult[];
   fetch: () => void;
+  accept: () => void;
 }
 
 const PROCESSING_RETRY_DELAYS_MS = [2_000, 4_000, 6_000, 10_000, 15_000] as const;
@@ -60,6 +61,22 @@ export function useAiMediaSuggestions(
   const visualRetryRef = useRef({ key: "", attempts: 0 });
   const lastLoggedResultsRef = useRef("");
   const hasResultsRef = useRef(false);
+  const interactionRef = useRef<{
+    submissionId: string;
+    resultKey: string;
+    settled: boolean;
+  } | null>(null);
+
+  const settleCurrentInteraction = useCallback((action: "accepted" | "dismissed") => {
+    const interaction = interactionRef.current;
+    if (!interaction || interaction.settled) return;
+    interaction.settled = true;
+    logAiInteraction(interaction.submissionId, "media_recommendation", action);
+  }, []);
+
+  const accept = useCallback(() => {
+    settleCurrentInteraction("accepted");
+  }, [settleCurrentInteraction]);
 
   const requestSuggestions = useCallback(async (background = false) => {
     if (!submissionId || !hasContext) return;
@@ -73,6 +90,7 @@ export function useAiMediaSuggestions(
     requestRef.current = request;
     setResponseKey(requestKey);
     if (!background) {
+      settleCurrentInteraction("dismissed");
       hasResultsRef.current = false;
       setProcessing(false);
       setState("loading");
@@ -107,7 +125,13 @@ export function useAiMediaSuggestions(
       if (response.results.length > 0) {
         const loggedKey = JSON.stringify([requestKey, response.results.map((item) => item.id)]);
         if (lastLoggedResultsRef.current !== loggedKey) {
+          settleCurrentInteraction("dismissed");
           lastLoggedResultsRef.current = loggedKey;
+          interactionRef.current = {
+            submissionId,
+            resultKey: loggedKey,
+            settled: false,
+          };
           logAiInteraction(submissionId, "media_recommendation", "shown");
         }
       }
@@ -119,7 +143,7 @@ export function useAiMediaSuggestions(
     } finally {
       if (requestRef.current?.id === request.id) requestRef.current = null;
     }
-  }, [caption, category, eventTitle, hasContext, requestKey, selectedImagesKey, submissionId, tagsKey]);
+  }, [caption, category, eventTitle, hasContext, requestKey, selectedImagesKey, settleCurrentInteraction, submissionId, tagsKey]);
 
   const fetch = useCallback(() => {
     visualRetryRef.current = { key: requestKey, attempts: 0 };
@@ -128,6 +152,7 @@ export function useAiMediaSuggestions(
 
   useEffect(() => {
     if (!submissionId || !hasContext) {
+      settleCurrentInteraction("dismissed");
       lastAutomaticRequest.current = "";
       visualRetryRef.current = { key: "", attempts: 0 };
       lastLoggedResultsRef.current = "";
@@ -148,7 +173,11 @@ export function useAiMediaSuggestions(
       requestRef.current?.controller.abort();
       requestRef.current = null;
     };
-  }, [requestKey, requestSuggestions, submissionId, hasContext]);
+  }, [requestKey, requestSuggestions, settleCurrentInteraction, submissionId, hasContext]);
+
+  useEffect(() => () => {
+    settleCurrentInteraction("dismissed");
+  }, [settleCurrentInteraction]);
 
   useEffect(() => {
     if (
@@ -207,5 +236,6 @@ export function useAiMediaSuggestions(
     state: submissionId && hasContext && responseKey === requestKey ? state : "idle",
     results: submissionId && hasContext && responseKey === requestKey ? results : [],
     fetch,
+    accept,
   };
 }
