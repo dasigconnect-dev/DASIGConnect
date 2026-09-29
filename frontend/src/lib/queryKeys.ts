@@ -84,6 +84,7 @@ export const queryKeys = {
       search?: string;
       sort?: string;
       mediaType?: string;
+      semantic?: boolean;
     }) => scopedKey("media-assets", params),
     detail: (params: { role: string; userId?: string | null; assetId: string }) =>
       scopedKey("media-assets", { ...params, view: "detail" }),

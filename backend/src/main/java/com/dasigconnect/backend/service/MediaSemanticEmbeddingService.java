@@ -28,6 +28,7 @@ public class MediaSemanticEmbeddingService {
     private final AssetTagRepository tagRepository;
     private final MediaAssetEmbeddingRepository embeddingRepository;
     private final VoyageAIClient voyageAIClient;
+    private final MediaSearchCacheService mediaSearchCache;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
@@ -36,11 +37,13 @@ public class MediaSemanticEmbeddingService {
             MediaAssetRepository assetRepository,
             AssetTagRepository tagRepository,
             MediaAssetEmbeddingRepository embeddingRepository,
-            VoyageAIClient voyageAIClient) {
+            VoyageAIClient voyageAIClient,
+            MediaSearchCacheService mediaSearchCache) {
         this.assetRepository = assetRepository;
         this.tagRepository = tagRepository;
         this.embeddingRepository = embeddingRepository;
         this.voyageAIClient = voyageAIClient;
+        this.mediaSearchCache = mediaSearchCache;
     }
 
     public boolean generateOrReuse(UUID assetId) {
@@ -113,6 +116,7 @@ public class MediaSemanticEmbeddingService {
                 record(assetId, startedAt, "FAILURE", 1, 0);
                 return false;
             }
+            mediaSearchCache.invalidateAll();
             record(assetId, startedAt, "SUCCESS", 1, 0);
             return true;
         } catch (Exception error) {

@@ -109,6 +109,25 @@ class MediaAssetControllerTest {
 
     @Test
     @WithMockUser
+    void semanticSearch_delegatesPaginationToUnifiedSearch() throws Exception {
+        MediaAssetListResponseDto response = new MediaAssetListResponseDto(List.of(), 12, 2, 5);
+        when(mediaAssetService.semanticSearch(eq("community event"), any(), eq(2), eq(5), any()))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/media-assets/search")
+                .param("query", "community event")
+                .param("page", "2")
+                .param("pageSize", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(12))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.pageSize").value(5));
+
+        verify(mediaAssetService).semanticSearch(eq("community event"), any(), eq(2), eq(5), any());
+    }
+
+    @Test
+    @WithMockUser
     void upload_authenticated_returns201() throws Exception {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = mediaAsset(assetId);

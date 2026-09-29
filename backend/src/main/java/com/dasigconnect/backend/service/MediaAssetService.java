@@ -76,6 +76,8 @@ public class MediaAssetService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
+    private static final int UNIFIED_SEARCH_CANDIDATE_CAP = 200;
+    private static final double RRF_K = 60.0;
 
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionRepository submissionRepository;
@@ -91,6 +93,7 @@ public class MediaAssetService {
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final MediaSearchCacheService mediaSearchCache;
 
     @Value("${app.media-assets.deleted-retention-days:30}")
     private int retentionDays = 30;
@@ -112,7 +115,8 @@ public class MediaAssetService {
             AuditLogService auditLogService,
             AuditLogRepository auditLogRepository,
             UserRepository userRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MediaSearchCacheService mediaSearchCache) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -127,6 +131,7 @@ public class MediaAssetService {
         this.auditLogRepository = auditLogRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.mediaSearchCache = mediaSearchCache;
     }
 
     /**
@@ -212,12 +217,10 @@ public class MediaAssetService {
         return new MediaAssetListResponseDto(items, totalCount, safePage, safePageSize);
     }
 
-    private static final int SEMANTIC_SEARCH_RESULT_CAP = 60;
-
     /**
-     * Meaning-based asset search: embeds the query with Voyage AI and ranks the
-     * viewer's visible assets by pgvector cosine similarity, then appends plain
-     * keyword matches (covers assets without an embedding and Voyage outages).
+     * Unified search: combines exact/keyword order with current Voyage semantic
+     * vectors using reciprocal-rank fusion. Exact matches stay first, while the
+     * keyword path remains available when Voyage is unavailable.
      *
      * <p>Both the semantic and keyword paths are scoped/filtered/capped in SQL —
      * this used to load every visible asset in scope into memory on every
@@ -226,10 +229,13 @@ public class MediaAssetService {
      * major Supabase DB egress source; see {@link MediaAssetRepository#findKeywordMatches}.
      */
     @Transactional(readOnly = true)
-    public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
+    public MediaAssetListResponseDto semanticSearch(
+            String query, UUID institutionId, int page, int pageSize, JwtUserDetails user) {
         String trimmed = query == null ? "" : query.trim();
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
         if (trimmed.length() < 2) {
-            return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
+            return new MediaAssetListResponseDto(List.of(), 0, safePage, safePageSize);
         }
         boolean moderator = isNetworkRole(user);
 
@@ -245,56 +251,86 @@ public class MediaAssetService {
             networkWide = false;
             institutionScope = visibleInstitutionIds(user);
             if (institutionScope.isEmpty()) {
-                return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
+                return new MediaAssetListResponseDto(List.of(), 0, safePage, safePageSize);
             }
         }
 
-        java.util.LinkedHashMap<UUID, MediaAsset> ordered = new java.util.LinkedHashMap<>();
+        String normalizedQuery = trimmed.toLowerCase();
+        String scopeKey = institutionScope.stream().sorted().map(UUID::toString).collect(Collectors.joining(","));
+        String cacheKey = String.join("|",
+                user.userId().toString(), user.role(), String.valueOf(user.institutionId()),
+                String.valueOf(institutionId), String.valueOf(networkWide), scopeKey,
+                normalizedQuery, voyageAIClient.modelName(),
+                MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                String.valueOf(safePage), String.valueOf(safePageSize));
+        MediaAssetListResponseDto cached = mediaSearchCache.get(cacheKey);
+        if (cached != null) return cached;
+
+        List<Object[]> semanticHits = List.of();
         try {
             String queryVector = voyageAIClient.embedQuery(trimmed);
-            List<Object[]> hits = networkWide
-                    ? mediaAssetRepository.findTopSimilarAllInstitutions(queryVector)
-                    : mediaAssetRepository.findTopSimilarInInstitutions(institutionScope, queryVector);
-            List<UUID> hitIds = hits.stream().map(row -> UUID.fromString((String) row[0])).toList();
-            if (!hitIds.isEmpty()) {
-                // Re-check "published to repository" visibility only for the bounded
-                // set of candidates pgvector actually returned, not the whole scope.
-                Set<UUID> attached = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(hitIds);
-                Set<UUID> beyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(hitIds);
-                List<UUID> visibleHitIds = hitIds.stream()
-                        .filter(id -> isPublishedToRepository(id, attached, beyondDraft))
-                        .toList();
-                if (!visibleHitIds.isEmpty()) {
-                    Map<UUID, MediaAsset> byId = mediaAssetRepository.findActiveByIds(visibleHitIds).stream()
-                            .collect(Collectors.toMap(MediaAsset::getId, a -> a));
-                    for (UUID id : visibleHitIds) {
-                        MediaAsset a = byId.get(id);
-                        if (a != null) {
-                            ordered.put(id, a);
-                        }
-                    }
-                }
-            }
+            semanticHits = networkWide
+                    ? mediaAssetRepository.findTopSimilarAllInstitutions(
+                            queryVector, voyageAIClient.modelName(),
+                            MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                            UNIFIED_SEARCH_CANDIDATE_CAP)
+                    : mediaAssetRepository.findTopSimilarInInstitutions(
+                            institutionScope, queryVector, voyageAIClient.modelName(),
+                            MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                            UNIFIED_SEARCH_CANDIDATE_CAP);
         } catch (RuntimeException e) {
             log.warn("Semantic media search fell back to keyword matching: {}", e.getMessage());
         }
 
-        if (ordered.size() < SEMANTIC_SEARCH_RESULT_CAP) {
-            String lower = trimmed.toLowerCase();
-            Set<UUID> excludeIds = ordered.isEmpty() ? Set.of(EMPTY_SCOPE_ID) : ordered.keySet();
-            PageRequest keywordPage = PageRequest.of(0, SEMANTIC_SEARCH_RESULT_CAP - ordered.size());
-            List<MediaAsset> keywordHits = mediaAssetRepository.findKeywordMatches(
-                    networkWide, institutionScope, lower, excludeIds, keywordPage);
-            for (MediaAsset a : keywordHits) {
-                ordered.put(a.getId(), a);
-            }
+        List<MediaAsset> keywordHits = mediaAssetRepository.findKeywordMatches(
+                networkWide, institutionScope, normalizedQuery,
+                PageRequest.of(0, UNIFIED_SEARCH_CANDIDATE_CAP));
+        Set<UUID> exactIds = new HashSet<>(mediaAssetRepository.findExactKeywordMatchIds(
+                networkWide, institutionScope, normalizedQuery,
+                PageRequest.of(0, UNIFIED_SEARCH_CANDIDATE_CAP)));
+
+        Map<UUID, MediaAsset> assetsById = keywordHits.stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset, (left, right) -> left));
+        List<UUID> semanticIds = semanticHits.stream()
+                .map(row -> UUID.fromString((String) row[0]))
+                .toList();
+        if (!semanticIds.isEmpty()) {
+            mediaAssetRepository.findActiveByIds(semanticIds)
+                    .forEach(asset -> assetsById.putIfAbsent(asset.getId(), asset));
         }
 
-        List<MediaAssetSummaryDto> items = ordered.values().stream()
-                .limit(SEMANTIC_SEARCH_RESULT_CAP)
+        Map<UUID, Double> fusedScores = new java.util.HashMap<>();
+        for (int i = 0; i < keywordHits.size(); i++) {
+            fusedScores.merge(keywordHits.get(i).getId(), 1.0 / (RRF_K + i + 1), Double::sum);
+        }
+        for (int i = 0; i < semanticIds.size(); i++) {
+            fusedScores.merge(semanticIds.get(i), 1.0 / (RRF_K + i + 1), Double::sum);
+        }
+
+        List<MediaAsset> ranked = fusedScores.keySet().stream()
+                .filter(assetsById::containsKey)
+                .sorted(java.util.Comparator
+                        .comparing((UUID id) -> !exactIds.contains(id))
+                        .thenComparing((UUID id) -> fusedScores.getOrDefault(id, 0.0), java.util.Comparator.reverseOrder())
+                        .thenComparing(
+                                id -> assetsById.get(id).getCreatedAt(),
+                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .map(assetsById::get)
+                .toList();
+
+        int fromIndex = Math.min((safePage - 1) * safePageSize, ranked.size());
+        int toIndex = Math.min(fromIndex + safePageSize, ranked.size());
+        List<MediaAssetSummaryDto> items = ranked.subList(fromIndex, toIndex).stream()
                 .map(MediaAssetSummaryDto::from)
                 .toList();
-        return new MediaAssetListResponseDto(items, items.size(), 1, items.size());
+        MediaAssetListResponseDto response = new MediaAssetListResponseDto(
+                items, ranked.size(), safePage, safePageSize);
+        mediaSearchCache.put(cacheKey, response);
+        return response;
+    }
+
+    public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
+        return semanticSearch(query, institutionId, 1, 60, user);
     }
 
     @Transactional(readOnly = true)
@@ -477,6 +513,7 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
+        mediaSearchCache.invalidateAll();
         recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", false, "force", force));
     }
 
@@ -505,6 +542,7 @@ public class MediaAssetService {
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
         mediaAssetRepository.saveAll(assets);
+        mediaSearchCache.invalidateAll();
 
         // One summary row instead of N per-asset rows: the operation's intent (a
         // bulk delete of `count` assets) is legible at a glance in the audit view,
@@ -589,6 +627,7 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.PROCESSING);
         MediaAsset saved = mediaAssetRepository.save(asset);
         mediaProcessingQueueService.enqueueAfterCommit(assetId);
+        mediaSearchCache.invalidateAll();
 
         recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
                 "assetCode", asset.getAssetCode(),
@@ -624,6 +663,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_BULK_RESTORED", null, Map.of(
                 "count", restoredIds.size(),
                 "assetIds", restoredIds.stream().limit(50).map(UUID::toString).toList()));
+        if (!restoredIds.isEmpty()) mediaSearchCache.invalidateAll();
         return restoredIds;
     }
 
@@ -644,6 +684,7 @@ public class MediaAssetService {
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         assetTagRepository.deleteByMediaAssetId(assetId);
         mediaAssetRepository.purgeAiProfile(assetId);
+        mediaSearchCache.invalidateAll();
 
         recordAssetAudit(user, "MEDIA_ASSET_PURGED", assetId, Map.of(
                 "permanent", true,
@@ -676,6 +717,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_BULK_PURGED", null, Map.of(
                 "count", purgedIds.size(),
                 "assetIds", purgedIds.stream().limit(50).map(UUID::toString).toList()));
+        if (!purgedIds.isEmpty()) mediaSearchCache.invalidateAll();
         return purgedIds;
     }
 
@@ -700,6 +742,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_TRASH_EMPTIED", null, Map.of(
                 "count", purgedCount,
                 "institutionId", institutionId != null ? institutionId.toString() : "all"));
+        if (purgedCount > 0) mediaSearchCache.invalidateAll();
         return purgedCount;
     }
 
@@ -768,6 +811,7 @@ public class MediaAssetService {
         asset.setStatus(fileType.isImage() ? MediaAssetStatus.PROCESSING : MediaAssetStatus.READY);
         asset = mediaAssetRepository.save(asset);
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
+        mediaSearchCache.invalidateAll();
 
         if (mediaAiTelemetry != null) {
             if (dto.getR2UploadDurationMs() != null) {
@@ -1169,6 +1213,7 @@ public class MediaAssetService {
     }
 
     private void invalidateSemanticEmbedding(UUID assetId) {
+        mediaSearchCache.invalidateAll();
         mediaAssetRepository.incrementSemanticRevision(assetId);
         mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
     }

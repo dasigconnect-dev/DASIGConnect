@@ -129,7 +129,6 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE m.deletedAt IS NULL
           AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
           AND (:networkWide = true OR m.institution.id IN :institutionIds)
-          AND m.id NOT IN :excludeIds
           AND (
               NOT EXISTS (
                   SELECT sma.id FROM SubmissionMediaAsset sma
@@ -154,13 +153,52 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                     AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
               )
           )
-        ORDER BY m.createdAt DESC
+        ORDER BY CASE
+                   WHEN LOWER(m.assetCode) = :searchTerm THEN 0
+                   WHEN LOWER(COALESCE(m.displayTitle, '')) = :searchTerm THEN 1
+                   WHEN LOWER(m.fileName) = :searchTerm THEN 2
+                   WHEN EXISTS (
+                       SELECT exactTag.id FROM AssetTag exactTag
+                       WHERE exactTag.mediaAsset = m
+                         AND LOWER(exactTag.label) = :searchTerm
+                   ) THEN 3
+                   ELSE 4
+                 END,
+                 m.createdAt DESC
         """)
     List<MediaAsset> findKeywordMatches(
             @Param("networkWide") boolean networkWide,
             @Param("institutionIds") Collection<UUID> institutionIds,
             @Param("searchTerm") String searchTerm,
-            @Param("excludeIds") Collection<UUID> excludeIds,
+            Pageable pageable);
+
+    @Query("""
+        SELECT m.id FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              NOT EXISTS (SELECT sma.id FROM SubmissionMediaAsset sma WHERE sma.mediaAsset = m)
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (
+              LOWER(m.fileName) = :searchTerm
+              OR LOWER(COALESCE(m.displayTitle, '')) = :searchTerm
+              OR LOWER(m.assetCode) = :searchTerm
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m AND LOWER(tag.label) = :searchTerm
+              )
+          )
+        """)
+    List<UUID> findExactKeywordMatchIds(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("searchTerm") String searchTerm,
             Pageable pageable);
 
     // JPQL (not SELECT *) so Hibernate emits an explicit column list and never
@@ -590,33 +628,64 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * institutions.
      */
     @Query(value = """
-        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
-        FROM media_assets
-        WHERE institution_id IN (:institutionIds)
-          AND deleted_at IS NULL
-          AND status = 'READY'
-          AND embedding IS NOT NULL
-          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
-        ORDER BY embedding <=> CAST(:queryVector AS vector)
-        LIMIT 60
+        SELECT CAST(ma.id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets ma
+        JOIN media_asset_embeddings mae ON mae.asset_id = ma.id
+        WHERE ma.institution_id IN (:institutionIds)
+          AND ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
+          AND mae.embedding_type = 'semantic'
+          AND mae.model = :model
+          AND mae.source_revision = ma.semantic_revision
+          AND mae.processing_version = :processingVersion
+          AND (
+              NOT EXISTS (SELECT 1 FROM submission_media_assets any_link WHERE any_link.media_asset_id = ma.id)
+              OR EXISTS (
+                  SELECT 1 FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id AND visible_submission.status <> 'draft'
+              )
+          )
+        ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> findTopSimilarInInstitutions(@Param("institutionIds") java.util.Collection<UUID> institutionIds,
-            @Param("queryVector") String queryVectorJson);
+            @Param("queryVector") String queryVectorJson,
+            @Param("model") String model,
+            @Param("processingVersion") String processingVersion,
+            @Param("limit") int limit);
 
     /**
      * [idText, cosineScore] for the nearest ready assets network-wide (admin).
      */
     @Query(value = """
-        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
-        FROM media_assets
-        WHERE deleted_at IS NULL
-          AND status = 'READY'
-          AND embedding IS NOT NULL
-          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
-        ORDER BY embedding <=> CAST(:queryVector AS vector)
-        LIMIT 60
+        SELECT CAST(ma.id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets ma
+        JOIN media_asset_embeddings mae ON mae.asset_id = ma.id
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
+          AND mae.embedding_type = 'semantic'
+          AND mae.model = :model
+          AND mae.source_revision = ma.semantic_revision
+          AND mae.processing_version = :processingVersion
+          AND (
+              NOT EXISTS (SELECT 1 FROM submission_media_assets any_link WHERE any_link.media_asset_id = ma.id)
+              OR EXISTS (
+                  SELECT 1 FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id AND visible_submission.status <> 'draft'
+              )
+          )
+        ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
-    List<Object[]> findTopSimilarAllInstitutions(@Param("queryVector") String queryVectorJson);
+    List<Object[]> findTopSimilarAllInstitutions(
+            @Param("queryVector") String queryVectorJson,
+            @Param("model") String model,
+            @Param("processingVersion") String processingVersion,
+            @Param("limit") int limit);
 
     @Modifying
     @Transactional
