@@ -37,6 +37,8 @@ class AIRecommendationControllerUnitTest {
 
         assertEquals("true", response.getHeaders().getFirst(
                 AIRecommendationController.MEDIA_SUGGESTIONS_PROCESSING_HEADER));
+        assertEquals("PROCESSING", response.getHeaders().getFirst(
+                AIRecommendationController.MEDIA_SUGGESTIONS_OUTCOME_HEADER));
         assertEquals(results, response.getBody().data());
 
         when(service.areSelectedImagesProcessing(submissionId, request, user)).thenReturn(true);

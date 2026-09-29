@@ -6,7 +6,15 @@ import {
   type MediaSuggestResult,
 } from "../api/aiApi";
 
-export type AiMediaSuggestState = "idle" | "loading" | "processing" | "ready" | "empty" | "error";
+export type AiMediaSuggestState =
+  | "idle"
+  | "loading"
+  | "processing"
+  | "ready"
+  | "empty"
+  | "no_candidates"
+  | "embedding_error"
+  | "error";
 
 export interface UseAiMediaSuggestionsReturn {
   state: AiMediaSuggestState;
@@ -83,9 +91,19 @@ export function useAiMediaSuggestions(
       hasResultsRef.current = response.results.length > 0;
       setResults(response.results);
       setProcessing(response.processing && !retriesExhausted);
-      setState(response.results.length > 0
-        ? "ready"
-        : response.processing && !retriesExhausted ? "processing" : "empty");
+      if (response.results.length > 0) {
+        setState("ready");
+      } else if (response.outcome === "PROCESSING" && !retriesExhausted) {
+        setState("processing");
+      } else if (response.outcome === "EMBEDDING_FAILED") {
+        setState("embedding_error");
+      } else if (response.outcome === "NO_INDEXED_CANDIDATES") {
+        setState("no_candidates");
+      } else if (response.outcome === "ERROR" || response.outcome === "PROCESSING") {
+        setState("error");
+      } else {
+        setState("empty");
+      }
       if (response.results.length > 0) {
         const loggedKey = JSON.stringify([requestKey, response.results.map((item) => item.id)]);
         if (lastLoggedResultsRef.current !== loggedKey) {
@@ -159,7 +177,7 @@ export function useAiMediaSuggestions(
           }
           if (retry.attempts >= PROCESSING_RETRY_DELAYS_MS.length) {
             setProcessing(false);
-            if (!hasResultsRef.current) setState("empty");
+            if (!hasResultsRef.current) setState("error");
             return;
           }
           setProcessingCheckVersion((version) => version + 1);

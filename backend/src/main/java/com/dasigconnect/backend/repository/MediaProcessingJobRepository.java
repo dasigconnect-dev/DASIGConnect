@@ -286,6 +286,23 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     List<MediaProcessingJob> findByStatusOrderByUpdatedAtDesc(
             MediaProcessingJobStatus status, Pageable pageable);
 
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM media_processing_jobs job
+            WHERE job.asset_id IN (:assetIds)
+              AND job.status = 'DEAD'
+              AND (
+                  (job.job_type = 'EMBED_IMAGE_ONLY' AND job.processing_version = :imageVersion)
+                  OR
+                  (job.job_type = 'RETRIEVAL_EMBEDDINGS' AND job.processing_version = :retrievalVersion)
+              )
+        )
+        """, nativeQuery = true)
+    boolean existsDeadImageEmbeddingJob(@Param("assetIds") List<UUID> assetIds,
+                                        @Param("imageVersion") String imageVersion,
+                                        @Param("retrievalVersion") String retrievalVersion);
+
     @Modifying
     @Transactional
     @Query(value = """

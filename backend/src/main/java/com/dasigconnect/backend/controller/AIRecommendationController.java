@@ -28,6 +28,7 @@ import java.util.UUID;
 public class AIRecommendationController {
 
     public static final String MEDIA_SUGGESTIONS_PROCESSING_HEADER = "X-Media-Suggestions-Processing";
+    public static final String MEDIA_SUGGESTIONS_OUTCOME_HEADER = "X-Media-Suggestions-Outcome";
 
     private final AIRecommendationService aiRecommendationService;
     private final AiAdoptionTrackingService adoptionTracking;
@@ -51,8 +52,9 @@ public class AIRecommendationController {
     }
 
     /**
-     * Suggests up to 8 library assets based on text context (title + caption + tags)
-     * via a synchronous Voyage AI embedding call. Returns ranked results with similarity scores.
+     * Suggests up to 8 institution-visible library assets from selected-image
+     * vectors and optional post text. Outcome headers distinguish preparation,
+     * retrieval failure, an empty index, and a genuine no-match result.
      */
     @PostMapping("/{id}/suggest-media")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
@@ -67,6 +69,7 @@ public class AIRecommendationController {
             recordSuggestionMetric(id, startedAt, "SUCCESS");
             return ResponseEntity.ok()
                     .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
+                    .header(MEDIA_SUGGESTIONS_OUTCOME_HEADER, batch.outcome().name())
                     .body(ApiResponse.success(batch.results()));
         } catch (RuntimeException error) {
             recordSuggestionMetric(id, startedAt, "FAILURE");
