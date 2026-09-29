@@ -2,10 +2,12 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,6 +49,20 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 class AIRecommendationServiceTest {
+
+    @Test
+    void reciprocalRankFusion_prioritizesCandidatesSupportedByBothSignals() {
+        UUID visualOnly = UUID.randomUUID();
+        UUID supportedByBoth = UUID.randomUUID();
+        UUID semanticOnly = UUID.randomUUID();
+
+        Map<UUID, Double> scores = AIRecommendationService.reciprocalRankFusionScores(
+                Map.of(visualOnly, 0.91, supportedByBoth, 0.82),
+                Map.of(semanticOnly, 0.94, supportedByBoth, 0.86));
+
+        assertThat(scores.get(supportedByBoth)).isGreaterThan(scores.get(visualOnly));
+        assertThat(scores.get(supportedByBoth)).isGreaterThan(scores.get(semanticOnly));
+    }
 
     @Test
     void buildQueryEmbeddingText_includesCategoryAndTags() {
