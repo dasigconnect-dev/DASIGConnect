@@ -72,7 +72,16 @@ export interface MediaSuggestRequest {
 export interface MediaSuggestResponse {
   results: MediaSuggestResult[];
   processing: boolean;
+  outcome: MediaSuggestOutcome;
 }
+
+export type MediaSuggestOutcome =
+  | "READY"
+  | "PROCESSING"
+  | "EMBEDDING_FAILED"
+  | "NO_INDEXED_CANDIDATES"
+  | "NO_RELEVANT_MATCHES"
+  | "ERROR";
 
 export async function suggestMedia(
   submissionId: string,
@@ -85,9 +94,12 @@ export async function suggestMedia(
     { signal, validateStatus: () => true }
   );
   if (res.status !== 200) throw new Error("media_suggestions_unavailable");
+  const processing = res.headers["x-media-suggestions-processing"] === "true";
+  const outcomeHeader = res.headers["x-media-suggestions-outcome"] as MediaSuggestOutcome | undefined;
   return {
     results: res.data ?? [],
-    processing: res.headers["x-media-suggestions-processing"] === "true",
+    processing,
+    outcome: outcomeHeader ?? (processing ? "PROCESSING" : "NO_RELEVANT_MATCHES"),
   };
 }
 

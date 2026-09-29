@@ -47,6 +47,7 @@ import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaProcessingJobRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaContextRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -71,7 +72,7 @@ public class AIRecommendationService {
     private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
     private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
     private static final String LEGACY_RANKING_VERSION = "legacy-v1";
-    private static final String HYBRID_RANKING_VERSION = "hybrid-v1";
+    private static final String HYBRID_RANKING_VERSION = "hybrid-v2";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SubmissionRepository submissionRepository;
@@ -86,6 +87,9 @@ public class AIRecommendationService {
     private final boolean visualSuggestionsEnabled;
     private final boolean hybridRankingEnabled;
     private final boolean hybridShadowEnabled;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaProcessingJobRepository mediaProcessingJobRepository;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -166,6 +170,8 @@ public class AIRecommendationService {
             UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
         Submission submission = loadAndAuthorise(submissionId, user);
         UUID institutionId = submission.getInstitution().getId();
+        boolean hybridEnabledForInstitution = hybridRankingEnabled
+                && submission.getInstitution().isAiMediaHybridRankingEnabled();
 
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
@@ -173,30 +179,39 @@ public class AIRecommendationService {
         Set<UUID> selectedImageIds = selectedImageAssets.stream()
                 .map(MediaAsset::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        boolean processing = visualSuggestionsEnabled
-                && hasPendingImageEmbeddings(selectedImageIds, submissionId);
+        EmbeddingReadiness embeddingReadiness = visualSuggestionsEnabled
+                ? selectedImageReadiness(selectedImageIds, submissionId)
+                : EmbeddingReadiness.READY;
+        boolean processing = embeddingReadiness.processing();
         Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
 
-        Map<UUID, Double> visualScores = visualSuggestionsEnabled
+        CandidateSignals visualSignals = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
                         institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId)
-                : Map.of();
-        Map<UUID, Double> selectedMediaSemanticScores = visualSuggestionsEnabled
+                : CandidateSignals.EMPTY;
+        CandidateSignals selectedMediaSemanticSignals = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
                         institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
-                : Map.of();
-        Map<UUID, Double> textSemanticScores = loadTextSemanticCandidateScores(
+                : CandidateSignals.EMPTY;
+        ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
                 institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
         Map<UUID, Double> semanticScores = combineSemanticScores(
-                selectedMediaSemanticScores, textSemanticScores);
+                selectedMediaSemanticSignals.similarityScores(), textSemanticLoad.scores());
 
-        List<UUID> candidateIds = new ArrayList<>(visualScores.keySet());
+        List<UUID> candidateIds = new ArrayList<>(visualSignals.similarityScores().keySet());
         semanticScores.keySet().stream()
-                .filter(id -> !visualScores.containsKey(id))
+                .filter(id -> !visualSignals.similarityScores().containsKey(id))
                 .forEach(candidateIds::add);
         if (candidateIds.isEmpty()) {
-            return new MediaSuggestionBatch(
-                    fallbackOrEmpty(institutionId, attachedIds, dto), processing);
+            List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
+                    ? List.of()
+                    : fallbackOrEmpty(institutionId, attachedIds, dto);
+            MediaSuggestionOutcome outcome = fallback.isEmpty()
+                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                            visualSignals.failed() || selectedMediaSemanticSignals.failed()
+                                    || textSemanticLoad.failed())
+                    : MediaSuggestionOutcome.READY;
+            return new MediaSuggestionBatch(fallback, processing, outcome);
         }
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
@@ -208,13 +223,14 @@ public class AIRecommendationService {
                 .filter(context -> institutionId.equals(context.getInstitutionId()))
                 .orElse(null);
         List<RankedAsset> legacyRanking = rankCandidates(
-                candidateIds, assetMap, attachedIds, semanticScores, visualScores,
+                candidateIds, assetMap, attachedIds, semanticScores,
+                visualSignals.similarityScores(), visualSignals.coverageScores(),
                 dto, tagMap, usageMap, selectedImageAssets, mediaContext, false);
-        boolean hybridEnabledForInstitution = hybridRankingEnabled
-                && submission.getInstitution().isAiMediaHybridRankingEnabled();
         List<RankedAsset> hybridRanking = hybridEnabledForInstitution || hybridShadowEnabled
-                ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores, visualScores,
-                        dto, tagMap, usageMap, selectedImageAssets, mediaContext, true)
+                ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores,
+                        visualSignals.similarityScores(),
+                        visualSignals.coverageScores(), dto, tagMap, usageMap,
+                        selectedImageAssets, mediaContext, true)
                 : List.of();
         if (hybridShadowEnabled) {
             logShadowComparison(submissionId, legacyRanking, hybridRanking);
@@ -235,23 +251,36 @@ public class AIRecommendationService {
             } else {
                 log.info("No visual media candidates are ready for submission {}.", submissionId);
             }
-            return new MediaSuggestionBatch(
-                    fallbackOrEmpty(institutionId, attachedIds, dto), processing);
+            List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
+                    ? List.of()
+                    : fallbackOrEmpty(institutionId, attachedIds, dto);
+            MediaSuggestionOutcome outcome = fallback.isEmpty()
+                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                            visualSignals.failed() || selectedMediaSemanticSignals.failed()
+                                    || textSemanticLoad.failed())
+                    : MediaSuggestionOutcome.READY;
+            return new MediaSuggestionBatch(fallback, processing, outcome);
         }
 
-        return new MediaSuggestionBatch(rankedResults, processing);
+        return new MediaSuggestionBatch(rankedResults, processing, MediaSuggestionOutcome.READY);
     }
 
-    private boolean hasPendingImageEmbeddings(Set<UUID> selectedImageIds, UUID submissionId) {
-        if (selectedImageIds.isEmpty()) return false;
+    private EmbeddingReadiness selectedImageReadiness(Set<UUID> selectedImageIds, UUID submissionId) {
+        if (selectedImageIds.isEmpty()) return EmbeddingReadiness.READY;
         try {
             long ready = mediaAssetEmbeddingRepository.countEmbeddingsForAssets(
                     List.copyOf(selectedImageIds), MediaAssetEmbeddingType.IMAGE);
-            return ready < selectedImageIds.size();
+            if (ready >= selectedImageIds.size()) return EmbeddingReadiness.READY;
+            boolean failed = mediaProcessingJobRepository != null
+                    && mediaProcessingJobRepository.existsDeadImageEmbeddingJob(
+                            List.copyOf(selectedImageIds),
+                            MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION,
+                            MediaProcessingQueueService.PROCESSING_VERSION);
+            return new EmbeddingReadiness(!failed, failed);
         } catch (RuntimeException error) {
             log.warn("Could not determine image preparation status for submission {}: {}",
                     submissionId, error.getMessage());
-            return true;
+            return new EmbeddingReadiness(false, true);
         }
     }
 
@@ -268,7 +297,7 @@ public class AIRecommendationService {
         Set<UUID> selectedImageIds = resolveSelectedImageAssets(dto, attachedAssets, attachedIds).stream()
                 .map(MediaAsset::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        return hasPendingImageEmbeddings(selectedImageIds, submissionId);
+        return selectedImageReadiness(selectedImageIds, submissionId).processing();
     }
 
     private static List<MediaAsset> resolveSelectedImageAssets(
@@ -295,6 +324,7 @@ public class AIRecommendationService {
             Set<UUID> attachedIds,
             Map<UUID, Double> semanticScores,
             Map<UUID, Double> visualScores,
+            Map<UUID, Double> coverageScores,
             MediaSuggestRequestDto dto,
             Map<UUID, List<TagSignal>> tagMap,
             Map<UUID, UsageSignal> usageMap,
@@ -310,6 +340,7 @@ public class AIRecommendationService {
                                 assetMap.get(id),
                                 semanticScores.getOrDefault(id, 0.0),
                                 visualScores.getOrDefault(id, 0.0),
+                                coverageScores.getOrDefault(id, 0.0),
                                 dto,
                                 tagMap.getOrDefault(id, List.of()),
                                 usageMap.getOrDefault(id, UsageSignal.NEVER_USED),
@@ -343,16 +374,16 @@ public class AIRecommendationService {
                 submissionId, legacyTop.size(), hybridTop.size(), overlap, topChanged);
     }
 
-    private Map<UUID, Double> loadAttachedCandidateScores(
+    private CandidateSignals loadAttachedCandidateScores(
             UUID institutionId,
             Set<UUID> attachedIds,
             MediaAssetEmbeddingType embeddingType,
             UUID submissionId) {
         if (attachedIds.isEmpty()) {
-            return Map.of();
+            return CandidateSignals.EMPTY;
         }
         try {
-            return scoreMap(mediaAssetEmbeddingRepository.findTopSimilarToAssetsWithScore(
+            return candidateSignals(mediaAssetEmbeddingRepository.findTopSimilarToAssetsWithScore(
                     institutionId,
                     submissionId,
                     embeddingType,
@@ -364,30 +395,30 @@ public class AIRecommendationService {
             // text path if a transient database error occurs.
             log.warn("{} media retrieval failed for submission {}: {}",
                     embeddingType, submissionId, e.getMessage());
-            return Map.of();
+            return CandidateSignals.failure();
         }
     }
 
-    private Map<UUID, Double> loadTextSemanticCandidateScores(
+    private ScoreLoad loadTextSemanticCandidateScores(
             UUID institutionId,
             List<MediaAsset> attachedAssets,
             Map<UUID, List<TagSignal>> attachedTagMap,
             MediaSuggestRequestDto dto,
             UUID submissionId) {
         if (!hasTextContext(dto)) {
-            return Map.of();
+            return ScoreLoad.EMPTY;
         }
         String embeddingText = buildQueryEmbeddingText(dto, attachedAssets, attachedTagMap);
         try {
             String queryVector = voyageAIClient.embedQuery(embeddingText);
-            return scoreMap(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+            return new ScoreLoad(scoreMap(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
                     institutionId,
                     MediaAssetEmbeddingType.SEMANTIC,
                     queryVector,
-                    SUGGESTION_CANDIDATE_LIMIT));
+                    SUGGESTION_CANDIDATE_LIMIT)), false);
         } catch (Exception e) {
             log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
-            return Map.of();
+            return new ScoreLoad(Map.of(), true);
         }
     }
 
@@ -410,6 +441,56 @@ public class AIRecommendationService {
             scores.merge(id, score, Math::max);
         }
         return scores;
+    }
+
+    private static CandidateSignals candidateSignals(List<Object[]> rows) {
+        Map<UUID, Double> similarityScores = new LinkedHashMap<>();
+        Map<UUID, Double> coverageScores = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID id = toUuid(row[0]);
+            double similarity = row[1] instanceof Number number ? number.doubleValue() : 0.0;
+            double coverage = row.length > 2 && row[2] instanceof Number number
+                    ? number.doubleValue() : 1.0;
+            similarityScores.merge(id, similarity, Math::max);
+            coverageScores.merge(id, coverage, Math::max);
+        }
+        return new CandidateSignals(similarityScores, coverageScores, false);
+    }
+
+    private MediaSuggestionOutcome emptyOutcome(
+            UUID institutionId,
+            Set<UUID> selectedImageIds,
+            MediaSuggestRequestDto dto,
+            EmbeddingReadiness readiness,
+            boolean retrievalFailed) {
+        if (readiness.failed()) return MediaSuggestionOutcome.EMBEDDING_FAILED;
+        if (readiness.processing()) return MediaSuggestionOutcome.PROCESSING;
+        if (retrievalFailed) return MediaSuggestionOutcome.ERROR;
+
+        try {
+            long indexedCandidates = 0;
+            if (!selectedImageIds.isEmpty()) {
+                indexedCandidates += mediaAssetEmbeddingRepository.countCurrentReadyCandidates(
+                        institutionId,
+                        MediaAssetEmbeddingType.IMAGE.dbValue(),
+                        voyageAIClient.multimodalModelName(),
+                        MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION);
+            }
+            if (hasTextContext(dto)) {
+                indexedCandidates += mediaAssetEmbeddingRepository.countCurrentReadyCandidates(
+                        institutionId,
+                        MediaAssetEmbeddingType.SEMANTIC.dbValue(),
+                        voyageAIClient.modelName(),
+                        MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION);
+            }
+            return indexedCandidates == 0
+                    ? MediaSuggestionOutcome.NO_INDEXED_CANDIDATES
+                    : MediaSuggestionOutcome.NO_RELEVANT_MATCHES;
+        } catch (RuntimeException error) {
+            log.warn("Could not classify empty media suggestions for institution {}: {}",
+                    institutionId, error.getMessage());
+            return MediaSuggestionOutcome.ERROR;
+        }
     }
 
     private static boolean hasTextContext(MediaSuggestRequestDto dto) {
@@ -729,6 +810,7 @@ public class AIRecommendationService {
             MediaAsset asset,
             double semanticScore,
             double visualScore,
+            double coverageScore,
             MediaSuggestRequestDto dto,
             Collection<TagSignal> assetTags,
             UsageSignal usage,
@@ -749,18 +831,15 @@ public class AIRecommendationService {
         }
         double freshnessScore = freshnessScore(asset);
         double usageScore = usageDiversityScore(usage.count(), usage.lastUsedAt(), Instant.now());
-        double qualityScore = qualityScore(asset);
-        double sequenceScore = sequenceComplementScore(asset, attachedAssets);
+        double reuseSuitabilityScore = (freshnessScore + usageScore) / 2.0;
 
         List<WeightedSignal> signals = new ArrayList<>();
-        addSignal(signals, semanticScore, 0.30, semanticScore > 0.0);
-        addSignal(signals, visualScore, 0.32, visualScore > 0.0);
-        addSignal(signals, contextScore, 0.14, !contextTerms.isEmpty());
-        addSignal(signals, metadataScore, 0.10, !postTerms.isEmpty());
-        addSignal(signals, freshnessScore, 0.04, true);
-        addSignal(signals, usageScore, 0.04, true);
-        addSignal(signals, qualityScore, 0.05, qualityScore >= 0.0);
-        addSignal(signals, sequenceScore, 0.05, sequenceScore >= 0.0);
+        addSignal(signals, semanticScore, 0.45, semanticScore > 0.0);
+        addSignal(signals, visualScore, 0.35, visualScore > 0.0);
+        addSignal(signals, coverageScore, 0.10, visualScore > 0.0 && !attachedAssets.isEmpty());
+        addSignal(signals, Math.max(metadataScore, contextScore), 0.05,
+                !postTerms.isEmpty() || !contextTerms.isEmpty());
+        addSignal(signals, reuseSuitabilityScore, 0.05, true);
 
         double totalWeight = signals.stream().mapToDouble(WeightedSignal::weight).sum();
         double weightedScore = signals.stream()
@@ -771,6 +850,11 @@ public class AIRecommendationService {
         List<String> reasons = new ArrayList<>();
         addSimilarityReason(reasons, semanticScore, "semantic", "post context");
         addSimilarityReason(reasons, visualScore, "visual", "selected media");
+        if (coverageScore >= 0.75 && attachedAssets.size() > 1) {
+            reasons.add("Matches most of the selected images.");
+        } else if (coverageScore >= 0.40 && attachedAssets.size() > 1) {
+            reasons.add("Matches part of the selected image set.");
+        }
         if (contextScore >= 0.18) {
             List<String> matches = matchingTerms(contextTerms, candidateTerms, 3);
             reasons.add(matches.isEmpty()
@@ -780,14 +864,10 @@ public class AIRecommendationService {
         if (metadataScore >= 0.25) {
             reasons.add("Metadata aligns with the post details.");
         }
-        if (qualityScore >= 0.70) {
-            reasons.add("Visual quality signals support publication use.");
-        }
-        if (sequenceScore >= 0.60) {
-            reasons.add("Adds a complementary scene or composition to the selected sequence.");
-        }
         if (usage.count() == 0) {
             reasons.add("Adds variety because this asset has not been used in another submission.");
+        } else if (reuseSuitabilityScore >= 0.70) {
+            reasons.add("Balances freshness with previous media use.");
         }
         if (reasons.isEmpty()) {
             reasons.add("Ranked from available visual and media context signals.");
@@ -851,39 +931,6 @@ public class AIRecommendationService {
                 return true;
             }
         }
-    }
-
-    private static double qualityScore(MediaAsset asset) {
-        String[] qualitySignals = asset.getVisualQualitySignals();
-        if (qualitySignals == null || qualitySignals.length == 0) return -1.0;
-        int positive = 0;
-        int negative = 0;
-        for (String raw : qualitySignals) {
-            String signal = normalize(raw);
-            if (containsAny(signal, "sharp", "clear", "well lit", "balanced", "good contrast", "focused")) {
-                positive++;
-            }
-            if (containsAny(signal, "blurry", "blur", "dark", "overexposed", "underexposed",
-                    "low quality", "obstructed")) {
-                negative++;
-            }
-        }
-        return clamp(0.60 + (positive * 0.15) - (negative * 0.20));
-    }
-
-    private static boolean containsAny(String value, String... fragments) {
-        return Arrays.stream(fragments).anyMatch(value::contains);
-    }
-
-    private static double sequenceComplementScore(MediaAsset candidate, List<MediaAsset> attachedAssets) {
-        if (attachedAssets == null || attachedAssets.isEmpty()) return -1.0;
-        Set<String> candidateVisualTerms = visualTerms(candidate);
-        if (candidateVisualTerms.isEmpty()) return -1.0;
-        Set<String> selectedTerms = new LinkedHashSet<>();
-        attachedAssets.forEach(asset -> selectedTerms.addAll(visualTerms(asset)));
-        long novelTerms = candidateVisualTerms.stream().filter(term -> !selectedTerms.contains(term)).count();
-        double novelty = (double) novelTerms / candidateVisualTerms.size();
-        return clamp(0.30 + (0.70 * novelty));
     }
 
     private static Set<String> structuredAssetTerms(MediaAsset asset, Collection<TagSignal> tags) {
@@ -1177,8 +1224,51 @@ public class AIRecommendationService {
 
     }
 
-    public record MediaSuggestionBatch(List<MediaSuggestResultDto> results, boolean processing) {
+    public enum MediaSuggestionOutcome {
+        READY,
+        PROCESSING,
+        EMBEDDING_FAILED,
+        NO_INDEXED_CANDIDATES,
+        NO_RELEVANT_MATCHES,
+        ERROR
+    }
 
+    public record MediaSuggestionBatch(
+            List<MediaSuggestResultDto> results,
+            boolean processing,
+            MediaSuggestionOutcome outcome) {
+
+        public MediaSuggestionBatch(List<MediaSuggestResultDto> results, boolean processing) {
+            this(
+                    results,
+                    processing,
+                    processing
+                            ? MediaSuggestionOutcome.PROCESSING
+                            : results.isEmpty()
+                                    ? MediaSuggestionOutcome.NO_RELEVANT_MATCHES
+                                    : MediaSuggestionOutcome.READY);
+        }
+
+    }
+
+    private record EmbeddingReadiness(boolean processing, boolean failed) {
+        private static final EmbeddingReadiness READY = new EmbeddingReadiness(false, false);
+    }
+
+    private record CandidateSignals(
+            Map<UUID, Double> similarityScores,
+            Map<UUID, Double> coverageScores,
+            boolean failed) {
+        private static final CandidateSignals EMPTY =
+                new CandidateSignals(Map.of(), Map.of(), false);
+
+        private static CandidateSignals failure() {
+            return new CandidateSignals(Map.of(), Map.of(), true);
+        }
+    }
+
+    private record ScoreLoad(Map<UUID, Double> scores, boolean failed) {
+        private static final ScoreLoad EMPTY = new ScoreLoad(Map.of(), false);
     }
 
     private record TagSignal(String label, String source) {

@@ -336,6 +336,7 @@ class AIRecommendationServiceTest {
         assertEquals(List.of(related.getId()),
                 batch.results().stream().map(MediaSuggestResultDto::getId).toList());
         assertFalse(batch.processing());
+        assertEquals(AIRecommendationService.MediaSuggestionOutcome.READY, batch.outcome());
         verify(voyage, never()).embedQuery(anyString());
     }
 
@@ -511,6 +512,7 @@ class AIRecommendationServiceTest {
         assertEquals(List.of(candidate.getId()),
                 batch.results().stream().map(MediaSuggestResultDto::getId).toList());
         assertTrue(batch.processing());
+        assertEquals(AIRecommendationService.MediaSuggestionOutcome.READY, batch.outcome());
         verify(voyage, never()).embedQuery(anyString());
     }
 
@@ -620,6 +622,7 @@ class AIRecommendationServiceTest {
 
         assertTrue(batch.results().isEmpty());
         assertTrue(batch.processing());
+        assertEquals(AIRecommendationService.MediaSuggestionOutcome.PROCESSING, batch.outcome());
         assertTrue(service.areSelectedImagesProcessing(
                 submissionId,
                 new MediaSuggestRequestDto(),
@@ -681,7 +684,98 @@ class AIRecommendationServiceTest {
     }
 
     @Test
-    void suggestMedia_hybridRanking_usesEventContextQualityAndSequenceSignals() {
+    void suggestMedia_reportsNoIndexedCandidatesWhenCurrentLibraryVectorsAreAbsent() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset selected = asset(UUID.randomUUID(), "selected.jpg", "Event");
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        VoyageAIClient voyage = mock(VoyageAIClient.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(selected));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(
+                List.of(selected.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(submissionId), any(MediaAssetEmbeddingType.class),
+                eq(List.of(selected.getId())), eq(12), eq(30))).thenReturn(List.of());
+        when(voyage.multimodalModelName()).thenReturn("voyage-multimodal-3.5");
+        when(embeddings.countCurrentReadyCandidates(
+                institutionId, "image", "voyage-multimodal-3.5", "image-embedding-v1"))
+                .thenReturn(0L);
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), true, false, false);
+
+        AIRecommendationService.MediaSuggestionBatch batch = service.suggestMediaBatch(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertTrue(batch.results().isEmpty());
+        assertFalse(batch.processing());
+        assertEquals(AIRecommendationService.MediaSuggestionOutcome.NO_INDEXED_CANDIDATES, batch.outcome());
+    }
+
+    @Test
+    void suggestMedia_hybridRankingRewardsSelectedImageCoverage() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset first = asset(UUID.randomUUID(), "first-selected.jpg", "Event");
+        MediaAsset second = asset(UUID.randomUUID(), "second-selected.jpg", "Event");
+        MediaAsset partial = asset(UUID.randomUUID(), "partial-match.jpg", "Event");
+        MediaAsset complete = asset(UUID.randomUUID(), "complete-match.jpg", "Event");
+        List<UUID> selectedIds = List.of(first.getId(), second.getId());
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(first, second));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(selectedIds, MediaAssetEmbeddingType.IMAGE)).thenReturn(2L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.IMAGE, selectedIds, 12, 30))
+                .thenReturn(List.of(
+                        new Object[]{partial.getId().toString(), 0.80, 0.50},
+                        new Object[]{complete.getId().toString(), 0.80, 1.00}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC, selectedIds, 12, 30))
+                .thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(anyList())).thenReturn(List.of(partial, complete));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
+                true, true, false);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(complete.getId(), results.getFirst().getId());
+        assertTrue(results.getFirst().getMatchReasons().stream()
+                .anyMatch(reason -> reason.contains("most of the selected images")));
+    }
+
+    @Test
+    void suggestMedia_hybridRanking_usesEventContextAndReuseSignals() {
         UUID institutionId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
@@ -739,13 +833,11 @@ class AIRecommendationServiceTest {
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
 
         assertEquals(contextual.getId(), results.getFirst().getId());
-        assertEquals("hybrid-v1", results.getFirst().getRankingVersion());
+        assertEquals("hybrid-v2", results.getFirst().getRankingVersion());
         assertTrue(results.getFirst().getMatchReasons().stream()
                 .anyMatch(reason -> reason.toLowerCase().contains("event context")));
         assertTrue(results.getFirst().getMatchReasons().stream()
-                .anyMatch(reason -> reason.toLowerCase().contains("quality")));
-        assertTrue(results.getFirst().getMatchReasons().stream()
-                .anyMatch(reason -> reason.toLowerCase().contains("complementary")));
+                .anyMatch(reason -> reason.toLowerCase().contains("variety")));
     }
 
     @Test
@@ -799,7 +891,7 @@ class AIRecommendationServiceTest {
 
         assertEquals(List.of(best.getId(), diverse.getId(), duplicate.getId()),
                 results.stream().map(MediaSuggestResultDto::getId).toList());
-        assertTrue(results.stream().allMatch(result -> "hybrid-v1".equals(result.getRankingVersion())));
+        assertTrue(results.stream().allMatch(result -> "hybrid-v2".equals(result.getRankingVersion())));
     }
 
     @Test

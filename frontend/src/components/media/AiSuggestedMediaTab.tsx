@@ -169,6 +169,26 @@ export default function AiSuggestedMediaTab({
         </div>
       )}
 
+      {state === "embedding_error" && (
+        <div className="ast-error" role="alert">
+          <i className="ti ti-alert-circle" aria-hidden />
+          <span>Selected media could not be prepared for suggestions. Try again.</span>
+          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {state === "no_candidates" && (
+        <div className="ast-empty" role="status">
+          <i className="ti ti-photo-off" aria-hidden />
+          <span>No searchable media is available in this institution yet.</span>
+          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+            Try again
+          </button>
+        </div>
+      )}
+
       {state === "empty" && (
         <div className="ast-empty" role="status">
           <i className="ti ti-photo-off" aria-hidden />
