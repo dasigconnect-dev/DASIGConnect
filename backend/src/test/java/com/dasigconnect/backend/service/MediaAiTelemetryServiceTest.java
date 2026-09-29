@@ -68,6 +68,31 @@ class MediaAiTelemetryServiceTest {
     }
 
     @Test
+    void recordRankingShadow_persistsOnlyIdentifiersAndAggregateCounts() {
+        MediaAiTelemetryService service = new MediaAiTelemetryService(
+                jdbcTemplate, transactionManager, voyageAIClient);
+
+        service.recordRankingShadow(
+                UUID.randomUUID(), UUID.randomUUID(), 8, 7, 5, true);
+
+        verify(jdbcTemplate).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void operationalMetrics_databaseFailuresReturnUnavailableMetrics() {
+        MediaAiTelemetryService service = new MediaAiTelemetryService(
+                jdbcTemplate, transactionManager, voyageAIClient);
+        when(jdbcTemplate.queryForMap(anyString(), any(Object[].class)))
+                .thenThrow(new RuntimeException("monitoring unavailable"));
+
+        var metrics = service.operationalMetrics(30);
+
+        assertThat(metrics).hasSize(8);
+        assertThat(metrics).allSatisfy(metric ->
+                assertThat(metric.status().name()).isEqualTo("UNAVAILABLE"));
+    }
+
+    @Test
     void embeddingCoverage_groupsEligibleImagesWithoutExposingContent() {
         MediaAiTelemetryService service = new MediaAiTelemetryService(
                 jdbcTemplate, transactionManager, voyageAIClient);

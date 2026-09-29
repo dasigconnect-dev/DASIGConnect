@@ -92,6 +92,9 @@ public class AIRecommendationService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaProcessingJobRepository mediaProcessingJobRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             MediaAssetRepository mediaAssetRepository,
@@ -148,7 +151,7 @@ public class AIRecommendationService {
                 .map(MediaAssetSummaryDto::from)
                 .toList();
 
-        logInteraction(submissionId, institutionId, "media_recommendation", "shown");
+        logInteractionInternal(submissionId, institutionId, "media_recommendation", "shown");
         return results;
     }
 
@@ -234,7 +237,7 @@ public class AIRecommendationService {
                         selectedImageAssets, mediaContext, true)
                 : List.of();
         if (hybridShadowEnabled) {
-            logShadowComparison(submissionId, legacyRanking, hybridRanking);
+            logShadowComparison(submissionId, institutionId, legacyRanking, hybridRanking);
         }
 
         List<RankedAsset> selectedRanking = hybridEnabledForInstitution ? hybridRanking : legacyRanking;
@@ -557,8 +560,11 @@ public class AIRecommendationService {
                 .toList();
     }
 
-    private static void logShadowComparison(
-            UUID submissionId, List<RankedAsset> legacy, List<RankedAsset> hybrid) {
+    private void logShadowComparison(
+            UUID submissionId,
+            UUID institutionId,
+            List<RankedAsset> legacy,
+            List<RankedAsset> hybrid) {
         List<UUID> legacyTop = legacy.stream().limit(8).map(result -> result.asset().getId()).toList();
         List<UUID> hybridTop = hybrid.stream().limit(8).map(result -> result.asset().getId()).toList();
         long overlap = hybridTop.stream().filter(legacyTop::contains).count();
@@ -566,6 +572,15 @@ public class AIRecommendationService {
                 && !legacyTop.getFirst().equals(hybridTop.getFirst());
         log.info("Media ranking shadow comparison submission={} legacy={} hybrid={} overlap={} topChanged={}",
                 submissionId, legacyTop.size(), hybridTop.size(), overlap, topChanged);
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.recordRankingShadow(
+                    institutionId,
+                    submissionId,
+                    legacyTop.size(),
+                    hybridTop.size(),
+                    Math.toIntExact(overlap),
+                    topChanged);
+        }
     }
 
     private CandidateSignals loadAttachedCandidateScores(
@@ -837,7 +852,19 @@ public class AIRecommendationService {
     }
 
     @Transactional
-    public void logInteraction(UUID submissionId, UUID institutionId, String type, String actionTaken) {
+    public void logInteraction(
+            UUID submissionId, String type, String actionTaken, JwtUserDetails user) {
+        Submission submission = loadAndAuthorise(submissionId, user);
+        if (!Set.of("tag_classification", "media_recommendation").contains(type)
+                || !Set.of("shown", "accepted", "dismissed").contains(actionTaken)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported AI interaction.");
+        }
+        logInteractionInternal(
+                submissionId, submission.getInstitution().getId(), type, actionTaken);
+    }
+
+    private void logInteractionInternal(
+            UUID submissionId, UUID institutionId, String type, String actionTaken) {
         try {
             // Admin composers have no institution of their own — fall back to the
             // submission's institution (ai_interaction_log.institution_id is NOT NULL).

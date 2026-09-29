@@ -11,10 +11,12 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
 import com.dasigconnect.backend.service.AiAdoptionTrackingService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -66,7 +68,7 @@ public class AIRecommendationController {
         try {
             AIRecommendationService.MediaSuggestionBatch batch =
                     aiRecommendationService.suggestMediaBatch(id, dto, user);
-            recordSuggestionMetric(id, startedAt, "SUCCESS");
+            recordSuggestionMetric(id, startedAt, batch.outcome().name());
             return ResponseEntity.ok()
                     .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
                     .header(MEDIA_SUGGESTIONS_OUTCOME_HEADER, batch.outcome().name())
@@ -127,8 +129,11 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody @Valid AiInteractionLogRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        aiRecommendationService.logInteraction(
-                id, user.institutionId(), dto.getType(), dto.getActionTaken());
+        if (!id.equals(dto.getSubmissionId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Submission ID does not match the request path.");
+        }
+        aiRecommendationService.logInteraction(id, dto.getType(), dto.getActionTaken(), user);
         return ResponseEntity.noContent().build();
     }
 }

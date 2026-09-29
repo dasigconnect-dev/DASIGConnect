@@ -113,14 +113,18 @@ class SystemHealthControllerTest {
         UUID institutionId = UUID.randomUUID();
         when(mediaAiTelemetryService.embeddingCoverage()).thenReturn(List.of(
                 new MediaEmbeddingCoverageDto(institutionId, "DASIG Central Visayas", "READY",
-                        10, 8, 9, 80, 90)));
+                        10, 8, 9, 80, 90,
+                        "voyage-multimodal-3.5", "image-embedding-v1",
+                        "voyage-4-lite", "semantic-embedding-v1")));
 
         mockMvc.perform(get("/api/v1/system-health/media-ai-coverage"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].institutionId").value(institutionId.toString()))
                 .andExpect(jsonPath("$.data[0].assetStatus").value("READY"))
                 .andExpect(jsonPath("$.data[0].imageCoveragePercent").value(80))
-                .andExpect(jsonPath("$.data[0].semanticCoveragePercent").value(90));
+                .andExpect(jsonPath("$.data[0].semanticCoveragePercent").value(90))
+                .andExpect(jsonPath("$.data[0].imageModel").value("voyage-multimodal-3.5"))
+                .andExpect(jsonPath("$.data[0].semanticModel").value("voyage-4-lite"));
 
         verify(mediaAiTelemetryService).embeddingCoverage();
     }

@@ -10,5 +10,9 @@ public record MediaEmbeddingCoverageDto(
         long imageEmbeddings,
         long semanticEmbeddings,
         double imageCoveragePercent,
-        double semanticCoveragePercent) {
+        double semanticCoveragePercent,
+        String imageModel,
+        String imageProcessingVersion,
+        String semanticModel,
+        String semanticProcessingVersion) {
 }
