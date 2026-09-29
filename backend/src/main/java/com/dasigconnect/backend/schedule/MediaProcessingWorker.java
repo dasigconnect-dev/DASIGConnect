@@ -8,6 +8,7 @@ import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.MediaImageEmbeddingService;
+import com.dasigconnect.backend.service.MediaRetrievalEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.time.Duration;
@@ -29,11 +30,12 @@ public class MediaProcessingWorker {
     private final MediaAssetRepository mediaAssetRepository;
     private final AIClassificationService classificationService;
     private final MediaImageEmbeddingService imageEmbeddingService;
+    private final MediaRetrievalEmbeddingService retrievalEmbeddingService;
     private final ScheduledJobHealthService healthService;
     private final SubmissionMediaContextService contextService;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final int batchSize;
-    private final boolean aiConfigured;
+    private final boolean enrichmentConfigured;
     private final boolean imageEmbeddingConfigured;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -44,6 +46,7 @@ public class MediaProcessingWorker {
             MediaAssetRepository mediaAssetRepository,
             AIClassificationService classificationService,
             MediaImageEmbeddingService imageEmbeddingService,
+            MediaRetrievalEmbeddingService retrievalEmbeddingService,
             ScheduledJobHealthService healthService,
             SubmissionMediaContextService contextService,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -54,11 +57,12 @@ public class MediaProcessingWorker {
         this.mediaAssetRepository = mediaAssetRepository;
         this.classificationService = classificationService;
         this.imageEmbeddingService = imageEmbeddingService;
+        this.retrievalEmbeddingService = retrievalEmbeddingService;
         this.healthService = healthService;
         this.contextService = contextService;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.batchSize = Math.max(1, Math.min(batchSize, 10));
-        this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
+        this.enrichmentConfigured = !anthropicApiKey.isBlank();
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
     }
 
@@ -68,7 +72,7 @@ public class MediaProcessingWorker {
         String workerId = UUID.randomUUID().toString();
         try {
             List<MediaProcessingJob> jobs = queue.claimBatch(
-                    workerId, batchSize, aiConfigured, imageEmbeddingConfigured);
+                    workerId, batchSize, enrichmentConfigured, imageEmbeddingConfigured);
             if (jobs.isEmpty()) return;
             for (MediaProcessingJob job : jobs) process(job, workerId);
             healthService.recordSuccess("MediaProcessingWorker", startedAt);
@@ -107,9 +111,17 @@ public class MediaProcessingWorker {
                 queue.complete(job, workerId);
                 return;
             }
-            if (!classificationService.processAsset(
-                    asset.getId(), asset.getStorageUrl(), job.getProcessingVersion())) {
-                throw new IllegalStateException("AI media processing did not complete");
+            if (job.getJobType() == MediaProcessingJobType.CLASSIFY_AND_EMBED
+                    || job.getJobType() == MediaProcessingJobType.ENRICH_MEDIA) {
+                if (!classificationService.enrichAsset(asset.getId(), asset.getStorageUrl())) {
+                    throw new IllegalStateException("Optional Claude enrichment did not complete");
+                }
+                queue.complete(job, workerId);
+                return;
+            }
+            if (!retrievalEmbeddingService.generateOrReuse(
+                    asset.getId(), asset.getStorageUrl(), asset.getFileType().isImage())) {
+                throw new IllegalStateException("Voyage retrieval embeddings did not complete");
             }
             mediaAssetRepository.markProcessingReady(asset.getId(), job.getProcessingVersion());
             if (mediaAiTelemetry != null && asset.getCreatedAt() != null) {
@@ -120,8 +132,17 @@ public class MediaProcessingWorker {
             submissionMediaAssetRepository.findSubmissionIdsByMediaAssetId(asset.getId())
                     .forEach(queue::enqueueSubmissionContext);
             queue.complete(job, workerId);
+            if (enrichmentConfigured && asset.getFileType().isImage()) {
+                try {
+                    queue.enqueueEnrichment(asset.getId());
+                } catch (Exception error) {
+                    log.warn("Failed to enqueue optional enrichment for asset {}: {}",
+                            asset.getId(), error.getMessage());
+                }
+            }
         } catch (Exception error) {
-            if (mediaAiTelemetry != null) {
+            if (mediaAiTelemetry != null
+                    && job.getJobType() == MediaProcessingJobType.RETRIEVAL_EMBEDDINGS) {
                 mediaAiTelemetry.record("READY_LATENCY", 0, "FAILURE",
                         job.getAssetId(), job.getSubmissionId(), job.getAttemptCount(), 0, 0);
             }

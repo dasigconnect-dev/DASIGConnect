@@ -20,7 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MediaProcessingQueueService {
 
-    public static final String PROCESSING_VERSION = "media-ai-v2";
+    public static final String PROCESSING_VERSION = "media-retrieval-v1";
+    public static final String ENRICHMENT_VERSION = "claude-enrichment-v1";
     public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
     public static final String CONTEXT_VERSION = "submission-context-v1";
     private static final int MAX_ERROR_LENGTH = 500;
@@ -60,6 +61,10 @@ public class MediaProcessingQueueService {
                 enqueueSafely(assetId);
             }
         });
+    }
+
+    public void enqueueEnrichment(UUID assetId) {
+        repository.enqueueEnrichment(assetId, ENRICHMENT_VERSION, maxAttempts);
     }
 
     public void enqueueImageOnly(UUID assetId) {

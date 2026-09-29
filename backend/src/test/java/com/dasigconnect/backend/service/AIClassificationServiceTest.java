@@ -267,4 +267,20 @@ class AIClassificationServiceTest {
 
         verify(assetTagRepository).deleteByMediaAssetIdAndSource(assetId, "ai_generated");
     }
+
+    @Test
+    void enrichAsset_claudeFailureDoesNotMarkSearchableAssetFailed() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(claudeVisionClient.classifyMedia(any())).thenThrow(new RuntimeException("Claude down"));
+
+        boolean completed = service().enrichAsset(assetId, "https://example.com/a.jpg");
+
+        assertThat(completed).isFalse();
+        verify(mediaAssetRepository, never()).updateStatus(
+                eq(assetId), eq(MediaAssetStatus.FAILED.name()));
+    }
 }

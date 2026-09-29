@@ -22,6 +22,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
     Optional<MediaAsset> findActiveById(@Param("id") UUID id);
 
+    @EntityGraph(attributePaths = {"mediaAlbum"})
+    @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
+    Optional<MediaAsset> findActiveWithAlbumById(@Param("id") UUID id);
+
     @Query("SELECT COUNT(m) > 0 FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL")
     boolean existsActiveByInstitutionId(@Param("institutionId") UUID institutionId);
 
