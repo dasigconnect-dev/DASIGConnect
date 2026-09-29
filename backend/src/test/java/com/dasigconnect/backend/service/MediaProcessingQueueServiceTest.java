@@ -34,6 +34,17 @@ class MediaProcessingQueueServiceTest {
     }
 
     @Test
+    void enqueueBackfill_usesStableVersionAndLowerWorkerPriority() {
+        UUID assetId = UUID.randomUUID();
+
+        service.enqueueBackfill(assetId);
+
+        verify(repository).enqueueBackfill(
+                assetId, MediaProcessingQueueService.PROCESSING_VERSION, 5,
+                MediaProcessingQueueService.BACKFILL_PRIORITY);
+    }
+
+    @Test
     void enqueueSubmissionContext_usesStableContextVersion() {
         UUID submissionId = UUID.randomUUID();
 

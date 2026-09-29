@@ -22,7 +22,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
         VALUES (:assetId, 'RETRIEVAL_EMBEDDINGS', :processingVersion, :maxAttempts)
         ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
         DO UPDATE SET
-            status = 'PENDING', attempt_count = 0,
+            status = 'PENDING', attempt_count = 0, priority = 10,
             next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
             last_error = NULL, completed_at = NULL, updated_at = NOW()
         WHERE media_processing_jobs.status IN ('COMPLETED', 'DEAD')
@@ -30,6 +30,24 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     int enqueue(@Param("assetId") UUID assetId,
                 @Param("processingVersion") String processingVersion,
                 @Param("maxAttempts") int maxAttempts);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_processing_jobs
+            (asset_id, job_type, processing_version, max_attempts, priority)
+        VALUES (:assetId, 'RETRIEVAL_EMBEDDINGS', :processingVersion, :maxAttempts, :priority)
+        ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
+        DO UPDATE SET
+            status = 'PENDING', attempt_count = 0, priority = EXCLUDED.priority,
+            next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
+            last_error = NULL, completed_at = NULL, updated_at = NOW()
+        WHERE media_processing_jobs.status = 'COMPLETED'
+        """, nativeQuery = true)
+    int enqueueBackfill(@Param("assetId") UUID assetId,
+                        @Param("processingVersion") String processingVersion,
+                        @Param("maxAttempts") int maxAttempts,
+                        @Param("priority") int priority);
 
     @Modifying
     @Transactional
@@ -137,6 +155,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                        WHERE selected_media.media_asset_id = job.asset_id
                          AND selected_submission.status = 'draft'
                    ) THEN 0 ELSE 1 END AS interactive_priority,
+                   job.priority,
                    job.next_attempt_at,
                    job.created_at
             FROM media_processing_jobs job
@@ -159,11 +178,13 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
         ), ranked_candidates AS (
             SELECT eligible.id,
                    eligible.interactive_priority,
+                   eligible.priority,
                    eligible.next_attempt_at,
                    eligible.created_at,
                    ROW_NUMBER() OVER (
                        PARTITION BY eligible.institution_key
                        ORDER BY eligible.interactive_priority,
+                                eligible.priority,
                                 eligible.next_attempt_at,
                                 eligible.created_at
                    ) AS institution_rank
@@ -174,6 +195,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
             JOIN ranked_candidates ranked ON ranked.id = job.id
             WHERE ranked.institution_rank <= :perInstitutionLimit
             ORDER BY ranked.interactive_priority,
+                     ranked.priority,
                      ranked.next_attempt_at,
                      ranked.created_at
             LIMIT :batchSize
@@ -209,6 +231,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
             WHERE selected_media.media_asset_id = job.asset_id
               AND selected_submission.status = 'draft'
         ) THEN 0 ELSE 1 END,
+        job.priority,
         job.created_at
         """, nativeQuery = true)
     List<MediaProcessingJob> findClaimedBatchInPriorityOrder(
