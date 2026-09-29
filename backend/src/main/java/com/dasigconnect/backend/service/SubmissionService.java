@@ -936,6 +936,7 @@ public class SubmissionService {
         if (joinedTags == null || joinedTags.isBlank()) {
             return;
         }
+        boolean changed = false;
         for (String raw : joinedTags.split(",")) {
             String label = raw.trim();
             if (label.isEmpty() || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
@@ -946,6 +947,11 @@ public class SubmissionService {
             tag.setLabel(label);
             tag.setSource("manual");
             assetTagRepository.save(tag);
+            changed = true;
+        }
+        if (changed) {
+            mediaAssetRepository.incrementSemanticRevision(asset.getId());
+            mediaProcessingQueueService.semanticMetadataChangedAfterCommit(asset.getId());
         }
     }
 

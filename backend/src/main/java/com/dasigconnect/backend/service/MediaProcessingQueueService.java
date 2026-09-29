@@ -23,6 +23,7 @@ public class MediaProcessingQueueService {
     public static final String PROCESSING_VERSION = "media-retrieval-v1";
     public static final String ENRICHMENT_VERSION = "claude-enrichment-v1";
     public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
+    public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v1";
     public static final String CONTEXT_VERSION = "submission-context-v1";
     private static final int MAX_ERROR_LENGTH = 500;
     private static final Logger log = LoggerFactory.getLogger(MediaProcessingQueueService.class);
@@ -73,6 +74,14 @@ public class MediaProcessingQueueService {
 
     public void enqueueImageOnlyAfterCommit(UUID assetId) {
         runAfterCommit(() -> enqueueImageOnlySafely(assetId));
+    }
+
+    public void enqueueSemanticOnly(UUID assetId) {
+        repository.enqueueSemanticOnly(assetId, SEMANTIC_EMBEDDING_VERSION, maxAttempts);
+    }
+
+    public void semanticMetadataChangedAfterCommit(UUID assetId) {
+        runAfterCommit(() -> enqueueSemanticOnlySafely(assetId));
     }
 
     public void enqueueSubmissionContext(UUID submissionId) {
@@ -159,6 +168,14 @@ public class MediaProcessingQueueService {
             enqueueImageOnly(assetId);
         } catch (Exception error) {
             log.warn("Failed to enqueue image embedding for asset {}: {}", assetId, error.getMessage());
+        }
+    }
+
+    private void enqueueSemanticOnlySafely(UUID assetId) {
+        try {
+            enqueueSemanticOnly(assetId);
+        } catch (Exception error) {
+            log.warn("Failed to enqueue semantic embedding for asset {}: {}", assetId, error.getMessage());
         }
     }
 

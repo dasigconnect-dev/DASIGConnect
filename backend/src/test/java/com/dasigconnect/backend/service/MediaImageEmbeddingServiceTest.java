@@ -40,8 +40,10 @@ class MediaImageEmbeddingServiceTest {
         UUID assetId = UUID.randomUUID();
         String model = "voyage-multimodal-3.5";
         when(voyageAIClient.multimodalModelName()).thenReturn(model);
-        when(embeddingRepository.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.IMAGE, model)).thenReturn(true);
+        when(embeddingRepository.existsCurrentVersionedEmbedding(
+                eq(assetId), eq(MediaAssetEmbeddingType.IMAGE.dbValue()), eq(model),
+                anyString(), eq(0L), eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION)))
+                .thenReturn(true);
 
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isTrue();
 
@@ -49,8 +51,9 @@ class MediaImageEmbeddingServiceTest {
         verify(imagePreparation, never()).classifyMedia(any());
         verify(voyageAIClient, never()).embedImageDocument(any(), anyString());
         verify(voyageAIClient, never()).embedDocument(anyString());
-        verify(embeddingRepository, never()).upsert(
-                any(), any(MediaAssetEmbeddingType.class), anyString(), anyString());
+        verify(embeddingRepository, never()).upsertVersioned(
+                any(), anyString(), anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), anyString());
         verify(telemetry).record(eq("VOYAGE_IMAGE_EMBEDDING"), any(Long.class), eq("REUSED"),
                 eq(assetId), eq(null), eq(1), eq(0), eq(1));
     }
@@ -67,8 +70,9 @@ class MediaImageEmbeddingServiceTest {
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.png")).isTrue();
 
         verify(voyageAIClient).embedImageDocument(any(), eq("image/png"));
-        verify(embeddingRepository).upsert(
-                assetId, MediaAssetEmbeddingType.IMAGE, "[0.1]", model);
+        verify(embeddingRepository).upsertVersioned(
+                eq(assetId), eq(MediaAssetEmbeddingType.IMAGE.dbValue()), eq("[0.1]"), eq(model),
+                anyString(), eq(0L), eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION));
         verify(imagePreparation, never()).classifyMedia(any());
         verify(voyageAIClient, never()).embedDocument(anyString());
     }
@@ -83,8 +87,9 @@ class MediaImageEmbeddingServiceTest {
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isFalse();
 
         verify(voyageAIClient, never()).embedImageDocument(any(), anyString());
-        verify(embeddingRepository, never()).upsert(
-                any(), any(MediaAssetEmbeddingType.class), anyString(), anyString());
+        verify(embeddingRepository, never()).upsertVersioned(
+                any(), anyString(), anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), anyString());
     }
 
     @Test
@@ -98,8 +103,9 @@ class MediaImageEmbeddingServiceTest {
 
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isFalse();
 
-        verify(embeddingRepository, never()).upsert(
-                any(), any(MediaAssetEmbeddingType.class), anyString(), anyString());
+        verify(embeddingRepository, never()).upsertVersioned(
+                any(), anyString(), anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), anyString());
     }
 
     @Test
@@ -112,11 +118,14 @@ class MediaImageEmbeddingServiceTest {
         when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
         doThrow(new RuntimeException("database unavailable"))
                 .when(embeddingRepository)
-                .upsert(assetId, MediaAssetEmbeddingType.IMAGE, "[0.1]", model);
+                .upsertVersioned(eq(assetId), eq(MediaAssetEmbeddingType.IMAGE.dbValue()),
+                        eq("[0.1]"), eq(model), anyString(), eq(0L),
+                        eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION));
 
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isFalse();
 
-        verify(embeddingRepository).upsert(
-                assetId, MediaAssetEmbeddingType.IMAGE, "[0.1]", model);
+        verify(embeddingRepository).upsertVersioned(
+                eq(assetId), eq(MediaAssetEmbeddingType.IMAGE.dbValue()), eq("[0.1]"), eq(model),
+                anyString(), eq(0L), eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION));
     }
 }

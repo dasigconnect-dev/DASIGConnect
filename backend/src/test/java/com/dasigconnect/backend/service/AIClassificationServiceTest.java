@@ -40,6 +40,7 @@ class AIClassificationServiceTest {
     @Mock private ClaudeVisionClient claudeVisionClient;
     @Mock private VoyageAIClient voyageAIClient;
     @Mock private MediaImageEmbeddingService mediaImageEmbeddingService;
+    @Mock private MediaProcessingQueueService mediaProcessingQueueService;
 
     private AIClassificationService service() {
         return service(mediaImageEmbeddingService);
@@ -48,7 +49,7 @@ class AIClassificationServiceTest {
     private AIClassificationService service(MediaImageEmbeddingService imageEmbeddingService) {
         return new AIClassificationService(
                 mediaAssetRepository, mediaAssetEmbeddingRepository, assetTagRepository,
-                claudeVisionClient, voyageAIClient, imageEmbeddingService);
+                claudeVisionClient, voyageAIClient, imageEmbeddingService, mediaProcessingQueueService);
     }
 
     private AIClassificationService serviceWithRealImageEmbedding() {
@@ -157,10 +158,11 @@ class AIClassificationServiceTest {
         String imageModel = "voyage-multimodal-3.5";
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(voyageAIClient.multimodalModelName()).thenReturn(imageModel);
-        when(mediaAssetEmbeddingRepository.existsCurrentEmbedding(
-                assetId,
-                com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE,
-                imageModel)).thenReturn(true);
+        when(mediaAssetEmbeddingRepository.existsCurrentVersionedEmbedding(
+                eq(assetId),
+                eq(com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE.dbValue()),
+                eq(imageModel), anyString(), eq(0L),
+                eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION))).thenReturn(true);
         when(mediaAssetEmbeddingRepository.findEmbedding(
                 assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.SEMANTIC))
                 .thenReturn(Optional.empty());
@@ -174,11 +176,10 @@ class AIClassificationServiceTest {
         verify(claudeVisionClient, never()).classifyMedia(any());
         verify(claudeVisionClient, never()).prepareImageForEmbedding(anyString());
         verify(voyageAIClient, never()).embedImageDocument(any(), anyString());
-        verify(mediaAssetEmbeddingRepository, never()).upsert(
+        verify(mediaAssetEmbeddingRepository, never()).upsertVersioned(
                 eq(assetId),
-                eq(com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE),
-                anyString(),
-                anyString());
+                eq(com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE.dbValue()),
+                anyString(), anyString(), anyString(), eq(0L), anyString());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
     }
 
@@ -194,10 +195,6 @@ class AIClassificationServiceTest {
         String storageUrl = "https://example.com/a.jpg";
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(voyageAIClient.multimodalModelName()).thenReturn(imageModel);
-        when(mediaAssetEmbeddingRepository.existsCurrentEmbedding(
-                assetId,
-                com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE,
-                imageModel)).thenReturn(false);
         when(claudeVisionClient.prepareImageForEmbedding(storageUrl))
                 .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2}, "image/jpeg"));
         when(voyageAIClient.embedImageDocument(any(), eq("image/jpeg"))).thenReturn("[0.1]");
@@ -210,11 +207,11 @@ class AIClassificationServiceTest {
 
         assertThat(completed).isTrue();
         verify(voyageAIClient).embedImageDocument(any(), eq("image/jpeg"));
-        verify(mediaAssetEmbeddingRepository).upsert(
-                assetId,
-                com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE,
-                "[0.1]",
-                imageModel);
+        verify(mediaAssetEmbeddingRepository).upsertVersioned(
+                eq(assetId),
+                eq(com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE.dbValue()),
+                eq("[0.1]"), eq(imageModel), anyString(), eq(0L),
+                eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION));
         verify(claudeVisionClient, never()).classifyMedia(any());
         verify(voyageAIClient, never()).embedDocument(anyString());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
@@ -282,5 +279,23 @@ class AIClassificationServiceTest {
         assertThat(completed).isFalse();
         verify(mediaAssetRepository, never()).updateStatus(
                 eq(assetId), eq(MediaAssetStatus.FAILED.name()));
+        verify(mediaAssetRepository, never()).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService, never()).semanticMetadataChangedAfterCommit(assetId);
+    }
+
+    @Test
+    void enrichAsset_successInvalidatesOnlySemanticEmbedding() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+
+        assertThat(service().enrichAsset(assetId, "https://example.com/a.jpg")).isTrue();
+
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
+        verify(mediaImageEmbeddingService, never()).generateOrReuse(any(), anyString());
     }
 }

@@ -64,6 +64,39 @@ class MediaProcessingQueueServiceTest {
     }
 
     @Test
+    void enqueueSemanticOnly_usesIndependentStableVersion() {
+        UUID assetId = UUID.randomUUID();
+
+        service.enqueueSemanticOnly(assetId);
+
+        verify(repository).enqueueSemanticOnly(
+                assetId, MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION, 5);
+    }
+
+    @Test
+    void semanticMetadataChangedAfterCommit_defersQueueWriteUntilCommit() {
+        UUID assetId = UUID.randomUUID();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.semanticMetadataChangedAfterCommit(assetId);
+            org.mockito.Mockito.verify(repository, org.mockito.Mockito.never())
+                    .enqueueSemanticOnly(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+            synchronizations.getFirst().afterCommit();
+
+            verify(repository).enqueueSemanticOnly(
+                    assetId, MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION, 5);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
     void enqueueImageOnlyAfterCommit_defersQueueWriteUntilTransactionCommits() {
         UUID assetId = UUID.randomUUID();
         TransactionSynchronizationManager.setActualTransactionActive(true);

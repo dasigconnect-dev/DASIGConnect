@@ -881,8 +881,14 @@ public class MediaAssetService {
         UUID institutionId = album.getInstitution().getId();
         String name = normalizeRequiredAlbumName(dto.getName());
         assertAlbumNameFree(institutionId, album.getParentAlbum(), name, albumId);
+        boolean semanticInputChanged = !name.equals(album.getName());
         album.setName(name);
-        return MediaAlbumDto.from(mediaAlbumRepository.save(album));
+        MediaAlbumDto result = MediaAlbumDto.from(mediaAlbumRepository.save(album));
+        if (semanticInputChanged) {
+            mediaAssetRepository.findActiveIdsByMediaAlbumId(albumId)
+                    .forEach(this::invalidateSemanticEmbedding);
+        }
+        return result;
     }
 
     /**
@@ -1071,9 +1077,12 @@ public class MediaAssetService {
             }
             asset.setInstitution(album.getInstitution());
         }
+        boolean semanticInputChanged = asset.getMediaAlbum() == null
+                || !java.util.Objects.equals(asset.getMediaAlbum().getName(), album.getName());
         asset.setMediaAlbum(album);
         MediaAssetDetailDto result
                 = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        if (semanticInputChanged) invalidateSemanticEmbedding(assetId);
 
         Map<String, Object> moveMeta = new LinkedHashMap<>();
         if (fromAlbum != null) {
@@ -1106,9 +1115,12 @@ public class MediaAssetService {
         String previousTitle = asset.getTitle();
         // Renaming back to the original filename just clears the override,
         // rather than storing a redundant copy of it.
-        asset.setDisplayTitle(title.equals(asset.getFileName()) ? null : title);
+        String displayTitle = title.equals(asset.getFileName()) ? null : title;
+        boolean semanticInputChanged = !java.util.Objects.equals(asset.getDisplayTitle(), displayTitle);
+        asset.setDisplayTitle(displayTitle);
         MediaAssetDetailDto result
                 = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        if (semanticInputChanged) invalidateSemanticEmbedding(assetId);
         recordAssetAudit(user, "MEDIA_ASSET_RENAMED", assetId,
                 Map.of("fromTitle", previousTitle, "toTitle", title));
         return result;
@@ -1127,6 +1139,7 @@ public class MediaAssetService {
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
         AssetTagDto saved = AssetTagDto.from(assetTagRepository.save(tag));
+        invalidateSemanticEmbedding(assetId);
         return saved;
     }
 
@@ -1151,6 +1164,13 @@ public class MediaAssetService {
             }
         }
         assetTagRepository.delete(tag);
+        assetTagRepository.flush();
+        invalidateSemanticEmbedding(assetId);
+    }
+
+    private void invalidateSemanticEmbedding(UUID assetId) {
+        mediaAssetRepository.incrementSemanticRevision(assetId);
+        mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {

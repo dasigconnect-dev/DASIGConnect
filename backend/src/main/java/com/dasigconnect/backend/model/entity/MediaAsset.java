@@ -140,6 +140,9 @@ public class MediaAsset {
     @Column(name = "embedding_model", length = 100)
     private String embeddingModel;
 
+    @Column(name = "semantic_revision", nullable = false)
+    private long semanticRevision;
+
     @Column(name = "reclassified_at")
     private Instant reclassifiedAt;
 
@@ -418,6 +421,9 @@ public class MediaAsset {
     public void setEmbeddingModel(String embeddingModel) {
         this.embeddingModel = embeddingModel;
     }
+
+    public long getSemanticRevision() { return semanticRevision; }
+    public void setSemanticRevision(long semanticRevision) { this.semanticRevision = semanticRevision; }
 
     public Instant getReclassifiedAt() {
         return reclassifiedAt;

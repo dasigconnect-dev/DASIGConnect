@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
@@ -20,10 +21,11 @@ class EmbeddingReconciliationJobTest {
     private final MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
     private final MediaProcessingQueueService queue = mock(MediaProcessingQueueService.class);
     private final ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
+    private final VoyageAIClient voyage = mock(VoyageAIClient.class);
 
     private EmbeddingReconciliationJob job(boolean aiConfigured) {
         return new EmbeddingReconciliationJob(
-                mediaAssetRepository, queue, health,
+                mediaAssetRepository, queue, health, voyage,
                 aiConfigured ? "test-key" : "", aiConfigured ? "voyage-key" : "", 10);
     }
 
@@ -97,5 +99,25 @@ class EmbeddingReconciliationJobTest {
         job(true).reconcile();
 
         verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
+    }
+
+    @Test
+    void reconcile_staleSemanticEmbedding_isIdempotentlyEnqueued() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(voyage.modelName()).thenReturn("voyage-4-lite");
+        when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any())).thenReturn(List.of());
+        when(mediaAssetRepository.findNeedingProcessingVersion(any(), any())).thenReturn(List.of());
+        when(mediaAssetRepository.findReadyImagesMissingImageEmbedding(any())).thenReturn(List.of());
+        when(mediaAssetRepository.findReadyAssetsMissingCurrentSemanticEmbedding(
+                eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), any()))
+                .thenReturn(List.of(asset));
+
+        job(true).reconcile();
+
+        verify(queue).enqueueSemanticOnly(assetId);
     }
 }

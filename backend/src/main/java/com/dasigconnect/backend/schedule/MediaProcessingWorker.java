@@ -9,6 +9,7 @@ import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.MediaImageEmbeddingService;
 import com.dasigconnect.backend.service.MediaRetrievalEmbeddingService;
+import com.dasigconnect.backend.service.MediaSemanticEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.time.Duration;
@@ -31,6 +32,7 @@ public class MediaProcessingWorker {
     private final AIClassificationService classificationService;
     private final MediaImageEmbeddingService imageEmbeddingService;
     private final MediaRetrievalEmbeddingService retrievalEmbeddingService;
+    private final MediaSemanticEmbeddingService semanticEmbeddingService;
     private final ScheduledJobHealthService healthService;
     private final SubmissionMediaContextService contextService;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -47,6 +49,7 @@ public class MediaProcessingWorker {
             AIClassificationService classificationService,
             MediaImageEmbeddingService imageEmbeddingService,
             MediaRetrievalEmbeddingService retrievalEmbeddingService,
+            MediaSemanticEmbeddingService semanticEmbeddingService,
             ScheduledJobHealthService healthService,
             SubmissionMediaContextService contextService,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -58,6 +61,7 @@ public class MediaProcessingWorker {
         this.classificationService = classificationService;
         this.imageEmbeddingService = imageEmbeddingService;
         this.retrievalEmbeddingService = retrievalEmbeddingService;
+        this.semanticEmbeddingService = semanticEmbeddingService;
         this.healthService = healthService;
         this.contextService = contextService;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -108,6 +112,15 @@ public class MediaProcessingWorker {
                 if (!imageEmbeddingService.generateOrReuse(asset.getId(), asset.getStorageUrl())) {
                     throw new IllegalStateException("Image embedding did not complete");
                 }
+                queue.complete(job, workerId);
+                return;
+            }
+            if (job.getJobType() == MediaProcessingJobType.EMBED_SEMANTIC_ONLY) {
+                if (!semanticEmbeddingService.generateOrReuse(asset.getId())) {
+                    throw new IllegalStateException("Semantic embedding did not complete");
+                }
+                submissionMediaAssetRepository.findSubmissionIdsByMediaAssetId(asset.getId())
+                        .forEach(queue::enqueueSubmissionContext);
                 queue.complete(job, workerId);
                 return;
             }

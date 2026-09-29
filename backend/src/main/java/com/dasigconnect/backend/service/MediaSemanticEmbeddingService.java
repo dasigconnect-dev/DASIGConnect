@@ -8,7 +8,11 @@ import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import java.util.Collection;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+import java.util.HexFormat;
+import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,27 +46,6 @@ public class MediaSemanticEmbeddingService {
     public boolean generateOrReuse(UUID assetId) {
         long startedAt = System.nanoTime();
         String model = voyageAIClient.modelName();
-        if (embeddingRepository.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.SEMANTIC, model)) {
-            MediaAsset asset = assetRepository.findActiveById(assetId).orElse(null);
-            if (asset != null && !model.equals(asset.getEmbeddingModel())) {
-                String storedEmbedding = embeddingRepository
-                        .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC)
-                        .orElse(null);
-                if (storedEmbedding == null) return false;
-                try {
-                    assetRepository.updateEmbedding(assetId, storedEmbedding, model);
-                } catch (Exception error) {
-                    log.warn("Failed to repair legacy semantic embedding for asset {}: {}",
-                            assetId, error.getMessage());
-                    record(assetId, startedAt, "FAILURE", 0, 1);
-                    return false;
-                }
-            }
-            record(assetId, startedAt, "REUSED", 0, 1);
-            return true;
-        }
-
         MediaAsset asset = assetRepository.findActiveWithAlbumById(assetId).orElse(null);
         if (asset == null) return false;
         List<String> manualTags = tagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)
@@ -75,6 +58,35 @@ public class MediaSemanticEmbeddingService {
             record(assetId, startedAt, "FAILURE", 0, 0);
             return false;
         }
+        String inputHash = semanticInputHash(input);
+        long semanticRevision = asset.getSemanticRevision();
+        String processingVersion = MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION;
+
+        if (embeddingRepository.existsCurrentVersionedEmbedding(
+                assetId, MediaAssetEmbeddingType.SEMANTIC.dbValue(), model,
+                inputHash, semanticRevision, processingVersion)) {
+            MediaAsset currentAsset = assetRepository.findActiveById(assetId).orElse(null);
+            if (currentAsset != null && !model.equals(currentAsset.getEmbeddingModel())) {
+                String storedEmbedding = embeddingRepository
+                        .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC)
+                        .orElse(null);
+                if (storedEmbedding == null) return false;
+                try {
+                    if (assetRepository.updateEmbeddingIfSemanticRevision(
+                            assetId, storedEmbedding, model, semanticRevision) == 0) {
+                        record(assetId, startedAt, "FAILURE", 0, 1);
+                        return false;
+                    }
+                } catch (Exception error) {
+                    log.warn("Failed to repair legacy semantic embedding for asset {}: {}",
+                            assetId, error.getMessage());
+                    record(assetId, startedAt, "FAILURE", 0, 1);
+                    return false;
+                }
+            }
+            record(assetId, startedAt, "REUSED", 0, 1);
+            return true;
+        }
 
         String embedding;
         try {
@@ -86,8 +98,21 @@ public class MediaSemanticEmbeddingService {
         }
 
         try {
-            embeddingRepository.upsert(assetId, MediaAssetEmbeddingType.SEMANTIC, embedding, model);
-            assetRepository.updateEmbedding(assetId, embedding, model);
+            int stored = embeddingRepository.upsertSemanticIfCurrent(
+                    assetId, embedding, model, inputHash, processingVersion, semanticRevision);
+            if (stored == 0) {
+                log.info("Discarded stale semantic embedding result for asset {} revision {}",
+                        assetId, semanticRevision);
+                record(assetId, startedAt, "FAILURE", 1, 0);
+                return false;
+            }
+            if (assetRepository.updateEmbeddingIfSemanticRevision(
+                    assetId, embedding, model, semanticRevision) == 0) {
+                log.info("Discarded stale legacy semantic embedding result for asset {} revision {}",
+                        assetId, semanticRevision);
+                record(assetId, startedAt, "FAILURE", 1, 0);
+                return false;
+            }
             record(assetId, startedAt, "SUCCESS", 1, 0);
             return true;
         } catch (Exception error) {
@@ -106,6 +131,19 @@ public class MediaSemanticEmbeddingService {
         append(text, "format", asset.getAssetType());
         append(text, "temporal", asset.getTemporalClassification());
         return text.toString().trim();
+    }
+
+    static String semanticInputHash(String input) {
+        try {
+            String normalized = input == null ? "" : input.trim()
+                    .replaceAll("\\s+", " ")
+                    .toLowerCase(Locale.ROOT);
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(normalized.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not hash semantic embedding input", error);
+        }
     }
 
     private static String cleanFileName(String fileName) {
@@ -127,6 +165,7 @@ public class MediaSemanticEmbeddingService {
                 .filter(value -> value != null && !value.isBlank())
                 .map(String::trim)
                 .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
         if (!cleaned.isEmpty()) append(target, label, String.join(", ", cleaned));
     }

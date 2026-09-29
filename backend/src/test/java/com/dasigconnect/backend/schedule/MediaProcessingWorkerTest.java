@@ -16,6 +16,7 @@ import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.MediaImageEmbeddingService;
 import com.dasigconnect.backend.service.MediaRetrievalEmbeddingService;
+import com.dasigconnect.backend.service.MediaSemanticEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.util.List;
@@ -30,6 +31,7 @@ class MediaProcessingWorkerTest {
     private final AIClassificationService classification = mock(AIClassificationService.class);
     private final MediaImageEmbeddingService imageEmbedding = mock(MediaImageEmbeddingService.class);
     private final MediaRetrievalEmbeddingService retrievalEmbedding = mock(MediaRetrievalEmbeddingService.class);
+    private final MediaSemanticEmbeddingService semanticEmbedding = mock(MediaSemanticEmbeddingService.class);
     private final ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
     private final SubmissionMediaContextService context = mock(SubmissionMediaContextService.class);
     private final SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
@@ -40,7 +42,7 @@ class MediaProcessingWorkerTest {
 
     private MediaProcessingWorker worker(String anthropicApiKey, String voyageApiKey) {
         return new MediaProcessingWorker(
-                queue, assets, classification, imageEmbedding, retrievalEmbedding,
+                queue, assets, classification, imageEmbedding, retrievalEmbedding, semanticEmbedding,
                 health, context, submissionMedia, 2,
                 anthropicApiKey, voyageApiKey);
     }
@@ -244,6 +246,37 @@ class MediaProcessingWorkerTest {
         verify(queue, never()).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
         verify(assets, never()).markProcessingReady(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void processBatch_semanticOnlyRefreshesSearchAndSubmissionContexts() {
+        UUID assetId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        MediaProcessingJob job = mock(MediaProcessingJob.class);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.EMBED_SEMANTIC_ONLY);
+        when(job.getAssetId()).thenReturn(assetId);
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(MediaFileType.jpeg);
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
+        when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(semanticEmbedding.generateOrReuse(assetId)).thenReturn(true);
+        when(submissionMedia.findSubmissionIdsByMediaAssetId(assetId))
+                .thenReturn(List.of(submissionId));
+
+        worker("", "voyage").processBatch();
+
+        verify(semanticEmbedding).generateOrReuse(assetId);
+        verify(queue).enqueueSubmissionContext(submissionId);
+        verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
+        verify(imageEmbedding, never()).generateOrReuse(
+                org.mockito.ArgumentMatchers.any(), anyString());
+        verify(retrievalEmbedding, never()).generateOrReuse(
+                org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(classification, never()).enrichAsset(
+                org.mockito.ArgumentMatchers.any(), anyString());
     }
 
     @Test

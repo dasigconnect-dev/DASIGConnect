@@ -49,6 +49,7 @@ public class AIClassificationService {
     private final ClaudeVisionClient claudeVisionClient;
     private final VoyageAIClient voyageAIClient;
     private final MediaImageEmbeddingService mediaImageEmbeddingService;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
@@ -58,13 +59,15 @@ public class AIClassificationService {
                                    AssetTagRepository assetTagRepository,
                                    ClaudeVisionClient claudeVisionClient,
                                    VoyageAIClient voyageAIClient,
-                                   MediaImageEmbeddingService mediaImageEmbeddingService) {
+                                   MediaImageEmbeddingService mediaImageEmbeddingService,
+                                   MediaProcessingQueueService mediaProcessingQueueService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
         this.claudeVisionClient = claudeVisionClient;
         this.voyageAIClient = voyageAIClient;
         this.mediaImageEmbeddingService = mediaImageEmbeddingService;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
     }
 
     /**
@@ -174,6 +177,8 @@ public class AIClassificationService {
             MediaClassificationDto result = claudeVisionClient.classifyMedia(List.of(storageUrl));
             persistClassification(assetId, result);
             persistSuggestedTags(assetId, result.suggestedTags());
+            mediaAssetRepository.incrementSemanticRevision(assetId);
+            mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
             recordProviderStage("CLAUDE_CLASSIFICATION", assetId, startedAt, "SUCCESS");
             return true;
         } catch (Exception error) {
