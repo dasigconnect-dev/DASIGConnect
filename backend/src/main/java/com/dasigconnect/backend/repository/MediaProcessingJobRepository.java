@@ -19,7 +19,7 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Query(value = """
         INSERT INTO media_processing_jobs
             (asset_id, job_type, processing_version, max_attempts)
-        VALUES (:assetId, 'CLASSIFY_AND_EMBED', :processingVersion, :maxAttempts)
+        VALUES (:assetId, 'RETRIEVAL_EMBEDDINGS', :processingVersion, :maxAttempts)
         ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
         DO UPDATE SET
             status = 'PENDING', attempt_count = 0,
@@ -30,6 +30,23 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     int enqueue(@Param("assetId") UUID assetId,
                 @Param("processingVersion") String processingVersion,
                 @Param("maxAttempts") int maxAttempts);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_processing_jobs
+            (asset_id, job_type, processing_version, max_attempts)
+        VALUES (:assetId, 'ENRICH_MEDIA', :processingVersion, :maxAttempts)
+        ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
+        DO UPDATE SET
+            status = 'PENDING', attempt_count = 0,
+            next_attempt_at = NOW(), lease_until = NULL, claimed_by = NULL,
+            last_error = NULL, completed_at = NULL, updated_at = NOW()
+        WHERE media_processing_jobs.status IN ('COMPLETED', 'DEAD')
+        """, nativeQuery = true)
+    int enqueueEnrichment(@Param("assetId") UUID assetId,
+                          @Param("processingVersion") String processingVersion,
+                          @Param("maxAttempts") int maxAttempts);
 
     @Modifying
     @Transactional
@@ -105,8 +122,8 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
             )
               AND (
                   job.job_type = 'BUILD_SUBMISSION_CONTEXT'
-                  OR (:includeAiJobs = TRUE AND job.job_type = 'CLASSIFY_AND_EMBED')
-                  OR (:includeImageJobs = TRUE AND job.job_type = 'EMBED_IMAGE_ONLY')
+                  OR (:includeAiJobs = TRUE AND job.job_type IN ('CLASSIFY_AND_EMBED', 'ENRICH_MEDIA'))
+                  OR (:includeImageJobs = TRUE AND job.job_type IN ('EMBED_IMAGE_ONLY', 'RETRIEVAL_EMBEDDINGS'))
               )
         ), ranked_candidates AS (
             SELECT eligible.id,

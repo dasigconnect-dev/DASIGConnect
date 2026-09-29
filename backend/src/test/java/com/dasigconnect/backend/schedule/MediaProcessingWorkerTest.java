@@ -15,6 +15,7 @@ import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.service.AIClassificationService;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.MediaImageEmbeddingService;
+import com.dasigconnect.backend.service.MediaRetrievalEmbeddingService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SubmissionMediaContextService;
 import java.util.List;
@@ -28,6 +29,7 @@ class MediaProcessingWorkerTest {
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
     private final AIClassificationService classification = mock(AIClassificationService.class);
     private final MediaImageEmbeddingService imageEmbedding = mock(MediaImageEmbeddingService.class);
+    private final MediaRetrievalEmbeddingService retrievalEmbedding = mock(MediaRetrievalEmbeddingService.class);
     private final ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
     private final SubmissionMediaContextService context = mock(SubmissionMediaContextService.class);
     private final SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
@@ -38,7 +40,8 @@ class MediaProcessingWorkerTest {
 
     private MediaProcessingWorker worker(String anthropicApiKey, String voyageApiKey) {
         return new MediaProcessingWorker(
-                queue, assets, classification, imageEmbedding, health, context, submissionMedia, 2,
+                queue, assets, classification, imageEmbedding, retrievalEmbedding,
+                health, context, submissionMedia, 2,
                 anthropicApiKey, voyageApiKey);
     }
 
@@ -47,6 +50,7 @@ class MediaProcessingWorkerTest {
         UUID assetId = UUID.randomUUID();
         MediaProcessingJob job = mock(MediaProcessingJob.class);
         when(job.getAssetId()).thenReturn(assetId);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.RETRIEVAL_EMBEDDINGS);
         when(job.getProcessingVersion()).thenReturn("media-ai-v1");
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
@@ -56,7 +60,7 @@ class MediaProcessingWorkerTest {
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(classification.processAsset(assetId, asset.getStorageUrl(), "media-ai-v1")).thenReturn(true);
+        when(retrievalEmbedding.generateOrReuse(assetId, asset.getStorageUrl(), true)).thenReturn(true);
 
         worker(true).processBatch();
 
@@ -71,6 +75,7 @@ class MediaProcessingWorkerTest {
         UUID assetId = UUID.randomUUID();
         MediaProcessingJob job = mock(MediaProcessingJob.class);
         when(job.getAssetId()).thenReturn(assetId);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.RETRIEVAL_EMBEDDINGS);
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
         asset.setFileType(MediaFileType.jpeg);
@@ -80,7 +85,7 @@ class MediaProcessingWorkerTest {
                 org.mockito.ArgumentMatchers.eq(true))).thenReturn(List.of(job));
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(job.getProcessingVersion()).thenReturn("media-ai-v1");
-        when(classification.processAsset(assetId, asset.getStorageUrl(), "media-ai-v1")).thenReturn(false);
+        when(retrievalEmbedding.generateOrReuse(assetId, asset.getStorageUrl(), true)).thenReturn(false);
 
         worker(true).processBatch();
 
@@ -112,7 +117,7 @@ class MediaProcessingWorkerTest {
         worker("", "voyage").processBatch();
 
         verify(queue).claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true));
     }
 
@@ -132,6 +137,59 @@ class MediaProcessingWorkerTest {
         verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
         verify(classification, never()).processAsset(
                 org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void processBatch_retrievalCompletionQueuesOptionalEnrichmentAfterReady() {
+        UUID assetId = UUID.randomUUID();
+        MediaProcessingJob job = mock(MediaProcessingJob.class);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.RETRIEVAL_EMBEDDINGS);
+        when(job.getAssetId()).thenReturn(assetId);
+        when(job.getProcessingVersion()).thenReturn("media-retrieval-v1");
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(MediaFileType.jpeg);
+        asset.setStorageUrl("https://example.com/retrieval.jpg");
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(true), org.mockito.ArgumentMatchers.eq(true)))
+                .thenReturn(List.of(job));
+        when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(retrievalEmbedding.generateOrReuse(assetId, asset.getStorageUrl(), true)).thenReturn(true);
+
+        worker(true).processBatch();
+
+        org.mockito.InOrder readinessOrder = org.mockito.Mockito.inOrder(assets, queue);
+        readinessOrder.verify(assets).markProcessingReady(assetId, "media-retrieval-v1");
+        readinessOrder.verify(queue).complete(org.mockito.ArgumentMatchers.eq(job), anyString());
+        readinessOrder.verify(queue).enqueueEnrichment(assetId);
+        verify(classification, never()).enrichAsset(
+                org.mockito.ArgumentMatchers.any(), anyString());
+    }
+
+    @Test
+    void processBatch_enrichmentFailureDoesNotChangeRetrievalReadiness() {
+        UUID assetId = UUID.randomUUID();
+        MediaProcessingJob job = mock(MediaProcessingJob.class);
+        when(job.getJobType()).thenReturn(MediaProcessingJobType.ENRICH_MEDIA);
+        when(job.getAssetId()).thenReturn(assetId);
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(MediaFileType.jpeg);
+        asset.setStorageUrl("https://example.com/enrich.jpg");
+        when(queue.claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
+                org.mockito.ArgumentMatchers.eq(true), org.mockito.ArgumentMatchers.eq(true)))
+                .thenReturn(List.of(job));
+        when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(classification.enrichAsset(assetId, asset.getStorageUrl())).thenReturn(false);
+
+        worker(true).processBatch();
+
+        verify(queue).fail(org.mockito.ArgumentMatchers.eq(job), anyString(),
+                org.mockito.ArgumentMatchers.any());
+        verify(assets, never()).markProcessingReady(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        verify(retrievalEmbedding, never()).generateOrReuse(
+                org.mockito.ArgumentMatchers.any(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test

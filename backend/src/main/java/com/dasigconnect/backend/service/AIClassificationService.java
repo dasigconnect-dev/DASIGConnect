@@ -154,6 +154,36 @@ public class AIClassificationService {
     }
 
     /**
+     * Adds optional Claude metadata without controlling retrieval readiness.
+     * A failure is returned to the durable queue for retry, but never changes
+     * the media asset status or removes already stored Voyage vectors.
+     */
+    public boolean enrichAsset(UUID assetId, String storageUrl) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
+        if (asset == null || asset.getFileType() == null || !asset.getFileType().isImage()) {
+            return true;
+        }
+        if (asset.getAiClassifiedAt() != null) {
+            recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+                    System.nanoTime(), "REUSED", 0, 1);
+            return true;
+        }
+
+        long startedAt = System.nanoTime();
+        try {
+            MediaClassificationDto result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+            persistClassification(assetId, result);
+            persistSuggestedTags(assetId, result.suggestedTags());
+            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, startedAt, "SUCCESS");
+            return true;
+        } catch (Exception error) {
+            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, startedAt, "FAILURE");
+            log.warn("Optional media enrichment failed for asset {}: {}", assetId, error.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Classifies a media asset and generates its embedding asynchronously.
      * Legacy asynchronous entry point retained for compatibility. New uploads
      * use MediaProcessingWorker and the synchronous, stage-aware processAsset path.

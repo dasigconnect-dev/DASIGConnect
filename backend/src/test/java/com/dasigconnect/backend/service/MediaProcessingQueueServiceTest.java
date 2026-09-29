@@ -44,6 +44,16 @@ class MediaProcessingQueueServiceTest {
     }
 
     @Test
+    void enqueueEnrichment_usesIndependentClaudeVersion() {
+        UUID assetId = UUID.randomUUID();
+
+        service.enqueueEnrichment(assetId);
+
+        verify(repository).enqueueEnrichment(
+                assetId, MediaProcessingQueueService.ENRICHMENT_VERSION, 5);
+    }
+
+    @Test
     void enqueueImageOnly_usesIndependentStableVersion() {
         UUID assetId = UUID.randomUUID();
 

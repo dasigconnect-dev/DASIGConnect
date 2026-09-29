@@ -25,7 +25,7 @@ public class EmbeddingReconciliationJob {
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaProcessingQueueService queueService;
     private final ScheduledJobHealthService healthService;
-    private final boolean aiConfigured;
+    private final boolean retrievalConfigured;
     private final boolean imageEmbeddingConfigured;
     private final int backfillBatchSize;
 
@@ -39,14 +39,14 @@ public class EmbeddingReconciliationJob {
         this.mediaAssetRepository = mediaAssetRepository;
         this.queueService = queueService;
         this.healthService = healthService;
-        this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
+        this.retrievalConfigured = !voyageApiKey.isBlank();
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
         this.backfillBatchSize = Math.max(1, Math.min(backfillBatchSize, 25));
     }
 
     @Scheduled(fixedDelayString = "${app.media-processing.reconcile-delay-ms:300000}")
     public void reconcile() {
-        if (!aiConfigured) return;
+        if (!retrievalConfigured) return;
         Instant startedAt = Instant.now();
         try {
             int availableSlots = queueService.availableBackfillSlots(backfillBatchSize);
