@@ -618,6 +618,8 @@ class MediaAssetServiceTest {
         mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -639,6 +641,8 @@ class MediaAssetServiceTest {
         assertEquals("Opening Ceremony Highlights", asset.getDisplayTitle());
         assertEquals("asset.jpg", asset.getFileName());
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_RENAMED"), isNull(), isNull(), eq(assetId), any());
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -658,6 +662,26 @@ class MediaAssetServiceTest {
         mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         assertNull(asset.getDisplayTitle());
+    }
+
+    @Test
+    void renameAsset_unchangedTitle_doesNotRegenerateSemanticEmbedding() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setDisplayTitle("Opening Ceremony");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(asset)).thenReturn(asset);
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto();
+        dto.setTitle("Opening Ceremony");
+
+        mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
+
+        verify(mediaAssetRepository, never()).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService, never()).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -728,6 +752,9 @@ class MediaAssetServiceTest {
         mediaAssetService.removeTag(assetId, first.getId(), user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(assetTagRepository).delete(first);
+        verify(assetTagRepository).flush();
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test

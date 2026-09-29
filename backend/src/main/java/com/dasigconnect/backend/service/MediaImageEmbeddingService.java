@@ -5,6 +5,9 @@ import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,8 +42,11 @@ public class MediaImageEmbeddingService {
     public boolean generateOrReuse(UUID assetId, String storageUrl) {
         long startedAt = System.nanoTime();
         String model = voyageAIClient.multimodalModelName();
-        if (embeddingRepository.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.IMAGE, model)) {
+        String sourceHash = sha256(storageUrl == null ? "" : storageUrl.trim());
+        String processingVersion = MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION;
+        if (embeddingRepository.existsCurrentVersionedEmbedding(
+                assetId, MediaAssetEmbeddingType.IMAGE.dbValue(), model,
+                sourceHash, 0L, processingVersion)) {
             record(assetId, startedAt, "REUSED", 0, 1);
             return true;
         }
@@ -65,17 +71,29 @@ public class MediaImageEmbeddingService {
         }
 
         try {
-            embeddingRepository.upsert(
+            embeddingRepository.upsertVersioned(
                     assetId,
-                    MediaAssetEmbeddingType.IMAGE,
+                    MediaAssetEmbeddingType.IMAGE.dbValue(),
                     embeddingJson,
-                    model);
+                    model,
+                    sourceHash,
+                    0L,
+                    processingVersion);
             record(assetId, startedAt, "SUCCESS", 1, 0);
             return true;
         } catch (Exception error) {
             log.warn("Failed to store image embedding for asset {}: {}", assetId, error.getMessage());
             record(assetId, startedAt, "FAILURE", 1, 0);
             return false;
+        }
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not hash image embedding source", error);
         }
     }
 

@@ -26,6 +26,14 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
     Optional<MediaAsset> findActiveWithAlbumById(@Param("id") UUID id);
 
+    @Modifying
+    @Transactional
+    @Query("UPDATE MediaAsset m SET m.semanticRevision = m.semanticRevision + 1 WHERE m.id = :id AND m.deletedAt IS NULL")
+    int incrementSemanticRevision(@Param("id") UUID id);
+
+    @Query("SELECT m.id FROM MediaAsset m WHERE m.mediaAlbum.id = :albumId AND m.deletedAt IS NULL")
+    List<UUID> findActiveIdsByMediaAlbumId(@Param("albumId") UUID albumId);
+
     @Query("SELECT COUNT(m) > 0 FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL")
     boolean existsActiveByInstitutionId(@Param("institutionId") UUID institutionId);
 
@@ -352,6 +360,22 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Transactional
     @Query(value = """
         UPDATE media_assets
+        SET embedding = CAST(:embedding AS vector),
+            embedding_generated_at = NOW(),
+            embedding_model = :embeddingModel
+        WHERE id = :id
+          AND deleted_at IS NULL
+          AND semantic_revision = :semanticRevision
+        """, nativeQuery = true)
+    int updateEmbeddingIfSemanticRevision(@Param("id") UUID id,
+            @Param("embedding") String embeddingJson,
+            @Param("embeddingModel") String embeddingModel,
+            @Param("semanticRevision") long semanticRevision);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE media_assets
         SET ai_category = :category,
             ai_confidence = :confidence,
             ai_description = :description,
@@ -459,6 +483,34 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         ORDER BY ma.created_at ASC, ma.id ASC
         """, nativeQuery = true)
     List<MediaAsset> findDraftImagesMissingImageEmbedding(Pageable pageable);
+
+    @Query(value = """
+        SELECT ma.*
+        FROM media_assets ma
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_asset_embeddings embedding
+              WHERE embedding.asset_id = ma.id
+                AND embedding.embedding_type = 'semantic'
+                AND embedding.model = :embeddingModel
+                AND embedding.processing_version = :processingVersion
+                AND embedding.source_revision = ma.semantic_revision
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type = 'EMBED_SEMANTIC_ONLY'
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findReadyAssetsMissingCurrentSemanticEmbedding(
+            @Param("embeddingModel") String embeddingModel,
+            @Param("processingVersion") String processingVersion,
+            Pageable pageable);
 
     /**
      * Returns id + cosine similarity score for top nearest neighbours.

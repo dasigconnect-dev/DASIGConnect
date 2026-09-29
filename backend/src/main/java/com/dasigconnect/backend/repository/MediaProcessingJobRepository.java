@@ -69,6 +69,35 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
     @Transactional
     @Query(value = """
         INSERT INTO media_processing_jobs
+            (asset_id, job_type, processing_version, max_attempts)
+        VALUES (:assetId, 'EMBED_SEMANTIC_ONLY', :processingVersion, :maxAttempts)
+        ON CONFLICT (asset_id, job_type, processing_version) WHERE asset_id IS NOT NULL
+        DO UPDATE SET
+            status = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                          THEN 'PROCESSING' ELSE 'PENDING' END,
+            attempt_count = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                                 THEN media_processing_jobs.attempt_count ELSE 0 END,
+            next_attempt_at = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                                   THEN media_processing_jobs.next_attempt_at ELSE NOW() END,
+            lease_until = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                               THEN media_processing_jobs.lease_until ELSE NULL END,
+            claimed_by = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                              THEN media_processing_jobs.claimed_by ELSE NULL END,
+            last_error = CASE WHEN media_processing_jobs.status = 'PROCESSING'
+                              THEN media_processing_jobs.last_error ELSE NULL END,
+            completed_at = NULL,
+            rerun_requested = media_processing_jobs.status = 'PROCESSING',
+            updated_at = NOW()
+        WHERE media_processing_jobs.status IN ('PROCESSING', 'COMPLETED', 'DEAD')
+        """, nativeQuery = true)
+    int enqueueSemanticOnly(@Param("assetId") UUID assetId,
+                            @Param("processingVersion") String processingVersion,
+                            @Param("maxAttempts") int maxAttempts);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_processing_jobs
             (submission_id, job_type, processing_version, max_attempts)
         VALUES (:submissionId, 'BUILD_SUBMISSION_CONTEXT', :processingVersion, :maxAttempts)
         ON CONFLICT (submission_id, job_type, processing_version) WHERE submission_id IS NOT NULL
@@ -123,7 +152,9 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
               AND (
                   job.job_type = 'BUILD_SUBMISSION_CONTEXT'
                   OR (:includeAiJobs = TRUE AND job.job_type IN ('CLASSIFY_AND_EMBED', 'ENRICH_MEDIA'))
-                  OR (:includeImageJobs = TRUE AND job.job_type IN ('EMBED_IMAGE_ONLY', 'RETRIEVAL_EMBEDDINGS'))
+                  OR (:includeImageJobs = TRUE AND job.job_type IN (
+                      'EMBED_IMAGE_ONLY', 'EMBED_SEMANTIC_ONLY', 'RETRIEVAL_EMBEDDINGS'
+                  ))
               )
         ), ranked_candidates AS (
             SELECT eligible.id,

@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.schedule;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.service.MediaProcessingQueueService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
@@ -25,6 +26,7 @@ public class EmbeddingReconciliationJob {
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaProcessingQueueService queueService;
     private final ScheduledJobHealthService healthService;
+    private final VoyageAIClient voyageAIClient;
     private final boolean retrievalConfigured;
     private final boolean imageEmbeddingConfigured;
     private final int backfillBatchSize;
@@ -33,12 +35,14 @@ public class EmbeddingReconciliationJob {
             MediaAssetRepository mediaAssetRepository,
             MediaProcessingQueueService queueService,
             ScheduledJobHealthService healthService,
+            VoyageAIClient voyageAIClient,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey,
             @Value("${app.media-processing.backfill-batch-size:10}") int backfillBatchSize) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.queueService = queueService;
         this.healthService = healthService;
+        this.voyageAIClient = voyageAIClient;
         this.retrievalConfigured = !voyageApiKey.isBlank();
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
         this.backfillBatchSize = Math.max(1, Math.min(backfillBatchSize, 25));
@@ -74,10 +78,19 @@ public class EmbeddingReconciliationJob {
                     ? mediaAssetRepository.findReadyImagesMissingImageEmbedding(PageRequest.of(0, imageSlots))
                     : List.of();
             for (MediaAsset asset : missingImages) queueService.enqueueImageOnly(asset.getId());
-            if (!draftImages.isEmpty() || !pending.isEmpty() || !missingImages.isEmpty()) {
+            int semanticSlots = imageSlots - missingImages.size();
+            List<MediaAsset> missingSemantic = semanticSlots > 0
+                    ? mediaAssetRepository.findReadyAssetsMissingCurrentSemanticEmbedding(
+                            voyageAIClient.modelName(),
+                            MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                            PageRequest.of(0, semanticSlots))
+                    : List.of();
+            for (MediaAsset asset : missingSemantic) queueService.enqueueSemanticOnly(asset.getId());
+            if (!draftImages.isEmpty() || !pending.isEmpty()
+                    || !missingImages.isEmpty() || !missingSemantic.isEmpty()) {
                 log.info("EmbeddingReconciliationJob: enqueued {} draft images, {} incomplete assets, "
-                                + "and {} missing library image embeddings",
-                        draftImages.size(), pending.size(), missingImages.size());
+                                + "{} missing library image embeddings, and {} stale semantic embeddings",
+                        draftImages.size(), pending.size(), missingImages.size(), missingSemantic.size());
             }
             healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
         } catch (Exception error) {

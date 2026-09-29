@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,12 +45,16 @@ class MediaSemanticEmbeddingServiceTest {
         AssetTag manual = tag("hackathon", "manual");
         AssetTag generated = tag("ignored-ai-tag", "ai_generated");
         when(voyage.modelName()).thenReturn("voyage-4-lite");
-        when(embeddings.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.SEMANTIC, "voyage-4-lite")).thenReturn(false);
         when(assets.findActiveWithAlbumById(assetId)).thenReturn(Optional.of(asset));
         when(tags.findByMediaAssetIdOrderByCreatedAtAsc(assetId))
                 .thenReturn(List.of(manual, generated));
         when(voyage.embedDocument(anyString())).thenReturn("[0.2]");
+        when(embeddings.upsertSemanticIfCurrent(
+                eq(assetId), eq("[0.2]"), eq("voyage-4-lite"), anyString(),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(0L)))
+                .thenReturn(1);
+        when(assets.updateEmbeddingIfSemanticRevision(
+                assetId, "[0.2]", "voyage-4-lite", 0L)).thenReturn(1);
 
         assertThat(service.generateOrReuse(assetId)).isTrue();
 
@@ -63,9 +68,11 @@ class MediaSemanticEmbeddingServiceTest {
                 .contains("format: event-photo")
                 .contains("temporal: evergreen")
                 .doesNotContain("ignored-ai-tag");
-        verify(embeddings).upsert(
-                assetId, MediaAssetEmbeddingType.SEMANTIC, "[0.2]", "voyage-4-lite");
-        verify(assets).updateEmbedding(assetId, "[0.2]", "voyage-4-lite");
+        verify(embeddings).upsertSemanticIfCurrent(
+                eq(assetId), eq("[0.2]"), eq("voyage-4-lite"), anyString(),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(0L));
+        verify(assets).updateEmbeddingIfSemanticRevision(
+                assetId, "[0.2]", "voyage-4-lite", 0L);
     }
 
     @Test
@@ -73,16 +80,20 @@ class MediaSemanticEmbeddingServiceTest {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
+        asset.setFileName("event.jpg");
         asset.setEmbeddingModel("voyage-4-lite");
         when(voyage.modelName()).thenReturn("voyage-4-lite");
-        when(embeddings.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.SEMANTIC, "voyage-4-lite")).thenReturn(true);
+        when(assets.findActiveWithAlbumById(assetId)).thenReturn(Optional.of(asset));
+        when(tags.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+        when(embeddings.existsCurrentVersionedEmbedding(
+                eq(assetId), eq(MediaAssetEmbeddingType.SEMANTIC.dbValue()),
+                eq("voyage-4-lite"), anyString(), eq(0L),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION))).thenReturn(true);
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
 
         assertThat(service.generateOrReuse(assetId)).isTrue();
 
         verify(voyage, never()).embedDocument(anyString());
-        verify(assets, never()).findActiveWithAlbumById(assetId);
     }
 
     @Test
@@ -90,18 +101,54 @@ class MediaSemanticEmbeddingServiceTest {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
+        asset.setFileName("event.jpg");
         asset.setEmbeddingModel("old-model");
         when(voyage.modelName()).thenReturn("voyage-4-lite");
-        when(embeddings.existsCurrentEmbedding(
-                assetId, MediaAssetEmbeddingType.SEMANTIC, "voyage-4-lite")).thenReturn(true);
+        when(assets.findActiveWithAlbumById(assetId)).thenReturn(Optional.of(asset));
+        when(tags.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+        when(embeddings.existsCurrentVersionedEmbedding(
+                eq(assetId), eq(MediaAssetEmbeddingType.SEMANTIC.dbValue()),
+                eq("voyage-4-lite"), anyString(), eq(0L),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION))).thenReturn(true);
         when(assets.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(embeddings.findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC))
                 .thenReturn(Optional.of("[0.4]"));
+        when(assets.updateEmbeddingIfSemanticRevision(
+                assetId, "[0.4]", "voyage-4-lite", 0L)).thenReturn(1);
 
         assertThat(service.generateOrReuse(assetId)).isTrue();
 
         verify(voyage, never()).embedDocument(anyString());
-        verify(assets).updateEmbedding(assetId, "[0.4]", "voyage-4-lite");
+        verify(assets).updateEmbeddingIfSemanticRevision(
+                assetId, "[0.4]", "voyage-4-lite", 0L);
+    }
+
+    @Test
+    void generateOrReuse_discardsProviderResultWhenMetadataChangedDuringCall() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileName("event.jpg");
+        asset.setSemanticRevision(4L);
+        when(voyage.modelName()).thenReturn("voyage-4-lite");
+        when(assets.findActiveWithAlbumById(assetId)).thenReturn(Optional.of(asset));
+        when(tags.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+        when(voyage.embedDocument(anyString())).thenReturn("[0.8]");
+        when(embeddings.upsertSemanticIfCurrent(
+                eq(assetId), eq("[0.8]"), eq("voyage-4-lite"), anyString(),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(4L)))
+                .thenReturn(0);
+
+        assertThat(service.generateOrReuse(assetId)).isFalse();
+
+        verify(assets, never()).updateEmbeddingIfSemanticRevision(
+                eq(assetId), anyString(), anyString(), eq(4L));
+    }
+
+    @Test
+    void semanticInputHash_normalizesCaseAndWhitespace() {
+        assertThat(MediaSemanticEmbeddingService.semanticInputHash("  Title: Event.\nTags: Tech.  "))
+                .isEqualTo(MediaSemanticEmbeddingService.semanticInputHash("title: event. tags: tech."));
     }
 
     private static AssetTag tag(String label, String source) {

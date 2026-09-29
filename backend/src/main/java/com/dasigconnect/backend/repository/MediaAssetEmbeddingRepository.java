@@ -33,6 +33,54 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                 @Param("embedding") String embeddingJson,
                 @Param("model") String model);
 
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_asset_embeddings
+            (asset_id, embedding_type, embedding, model, source_input_hash, source_revision, processing_version)
+        VALUES (:assetId, :embeddingType, CAST(:embedding AS vector), :model, :sourceInputHash, :sourceRevision, :processingVersion)
+        ON CONFLICT (asset_id, embedding_type)
+        DO UPDATE SET embedding = EXCLUDED.embedding, model = EXCLUDED.model,
+          source_input_hash = EXCLUDED.source_input_hash,
+          source_revision = EXCLUDED.source_revision,
+          processing_version = EXCLUDED.processing_version, created_at = NOW()
+        """, nativeQuery = true)
+    void upsertVersioned(@Param("assetId") UUID assetId,
+                         @Param("embeddingType") String embeddingType,
+                         @Param("embedding") String embeddingJson,
+                         @Param("model") String model,
+                         @Param("sourceInputHash") String sourceInputHash,
+                         @Param("sourceRevision") long sourceRevision,
+                         @Param("processingVersion") String processingVersion);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        INSERT INTO media_asset_embeddings
+            (asset_id, embedding_type, embedding, model, source_input_hash, source_revision, processing_version)
+        SELECT :assetId, 'semantic', CAST(:embedding AS vector), :model, :sourceInputHash,
+               :semanticRevision, :processingVersion
+        WHERE EXISTS (
+            SELECT 1 FROM media_assets
+            WHERE id = :assetId AND deleted_at IS NULL AND semantic_revision = :semanticRevision
+        )
+        ON CONFLICT (asset_id, embedding_type)
+        DO UPDATE SET embedding = EXCLUDED.embedding, model = EXCLUDED.model,
+          source_input_hash = EXCLUDED.source_input_hash,
+          source_revision = EXCLUDED.source_revision,
+          processing_version = EXCLUDED.processing_version, created_at = NOW()
+        WHERE EXISTS (
+            SELECT 1 FROM media_assets
+            WHERE id = :assetId AND deleted_at IS NULL AND semantic_revision = :semanticRevision
+        )
+        """, nativeQuery = true)
+    int upsertSemanticIfCurrent(@Param("assetId") UUID assetId,
+                                @Param("embedding") String embeddingJson,
+                                @Param("model") String model,
+                                @Param("sourceInputHash") String sourceInputHash,
+                                @Param("processingVersion") String processingVersion,
+                                @Param("semanticRevision") long semanticRevision);
+
     default Optional<String> findEmbedding(UUID assetId, MediaAssetEmbeddingType type) {
         return findEmbedding(assetId, type.dbValue());
     }
@@ -62,6 +110,22 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
     boolean existsCurrentEmbedding(@Param("assetId") UUID assetId,
                                    @Param("embeddingType") String embeddingType,
                                    @Param("model") String model);
+
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1 FROM media_asset_embeddings
+            WHERE asset_id = :assetId AND embedding_type = :embeddingType
+              AND model = :model AND source_input_hash = :sourceInputHash
+              AND source_revision = :sourceRevision
+              AND processing_version = :processingVersion
+        )
+        """, nativeQuery = true)
+    boolean existsCurrentVersionedEmbedding(@Param("assetId") UUID assetId,
+                                             @Param("embeddingType") String embeddingType,
+                                             @Param("model") String model,
+                                             @Param("sourceInputHash") String sourceInputHash,
+                                             @Param("sourceRevision") long sourceRevision,
+                                             @Param("processingVersion") String processingVersion);
 
     default long countEmbeddingsForAssets(List<UUID> assetIds, MediaAssetEmbeddingType type) {
         return countEmbeddingsForAssets(assetIds, type.dbValue());
