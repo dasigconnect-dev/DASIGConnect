@@ -76,9 +76,11 @@ public class MediaAssetController {
     public ResponseEntity<ApiResponse<MediaAssetListResponseDto>> semanticSearch(
             @RequestParam String query,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "25") int pageSize,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(
-                mediaAssetService.semanticSearch(query, institutionId, user)));
+                mediaAssetService.semanticSearch(query, institutionId, page, pageSize, user)));
     }
 
     @GetMapping("/{id}")

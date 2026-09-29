@@ -122,6 +122,7 @@ export interface MediaAssetSearchParams {
   albumId?: string | null;
   query?: string;
   mediaType?: "image" | "video";
+  sort?: string;
   page?: number;
   pageSize?: number;
 }
@@ -189,14 +190,21 @@ export function listMediaAssets(
 export function semanticSearchMediaAssets(
   query: string,
   institutionId?: string | null,
+  page = 1,
+  pageSize = 25,
   signal?: AbortSignal,
-) {
+): Promise<MediaAssetPage> {
   return api
     .get<MediaAssetPageResponse>("/media-assets/search", {
-      params: { query, ...(institutionId ? { institutionId } : {}) },
+      params: { query, ...(institutionId ? { institutionId } : {}), page, pageSize },
       signal,
     })
-    .then((response) => (response.data.items ?? []).map(rawToAsset));
+    .then((response) => ({
+      items: (response.data.items ?? []).map(rawToAsset),
+      totalCount: response.data.totalCount ?? 0,
+      page: response.data.page ?? page,
+      pageSize: response.data.pageSize ?? pageSize,
+    }));
 }
 
 export async function searchMediaAssets(
@@ -209,6 +217,7 @@ export async function searchMediaAssets(
     albumId: params.albumId ?? undefined,
     query: params.query || undefined,
     mediaType: params.mediaType || undefined,
+    sort: params.sort || undefined,
     page: params.page ?? 1,
     pageSize: params.pageSize ?? 24,
   };

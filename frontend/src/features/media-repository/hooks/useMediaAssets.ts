@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { listMediaAlbums, listMediaAssets, type MediaAlbum, type MediaAsset, type MediaAssetPage } from "../../../api/mediaApi";
+import { listMediaAlbums, searchMediaAssets, semanticSearchMediaAssets, type MediaAlbum, type MediaAsset, type MediaAssetPage } from "../../../api/mediaApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -43,6 +43,9 @@ export function useMediaAssets(
   networkView = false,
   institutionId?: string | null,
   albumId?: string | null,
+  search = "",
+  sort = "newest",
+  semantic = false,
   enabled = true,
 ) {
   const queryClient = useQueryClient();
@@ -53,18 +56,26 @@ export function useMediaAssets(
     networkView,
     institutionId: institutionId ?? null,
     albumId: albumId ?? null,
+    search,
+    sort: semantic ? "relevance" : sort,
+    semantic,
   });
 
   const query = useInfiniteQuery({
     queryKey,
-    queryFn: ({ signal, pageParam }) =>
-      listMediaAssets({
-        networkView,
-        institutionId,
-        albumId,
-        page: pageParam,
-        pageSize: MEDIA_ASSETS_PAGE_SIZE,
-      }, signal),
+    queryFn: ({ signal, pageParam }) => semantic && search.length >= 2
+      ? semanticSearchMediaAssets(
+          search, institutionId, pageParam, MEDIA_ASSETS_PAGE_SIZE, signal,
+        )
+      : searchMediaAssets({
+          networkView,
+          institutionId,
+          albumId,
+          query: search || undefined,
+          sort,
+          page: pageParam,
+          pageSize: MEDIA_ASSETS_PAGE_SIZE,
+        }, signal),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.page * lastPage.pageSize < lastPage.totalCount

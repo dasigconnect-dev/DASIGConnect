@@ -43,6 +43,9 @@ public class MediaProcessingWorker {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dasigconnect.backend.service.MediaSearchCacheService mediaSearchCache;
+
     public MediaProcessingWorker(
             MediaProcessingQueueService queue,
             MediaAssetRepository mediaAssetRepository,
@@ -137,6 +140,7 @@ public class MediaProcessingWorker {
                 throw new IllegalStateException("Voyage retrieval embeddings did not complete");
             }
             mediaAssetRepository.markProcessingReady(asset.getId(), job.getProcessingVersion());
+            if (mediaSearchCache != null) mediaSearchCache.invalidateAll();
             if (mediaAiTelemetry != null && asset.getCreatedAt() != null) {
                 mediaAiTelemetry.record("READY_LATENCY",
                         Math.max(0, Duration.between(asset.getCreatedAt(), Instant.now()).toMillis()),

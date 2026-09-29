@@ -28,7 +28,7 @@ class MediaSemanticEmbeddingServiceTest {
     private final MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
     private final VoyageAIClient voyage = mock(VoyageAIClient.class);
     private final MediaSemanticEmbeddingService service =
-            new MediaSemanticEmbeddingService(assets, tags, embeddings, voyage);
+            new MediaSemanticEmbeddingService(assets, tags, embeddings, voyage, mock(MediaSearchCacheService.class));
 
     @Test
     void generateOrReuse_buildsDocumentFromTrustedMetadataOnly() {

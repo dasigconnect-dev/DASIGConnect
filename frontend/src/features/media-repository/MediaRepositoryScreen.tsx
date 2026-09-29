@@ -17,7 +17,6 @@ import {
   moveMediaAlbum,
   registerMediaAsset,
   renameMediaAlbum,
-  semanticSearchMediaAssets,
   updateMediaAssetAlbum,
   renameMediaAsset,
   type MediaAlbum,
@@ -190,28 +189,36 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   // Meaning-based (Voyage embedding) search — explicit: toggle on, then press Enter.
   const [semantic, setSemantic] = useState(false);
-  const [semanticResults, setSemanticResults] = useState<MediaAsset[] | null>(null);
   const [semanticQuery, setSemanticQuery] = useState("");
-  const [semanticBusy, setSemanticBusy] = useState(false);
-  const semanticRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
-  const semanticRequestIdRef = useRef(0);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const folderUploadControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const semanticSearchActive = semantic && semanticQuery.length >= 2;
+  const effectiveSearch = semanticSearchActive
+    ? semanticQuery
+    : (!semantic && debouncedSearch.length >= 2 ? debouncedSearch : "");
 
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
   const networkAlbumMode = isNetworkBrowser && !selectedInstitutionId;
   // At that network root (no folder open, no search) only folder cards are
   // shown, so the network-wide asset fetch is skipped.
-  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim();
+  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !effectiveSearch;
 
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
-  const listAlbumId = search.trim() ? null : currentAlbumId;
+  const listAlbumId = effectiveSearch ? null : currentAlbumId;
   const {
     assets,
     setAssets,
     loading: assetsLoading,
     error: assetsError,
     refresh,
+    totalCount,
     hasNextPage,
     loadingMore,
     loadMore,
@@ -220,8 +227,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     networkView,
     selectedInstitutionId,
     listAlbumId,
+    effectiveSearch,
+    sort,
+    semanticSearchActive,
     !skipAssetFetch,
   );
+  const semanticResults = semanticSearchActive ? assets : null;
+  const semanticBusy = semanticSearchActive && assetsLoading;
 
   // Which institution's albums to load. null + network browser means every institution's albums.
   const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
@@ -454,60 +466,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setSearchParams(next);
     closePanel();
     clearSelection();
-    setSemanticResults(null);
+    setSemanticQuery("");
     setContentTypeFilter("all");
   }
 
   function cancelSemanticRequest() {
-    semanticRequestIdRef.current += 1;
-    semanticRequestRef.current?.controller.abort();
-    semanticRequestRef.current = null;
-    setSemanticBusy(false);
+    setSemanticQuery("");
   }
 
   useEffect(() => {
     return () => {
-      semanticRequestIdRef.current += 1;
-      semanticRequestRef.current?.controller.abort();
-      semanticRequestRef.current = null;
       folderUploadControllerRef.current?.abort();
       folderUploadControllerRef.current = null;
     };
   }, []);
 
-  async function runSemanticSearch() {
+  function runSemanticSearch() {
     const q = search.trim();
     if (q.length < 2) {
       cancelSemanticRequest();
-      setSemanticResults(null);
       return;
     }
-    semanticRequestRef.current?.controller.abort();
-    const request = {
-      id: ++semanticRequestIdRef.current,
-      controller: new AbortController(),
-    };
-    semanticRequestRef.current = request;
-    setSemanticBusy(true);
-    try {
-      const results = await semanticSearchMediaAssets(
-        q,
-        selectedInstitutionId,
-        request.controller.signal,
-      );
-      if (semanticRequestRef.current?.id !== request.id) return;
-      setSemanticResults(results);
-      setSemanticQuery(q);
-    } catch (err: unknown) {
-      if (semanticRequestRef.current?.id === request.id && !request.controller.signal.aborted) {
-        toast.error(getErrorText(err, "Semantic search failed. Try again."));
-      }
-    } finally {
-      if (semanticRequestRef.current?.id === request.id) {
-        semanticRequestRef.current = null;
-        setSemanticBusy(false);
-      }
-    }
+    setSemanticQuery(q);
   }
 
   function openInstitution(institutionId: string) {
@@ -571,7 +551,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const crumbInstitution = selectedInstitution ?? (networkAlbumMode ? currentAlbumInstitution : null);
 
   const filteredAssets = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const normalizedTerm = search.trim().toLowerCase();
+    // Server search also matches tags and asset codes that are absent from the
+    // summary DTO, so do not discard those valid results client-side.
+    const term = effectiveSearch ? "" : (normalizedTerm.length >= 2 ? normalizedTerm : "");
     let result = assets.filter((a) => {
       if (!term) return true;
       return [a.title, a.fileName, a.uploaderName, a.institutionName]
@@ -588,7 +571,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
 
     return result;
-  }, [assets, search, sort]);
+  }, [assets, effectiveSearch, search, sort]);
 
   // At the library root (no folder, no search) every asset lives in some folder,
   // so the root shows folders only — loose asset tiles would just be noise.
@@ -598,7 +581,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !hasNextPage || loadingMore || semanticResults !== null) return;
+    if (!target || !hasNextPage || loadingMore) return;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
       observer.unobserve(target);
@@ -606,7 +589,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }, { rootMargin: "240px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasNextPage, loadingMore, loadMore, semanticResults]);
+  }, [hasNextPage, loadingMore, loadMore]);
 
   // Folder-name and tag matches for the current search term (both search modes).
   const searchTerm = search.trim().toLowerCase();
@@ -1442,13 +1425,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onSearchChange={(v) => {
           cancelSemanticRequest();
           setSearch(v);
-          if (!v.trim()) setSemanticResults(null);
         }}
         semantic={semantic}
         onSemanticToggle={() => {
           cancelSemanticRequest();
           setSemantic((on) => {
-            if (on) setSemanticResults(null);
             return !on;
           });
         }}
@@ -1511,14 +1492,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {semanticResults !== null && (
         <div className="med-semantic-banner">
           <span>
-            <strong>{semanticResults.length}</strong> meaning-based {semanticResults.length === 1 ? "match" : "matches"} for
+            <strong>{totalCount}</strong> meaning-based {totalCount === 1 ? "match" : "matches"} for
             {" "}<em>“{semanticQuery}”</em>
           </span>
           <button
             type="button"
             onClick={() => {
               cancelSemanticRequest();
-              setSemanticResults(null);
+              setSemanticQuery("");
             }}
           >
             Clear
@@ -1664,7 +1645,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                           />
                         ))}
                       </div>
-                      {hasNextPage && semanticResults === null && (
+                      {hasNextPage && (
                         <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
                       )}
                     </section>

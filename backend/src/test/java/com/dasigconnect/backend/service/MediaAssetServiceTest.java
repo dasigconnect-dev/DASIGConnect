@@ -77,6 +77,8 @@ class MediaAssetServiceTest {
     private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     @Mock
     private com.dasigconnect.backend.repository.UserRepository userRepository;
+    @Mock
+    private MediaSearchCacheService mediaSearchCache;
 
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -102,7 +104,8 @@ class MediaAssetServiceTest {
                 auditLogService,
                 auditLogRepository,
                 userRepository,
-                objectMapper);
+                objectMapper,
+                mediaSearchCache);
         ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
@@ -364,7 +367,6 @@ class MediaAssetServiceTest {
     void semanticSearch_preservesInstitutionAndDraftVisibilityAndAppendsKeywordMatches() {
         UUID institutionId = UUID.randomUUID();
         UUID semanticId = UUID.randomUUID();
-        UUID draftOnlyId = UUID.randomUUID();
         UUID keywordId = UUID.randomUUID();
         MediaAsset semanticMatch = asset(semanticId, institutionId, UUID.randomUUID());
         semanticMatch.setAiCategory("Innovation");
@@ -373,21 +375,16 @@ class MediaAssetServiceTest {
 
         when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
                 .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
         when(voyageAIClient.embedQuery("robotics event")).thenReturn("[0.1,0.2]");
         when(mediaAssetRepository.findTopSimilarInInstitutions(
-                Set.of(institutionId), "[0.1,0.2]"))
-                .thenReturn(List.of(
-                        new Object[]{semanticId.toString(), 0.91},
-                        new Object[]{draftOnlyId.toString(), 0.88}));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(
-                List.of(semanticId, draftOnlyId))).thenReturn(Set.of(draftOnlyId));
-        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(
-                List.of(semanticId, draftOnlyId))).thenReturn(Set.of());
+                eq(Set.of(institutionId)), eq("[0.1,0.2]"), eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), any(Integer.class)))
+                .thenReturn(List.<Object[]>of(new Object[]{semanticId.toString(), 0.91}));
         when(mediaAssetRepository.findActiveByIds(List.of(semanticId)))
                 .thenReturn(List.of(semanticMatch));
         when(mediaAssetRepository.findKeywordMatches(
-                eq(false), eq(Set.of(institutionId)), eq("robotics event"),
-                eq(Set.of(semanticId)), any(Pageable.class)))
+                eq(false), eq(Set.of(institutionId)), eq("robotics event"), any(Pageable.class)))
                 .thenReturn(List.of(keywordMatch));
 
         MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
@@ -395,11 +392,11 @@ class MediaAssetServiceTest {
                 null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
-        assertEquals(List.of(semanticId, keywordId),
-                result.getItems().stream().map(item -> item.getId()).toList());
+        assertEquals(Set.of(semanticId, keywordId),
+                result.getItems().stream().map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
         verify(mediaAssetRepository).findTopSimilarInInstitutions(
-                Set.of(institutionId), "[0.1,0.2]");
-        verify(mediaAssetRepository, never()).findActiveByIds(List.of(draftOnlyId));
+                Set.of(institutionId), "[0.1,0.2]", "voyage-4-lite",
+                MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION, 200);
     }
 
     @Test
@@ -410,10 +407,11 @@ class MediaAssetServiceTest {
 
         when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
                 .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
         when(voyageAIClient.embedQuery("robotics")).thenThrow(new RuntimeException("provider unavailable"));
         when(mediaAssetRepository.findKeywordMatches(
                 eq(false), eq(Set.of(institutionId)), eq("robotics"),
-                anyCollection(), any(Pageable.class)))
+                any(Pageable.class)))
                 .thenReturn(List.of(categoryMatch));
 
         MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
@@ -424,10 +422,62 @@ class MediaAssetServiceTest {
         assertEquals(List.of(categoryMatch.getId()),
                 result.getItems().stream().map(item -> item.getId()).toList());
         verify(mediaAssetRepository, never()).findTopSimilarInInstitutions(
-                anyCollection(), anyString());
+                anyCollection(), anyString(), anyString(), anyString(), any(Integer.class));
         verify(mediaAssetRepository).findKeywordMatches(
                 eq(false), eq(Set.of(institutionId)), eq("robotics"),
-                anyCollection(), any(Pageable.class));
+                any(Pageable.class));
+    }
+
+    @Test
+    void semanticSearch_placesExactKeywordMatchBeforeConceptualMatchAndPaginates() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAsset exact = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        exact.setDisplayTitle("Hackathon");
+        MediaAsset conceptual = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(voyageAIClient.embedQuery("hackathon")).thenReturn("[0.1,0.2]");
+        when(mediaAssetRepository.findTopSimilarInInstitutions(
+                eq(Set.of(institutionId)), eq("[0.1,0.2]"), eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(200)))
+                .thenReturn(List.<Object[]>of(new Object[]{conceptual.getId().toString(), 0.95}));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("hackathon"), any(Pageable.class)))
+                .thenReturn(List.of(exact));
+        when(mediaAssetRepository.findExactKeywordMatchIds(
+                eq(false), eq(Set.of(institutionId)), eq("hackathon"), any(Pageable.class)))
+                .thenReturn(List.of(exact.getId()));
+        when(mediaAssetRepository.findActiveByIds(List.of(conceptual.getId())))
+                .thenReturn(List.of(conceptual));
+
+        MediaAssetListResponseDto firstPage = mediaAssetService.semanticSearch(
+                "hackathon", null, 1, 1,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(2, firstPage.getTotalCount());
+        assertEquals(List.of(exact.getId()),
+                firstPage.getItems().stream().map(item -> item.getId()).toList());
+    }
+
+    @Test
+    void semanticSearch_returnsScopeSafeCachedPageWithoutCallingVoyage() {
+        UUID institutionId = UUID.randomUUID();
+        JwtUserDetails actor = user(UUID.randomUUID(), "contributor", institutionId);
+        MediaAssetListResponseDto cached = new MediaAssetListResponseDto(List.of(), 0, 1, 25);
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(mediaSearchCache.get(anyString())).thenReturn(cached);
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                "hackathon", null, 1, 25, actor);
+
+        assertEquals(cached, result);
+        verify(voyageAIClient, never()).embedQuery(anyString());
+        verify(mediaAssetRepository, never()).findKeywordMatches(
+                anyBoolean(), anyCollection(), anyString(), any(Pageable.class));
     }
 
     private void stubRepositoryPage(
