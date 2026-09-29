@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -265,6 +266,101 @@ public class AIRecommendationService {
         return new MediaSuggestionBatch(rankedResults, processing, MediaSuggestionOutcome.READY);
     }
 
+    /**
+     * Runs the Phase 6 offline ranking experiments against the same authorized
+     * candidate retrieval used by live suggestions. This method is not exposed
+     * by a controller and is invoked only by the media-ai-evaluation profile.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public MediaEvaluationSnapshot evaluateMediaStrategies(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        long totalStarted = System.nanoTime();
+        Submission submission = loadAndAuthorise(submissionId, user);
+        UUID institutionId = submission.getInstitution().getId();
+        List<MediaAsset> attachedAssets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId);
+        Set<UUID> attachedIds = attachedAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toSet());
+        List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        Set<UUID> selectedImageIds = selectedImageAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
+
+        long visualStarted = System.nanoTime();
+        CandidateSignals visualSignals = loadAttachedCandidateScores(
+                institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId);
+        long visualDurationMs = MediaAiTelemetryService.elapsedMillis(visualStarted);
+
+        long semanticStarted = System.nanoTime();
+        CandidateSignals selectedSemanticSignals = loadAttachedCandidateScores(
+                institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
+        ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
+                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
+        Map<UUID, Double> semanticScores = combineSemanticScores(
+                selectedSemanticSignals.similarityScores(), textSemanticLoad.scores());
+        long semanticDurationMs = MediaAiTelemetryService.elapsedMillis(semanticStarted);
+
+        List<UUID> candidateIds = new ArrayList<>(visualSignals.similarityScores().keySet());
+        semanticScores.keySet().stream()
+                .filter(id -> !visualSignals.similarityScores().containsKey(id))
+                .forEach(candidateIds::add);
+
+        Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings =
+                new EnumMap<>(MediaEvaluationStrategy.class);
+        for (MediaEvaluationStrategy strategy : MediaEvaluationStrategy.values()) {
+            rankings.put(strategy, List.of());
+        }
+        if (candidateIds.isEmpty()) {
+            return new MediaEvaluationSnapshot(
+                    submissionId,
+                    institutionId,
+                    selectedImageIds.size(),
+                    0,
+                    Map.copyOf(rankings),
+                    new MediaEvaluationTimings(
+                            visualDurationMs,
+                            semanticDurationMs,
+                            MediaAiTelemetryService.elapsedMillis(totalStarted)));
+        }
+
+        Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
+                .stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
+        Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
+        Map<UUID, UsageSignal> usageMap = loadUsageSignalMap(candidateIds);
+        SubmissionMediaContext mediaContext = submissionMediaContextRepository.findById(submissionId)
+                .filter(context -> institutionId.equals(context.getInstitutionId()))
+                .orElse(null);
+
+        rankings.put(MediaEvaluationStrategy.IMAGE_ONLY, evaluationCandidates(rankSignalCandidates(
+                candidateIds, assetMap, attachedIds, visualSignals.similarityScores(),
+                "visual similarity to selected media")));
+        rankings.put(MediaEvaluationStrategy.SEMANTIC_ONLY, evaluationCandidates(rankSignalCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores,
+                "semantic similarity to submission context")));
+        rankings.put(MediaEvaluationStrategy.HYBRID_V2, evaluationCandidates(rankCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores,
+                visualSignals.similarityScores(), visualSignals.coverageScores(),
+                dto, tagMap, usageMap, selectedImageAssets, mediaContext, true)));
+        rankings.put(MediaEvaluationStrategy.RECIPROCAL_RANK_FUSION,
+                evaluationCandidates(rankReciprocalFusionCandidates(
+                        candidateIds, assetMap, attachedIds,
+                        visualSignals.similarityScores(), semanticScores)));
+
+        return new MediaEvaluationSnapshot(
+                submissionId,
+                institutionId,
+                selectedImageIds.size(),
+                candidateIds.size(),
+                Map.copyOf(rankings),
+                new MediaEvaluationTimings(
+                        visualDurationMs,
+                        semanticDurationMs,
+                        MediaAiTelemetryService.elapsedMillis(totalStarted)));
+    }
+
     private EmbeddingReadiness selectedImageReadiness(Set<UUID> selectedImageIds, UUID submissionId) {
         if (selectedImageIds.isEmpty()) return EmbeddingReadiness.READY;
         try {
@@ -361,6 +457,104 @@ public class AIRecommendationService {
     private static Comparator<RankedAsset> rankedAssetComparator() {
         return Comparator.comparingDouble(RankedAsset::score).reversed()
                 .thenComparing(result -> result.asset().getId());
+    }
+
+    private static List<RankedAsset> rankSignalCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> scores,
+            String reason) {
+        List<RankedAsset> ranked = candidateIds.stream()
+                .distinct()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
+                .filter(id -> scores.getOrDefault(id, 0.0) >= 0.40)
+                .map(id -> new RankedAsset(
+                        assetMap.get(id),
+                        clamp(scores.get(id)),
+                        List.of("Ranked by " + reason + ".")))
+                .sorted(rankedAssetComparator())
+                .toList();
+        return diversify(ranked, 10);
+    }
+
+    private static List<RankedAsset> rankReciprocalFusionCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> visualScores,
+            Map<UUID, Double> semanticScores) {
+        Map<UUID, Integer> visualRanks = signalRanks(visualScores);
+        Map<UUID, Integer> semanticRanks = signalRanks(semanticScores);
+        int availableSignals = (visualRanks.isEmpty() ? 0 : 1) + (semanticRanks.isEmpty() ? 0 : 1);
+        if (availableSignals == 0) return List.of();
+
+        double maximum = availableSignals / 61.0;
+        List<RankedAsset> ranked = candidateIds.stream()
+                .distinct()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
+                .map(id -> {
+                    double fused = reciprocalContribution(visualRanks.get(id))
+                            + reciprocalContribution(semanticRanks.get(id));
+                    return new RankedAsset(
+                            assetMap.get(id),
+                            clamp(fused / maximum),
+                            List.of("Ranked by reciprocal fusion of visual and semantic retrieval."));
+                })
+                .filter(result -> result.score() > 0.0)
+                .sorted(rankedAssetComparator())
+                .toList();
+        return diversify(ranked, 10);
+    }
+
+    static Map<UUID, Double> reciprocalRankFusionScores(
+            Map<UUID, Double> visualScores, Map<UUID, Double> semanticScores) {
+        Map<UUID, Integer> visualRanks = signalRanks(visualScores);
+        Map<UUID, Integer> semanticRanks = signalRanks(semanticScores);
+        int availableSignals = (visualRanks.isEmpty() ? 0 : 1) + (semanticRanks.isEmpty() ? 0 : 1);
+        if (availableSignals == 0) return Map.of();
+        double maximum = availableSignals / 61.0;
+        Set<UUID> ids = new LinkedHashSet<>(visualRanks.keySet());
+        ids.addAll(semanticRanks.keySet());
+        Map<UUID, Double> fused = new LinkedHashMap<>();
+        ids.stream()
+                .sorted()
+                .forEach(id -> fused.put(id, clamp((reciprocalContribution(visualRanks.get(id))
+                        + reciprocalContribution(semanticRanks.get(id))) / maximum)));
+        return Map.copyOf(fused);
+    }
+
+    private static Map<UUID, Integer> signalRanks(Map<UUID, Double> scores) {
+        Map<UUID, Integer> ranks = new LinkedHashMap<>();
+        List<UUID> ordered = scores.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() >= 0.40)
+                .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed()
+                        .thenComparing(Map.Entry::getKey))
+                .map(Map.Entry::getKey)
+                .toList();
+        for (int index = 0; index < ordered.size(); index++) {
+            ranks.put(ordered.get(index), index + 1);
+        }
+        return ranks;
+    }
+
+    private static double reciprocalContribution(Integer rank) {
+        return rank == null ? 0.0 : 1.0 / (60.0 + rank);
+    }
+
+    private static List<MediaEvaluationCandidate> evaluationCandidates(List<RankedAsset> ranked) {
+        return ranked.stream()
+                .limit(10)
+                .map(result -> new MediaEvaluationCandidate(
+                        result.asset().getId(),
+                        result.asset().getInstitution() == null
+                                ? null : result.asset().getInstitution().getId(),
+                        result.score()))
+                .toList();
     }
 
     private static void logShadowComparison(
@@ -1249,6 +1443,31 @@ public class AIRecommendationService {
                                     : MediaSuggestionOutcome.READY);
         }
 
+    }
+
+    public enum MediaEvaluationStrategy {
+        IMAGE_ONLY,
+        SEMANTIC_ONLY,
+        HYBRID_V2,
+        RECIPROCAL_RANK_FUSION
+    }
+
+    public record MediaEvaluationCandidate(UUID assetId, UUID institutionId, double score) {
+    }
+
+    public record MediaEvaluationTimings(
+            long visualRetrievalMs,
+            long semanticRetrievalMs,
+            long totalSuggestionMs) {
+    }
+
+    public record MediaEvaluationSnapshot(
+            UUID submissionId,
+            UUID institutionId,
+            int selectedImageCount,
+            int candidateCount,
+            Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings,
+            MediaEvaluationTimings timings) {
     }
 
     private record EmbeddingReadiness(boolean processing, boolean failed) {
