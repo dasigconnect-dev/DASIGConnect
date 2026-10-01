@@ -24,9 +24,10 @@ class EmbeddingReconciliationJobTest {
     private final VoyageAIClient voyage = mock(VoyageAIClient.class);
 
     private EmbeddingReconciliationJob job(boolean aiConfigured) {
+        when(queue.isEnrichmentConfigured()).thenReturn(aiConfigured);
         return new EmbeddingReconciliationJob(
                 mediaAssetRepository, queue, health, voyage,
-                aiConfigured ? "test-key" : "", aiConfigured ? "voyage-key" : "", 10, 2);
+                aiConfigured ? "voyage-key" : "", 10, 2);
     }
 
     @Test
@@ -87,11 +88,67 @@ class EmbeddingReconciliationJobTest {
 
         job(true).reconcile();
 
-        verify(queue).enqueueImageOnly(assetId);
+        verify(queue).enqueueDraftAnalysis(assetId);
         verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
         verify(mediaAssetRepository, never()).findFairReadyImagesNeedingCurrentEmbeddings(
                 any(), any(), any(), any(), any(),
                 org.mockito.ArgumentMatchers.anyInt(), any());
+    }
+
+    @Test
+    void reconcile_existingDraftImageMissingClassification_isEnriched() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(queue.availableBackfillSlots(10)).thenReturn(1);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any()))
+                .thenReturn(List.of());
+        when(mediaAssetRepository.findDraftImagesMissingClassification(any()))
+                .thenReturn(List.of(asset));
+
+        job(true).reconcile();
+
+        verify(queue).enqueueEnrichmentIfConfigured(assetId);
+        verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
+    }
+
+    @Test
+    void reconcile_historicalReadyImageMissingClassification_isEnrichedFairly() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findDraftImagesMissingImageEmbedding(any())).thenReturn(List.of());
+        when(mediaAssetRepository.findDraftImagesMissingClassification(any())).thenReturn(List.of());
+        when(mediaAssetRepository.findFairReadyImagesMissingClassification(
+                eq(MediaProcessingQueueService.ENRICHMENT_VERSION), eq(2), any()))
+                .thenReturn(List.of(asset));
+
+        job(true).reconcile();
+
+        verify(queue).enqueueEnrichmentIfConfigured(assetId);
+        verify(mediaAssetRepository).findFairReadyImagesMissingClassification(
+                eq(MediaProcessingQueueService.ENRICHMENT_VERSION), eq(2), any());
+    }
+
+    @Test
+    void reconcile_geminiOnlyConfiguration_stillBackfillsClassification() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        when(queue.isEnrichmentConfigured()).thenReturn(true);
+        when(queue.availableBackfillSlots(10)).thenReturn(1);
+        when(mediaAssetRepository.findDraftImagesMissingClassification(any())).thenReturn(List.of());
+        when(mediaAssetRepository.findFairReadyImagesMissingClassification(
+                eq(MediaProcessingQueueService.ENRICHMENT_VERSION), eq(2), any()))
+                .thenReturn(List.of(asset));
+        EmbeddingReconciliationJob geminiOnlyJob = new EmbeddingReconciliationJob(
+                mediaAssetRepository, queue, health, voyage, "", 10, 2);
+
+        geminiOnlyJob.reconcile();
+
+        verify(queue).enqueueEnrichmentIfConfigured(assetId);
+        verify(mediaAssetRepository, never()).findDraftImagesMissingImageEmbedding(any());
     }
 
     @Test

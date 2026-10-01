@@ -57,6 +57,7 @@ export default function AiSuggestedMediaTab({
     fileName: r.fileName,
     fileType: r.fileType,
     aiCategory: r.aiCategory ?? null,
+    assetType: r.assetType ?? null,
     similarityScore: r.similarityScore,
     matchReasons: r.matchReasons ?? [],
   }));
@@ -229,8 +230,13 @@ export default function AiSuggestedMediaTab({
               </>
             ) : (
               <>
-                <span className="ast-results-label">
-                  Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
+                <span className="ast-results-copy">
+                  <span className="ast-results-label">
+                    Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
+                  </span>
+                  <span className="ast-results-method">
+                    Gemini identifies format and content; Voyage compares visual and semantic similarity.
+                  </span>
                 </span>
                 <button
                   type="button"

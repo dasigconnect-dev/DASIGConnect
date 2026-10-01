@@ -303,6 +303,20 @@ public interface MediaProcessingJobRepository extends JpaRepository<MediaProcess
                                         @Param("imageVersion") String imageVersion,
                                         @Param("retrievalVersion") String retrievalVersion);
 
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM media_processing_jobs job
+            WHERE job.asset_id IN (:assetIds)
+              AND job.job_type IN ('ENRICH_MEDIA', 'CLASSIFY_AND_EMBED')
+              AND job.processing_version = :enrichmentVersion
+              AND job.status IN ('PENDING', 'PROCESSING', 'RETRY')
+        )
+        """, nativeQuery = true)
+    boolean existsActiveEnrichmentJob(
+            @Param("assetIds") List<UUID> assetIds,
+            @Param("enrichmentVersion") String enrichmentVersion);
+
     @Modifying
     @Transactional
     @Query(value = """

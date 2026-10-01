@@ -47,6 +47,8 @@ public class ClaudeVisionClient {
     private static final String API_URL = "https://api.anthropic.com/v1/messages";
     private static final String ANTHROPIC_VERSION = "2023-06-01";
     private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB — Anthropic hard limit
+    private static final int VISUAL_EMBEDDING_MAX_DIMENSION = 1280;
+    private static final int VISUAL_EMBEDDING_MAX_BYTES = 1536 * 1024;
     private static final int DEFAULT_CAPTION_MAX_TOKENS = 512;
     private static final int MAX_CAPTION_MAX_TOKENS = 4096;
     public static final int MAX_REQUESTED_CAPTION_WORDS = 2000;
@@ -287,6 +289,58 @@ public class ClaudeVisionClient {
     public PreparedImage prepareImageForEmbedding(String url) {
         ImageData data = fetchAndPrepareImage(url);
         return new PreparedImage(data.bytes(), data.mediaType());
+    }
+
+    /**
+     * Prepares a smaller copy for Voyage visual retrieval. The original object
+     * in storage is never modified. Capping resolution avoids sending a large
+     * base64 payload when the retrieval model only needs a representative image.
+     */
+    public PreparedImage prepareImageForVisualEmbedding(String url) {
+        byte[] raw = fetchImageBytes(url);
+        String mediaType = detectMediaType(url);
+        try {
+            BufferedImage original = ImageIO.read(new ByteArrayInputStream(raw));
+            if (original == null) return new PreparedImage(raw, mediaType);
+            int maxDimension = Math.max(original.getWidth(), original.getHeight());
+            if (maxDimension <= VISUAL_EMBEDDING_MAX_DIMENSION
+                    && raw.length <= VISUAL_EMBEDDING_MAX_BYTES) {
+                return new PreparedImage(raw, mediaType);
+            }
+
+            double scale = Math.min(
+                    1.0,
+                    (double) VISUAL_EMBEDDING_MAX_DIMENSION / maxDimension);
+            byte[] resized = null;
+            for (int attempt = 0; attempt < 5; attempt++) {
+                int width = Math.max(1, (int) Math.round(original.getWidth() * scale));
+                int height = Math.max(1, (int) Math.round(original.getHeight() * scale));
+                BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+                Graphics2D graphics = output.createGraphics();
+                graphics.setRenderingHint(
+                        RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.setRenderingHint(
+                        RenderingHints.KEY_RENDERING,
+                        RenderingHints.VALUE_RENDER_QUALITY);
+                graphics.drawImage(original, 0, 0, width, height, null);
+                graphics.dispose();
+
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                ImageIO.write(output, "JPEG", bytes);
+                resized = bytes.toByteArray();
+                if (resized.length <= VISUAL_EMBEDDING_MAX_BYTES) break;
+                scale *= 0.8;
+            }
+            if (resized == null || resized.length == 0) return new PreparedImage(raw, mediaType);
+            log.info("Prepared {}x{} visual embedding image ({} -> {} bytes)",
+                    original.getWidth(), original.getHeight(), raw.length, resized.length);
+            return new PreparedImage(resized, "image/jpeg");
+        } catch (Exception error) {
+            log.warn("Could not resize visual embedding input; using original image: {}",
+                    error.getMessage());
+            return new PreparedImage(raw, mediaType);
+        }
     }
 
     private ImageData fetchAndPrepareImage(String url) {

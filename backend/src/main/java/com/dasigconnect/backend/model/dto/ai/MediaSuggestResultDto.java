@@ -4,6 +4,7 @@ import com.dasigconnect.backend.model.entity.MediaAsset;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class MediaSuggestResultDto {
@@ -15,8 +16,10 @@ public class MediaSuggestResultDto {
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
+    private String assetType;
     private double similarityScore;
     private List<String> matchReasons;
+    private Map<String, Double> scoreBreakdown;
     private String rankingVersion;
     private Instant createdAt;
 
@@ -30,6 +33,15 @@ public class MediaSuggestResultDto {
 
     public static MediaSuggestResultDto from(
             MediaAsset asset, double score, List<String> matchReasons, String rankingVersion) {
+        return from(asset, score, matchReasons, Map.of(), rankingVersion);
+    }
+
+    public static MediaSuggestResultDto from(
+            MediaAsset asset,
+            double score,
+            List<String> matchReasons,
+            Map<String, Double> scoreBreakdown,
+            String rankingVersion) {
         MediaSuggestResultDto dto = new MediaSuggestResultDto();
         dto.id = asset.getId();
         dto.assetCode = asset.getAssetCode();
@@ -38,8 +50,10 @@ public class MediaSuggestResultDto {
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
+        dto.assetType = asset.getAssetType();
         dto.similarityScore = score;
         dto.matchReasons = matchReasons == null ? List.of() : List.copyOf(matchReasons);
+        dto.scoreBreakdown = scoreBreakdown == null ? Map.of() : Map.copyOf(scoreBreakdown);
         dto.rankingVersion = rankingVersion;
         dto.createdAt = asset.getCreatedAt();
         return dto;
@@ -52,8 +66,10 @@ public class MediaSuggestResultDto {
     public String getFileType() { return fileType; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }
+    public String getAssetType() { return assetType; }
     public double getSimilarityScore() { return similarityScore; }
     public List<String> getMatchReasons() { return matchReasons; }
+    public Map<String, Double> getScoreBreakdown() { return scoreBreakdown; }
     public String getRankingVersion() { return rankingVersion; }
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -515,6 +515,69 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findDraftImagesMissingImageEmbedding(Pageable pageable);
 
     @Query(value = """
+        SELECT DISTINCT ma.*
+        FROM media_assets ma
+        JOIN submission_media_assets link ON link.media_asset_id = ma.id
+        JOIN submissions submission ON submission.id = link.submission_id
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'STAGED'
+          AND submission.status = 'draft'
+          AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+          AND (ma.asset_type IS NULL OR BTRIM(ma.asset_type) = '')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type IN ('ENRICH_MEDIA', 'CLASSIFY_AND_EMBED')
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findDraftImagesMissingClassification(Pageable pageable);
+
+    /**
+     * Institution-fair Gemini metadata backfill for historical READY images.
+     * Completed jobs may be selected again when metadata is still absent, while
+     * active/dead jobs for the current enrichment version remain untouched.
+     */
+    @Query(value = """
+        WITH eligible AS (
+            SELECT ma.id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ma.institution_id
+                       ORDER BY ma.created_at ASC, ma.id ASC
+                   ) AS institution_rank
+            FROM media_assets ma
+            WHERE ma.deleted_at IS NULL
+              AND ma.status = 'READY'
+              AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+              AND ma.storage_url IS NOT NULL
+              AND (
+                  ma.ai_classified_at IS NULL
+                  OR ma.asset_type IS NULL
+                  OR BTRIM(ma.asset_type) = ''
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM media_processing_jobs job
+                  WHERE job.asset_id = ma.id
+                    AND job.job_type IN ('ENRICH_MEDIA', 'CLASSIFY_AND_EMBED')
+                    AND job.processing_version = :enrichmentVersion
+                    AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+              )
+        )
+        SELECT ma.*
+        FROM eligible candidate
+        JOIN media_assets ma ON ma.id = candidate.id
+        WHERE candidate.institution_rank <= :perInstitutionLimit
+        ORDER BY candidate.institution_rank, ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findFairReadyImagesMissingClassification(
+            @Param("enrichmentVersion") String enrichmentVersion,
+            @Param("perInstitutionLimit") int perInstitutionLimit,
+            Pageable pageable);
+
+    @Query(value = """
         SELECT ma.*
         FROM media_assets ma
         WHERE ma.deleted_at IS NULL

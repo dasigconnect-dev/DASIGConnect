@@ -939,7 +939,7 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isNull();
         assertThat(captor.getValue().getStatus()).isEqualTo(MediaAssetStatus.STAGED);
-        verify(mediaProcessingQueueService).enqueueImageOnlyAfterCommit(captor.getValue().getId());
+        verify(mediaProcessingQueueService).enqueueDraftAnalysisAfterCommit(captor.getValue().getId());
         verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 
@@ -962,6 +962,7 @@ class SubmissionServiceTest {
         submissionService.attachMedia(submissionId, dto, contributorPrincipal);
 
         verify(mediaProcessingQueueService, never()).enqueueImageOnlyAfterCommit(any());
+        verify(mediaProcessingQueueService, never()).enqueueDraftAnalysisAfterCommit(any());
         verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 

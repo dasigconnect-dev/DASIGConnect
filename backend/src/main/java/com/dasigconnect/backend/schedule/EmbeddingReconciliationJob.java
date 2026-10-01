@@ -37,7 +37,6 @@ public class EmbeddingReconciliationJob {
             MediaProcessingQueueService queueService,
             ScheduledJobHealthService healthService,
             VoyageAIClient voyageAIClient,
-            @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey,
             @Value("${app.media-processing.backfill-batch-size:10}") int backfillBatchSize,
             @Value("${app.media-processing.backfill-per-institution:2}") int backfillPerInstitution) {
@@ -53,7 +52,7 @@ public class EmbeddingReconciliationJob {
 
     @Scheduled(fixedDelayString = "${app.media-processing.reconcile-delay-ms:300000}")
     public void reconcile() {
-        if (!retrievalConfigured) return;
+        if (!retrievalConfigured && !queueService.isEnrichmentConfigured()) return;
         Instant startedAt = Instant.now();
         try {
             int availableSlots = queueService.availableBackfillSlots(backfillBatchSize);
@@ -66,16 +65,45 @@ public class EmbeddingReconciliationJob {
                     ? mediaAssetRepository.findDraftImagesMissingImageEmbedding(
                             PageRequest.of(0, availableSlots))
                     : List.of();
-            for (MediaAsset asset : draftImages) queueService.enqueueImageOnly(asset.getId());
-            int classificationSlots = availableSlots - draftImages.size();
-            List<MediaAsset> pending = classificationSlots > 0
+            for (MediaAsset asset : draftImages) queueService.enqueueDraftAnalysis(asset.getId());
+            int draftClassificationSlots = availableSlots - draftImages.size();
+            java.util.Set<java.util.UUID> queuedDraftIds = draftImages.stream()
+                    .map(MediaAsset::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+            List<MediaAsset> draftClassifications = draftClassificationSlots > 0
+                    && queueService.isEnrichmentConfigured()
+                    ? mediaAssetRepository.findDraftImagesMissingClassification(
+                            PageRequest.of(0, draftClassificationSlots))
+                            .stream()
+                            .filter(asset -> !queuedDraftIds.contains(asset.getId()))
+                            .toList()
+                    : List.of();
+            for (MediaAsset asset : draftClassifications) {
+                queueService.enqueueEnrichmentIfConfigured(asset.getId());
+            }
+            int historicalClassificationSlots = draftClassificationSlots - draftClassifications.size();
+            int historicalClassificationLimit = Math.min(
+                    historicalClassificationSlots,
+                    Math.max(1, availableSlots / 2));
+            List<MediaAsset> historicalClassifications = historicalClassificationLimit > 0
+                    && queueService.isEnrichmentConfigured()
+                    ? mediaAssetRepository.findFairReadyImagesMissingClassification(
+                            MediaProcessingQueueService.ENRICHMENT_VERSION,
+                            backfillPerInstitution,
+                            PageRequest.of(0, historicalClassificationLimit))
+                    : List.of();
+            for (MediaAsset asset : historicalClassifications) {
+                queueService.enqueueEnrichmentIfConfigured(asset.getId());
+            }
+            int processingSlots = historicalClassificationSlots - historicalClassifications.size();
+            List<MediaAsset> pending = processingSlots > 0
                     ? mediaAssetRepository.findNeedingProcessingVersion(
                             MediaProcessingQueueService.PROCESSING_VERSION,
-                            PageRequest.of(0, classificationSlots))
+                            PageRequest.of(0, processingSlots))
                     : List.of();
             for (MediaAsset asset : pending) queueService.enqueue(asset.getId());
             int backfillSlots = imageEmbeddingConfigured
-                    ? classificationSlots - pending.size()
+                    ? processingSlots - pending.size()
                     : 0;
             List<MediaAsset> backfill = backfillSlots > 0
                     ? mediaAssetRepository.findFairReadyImagesNeedingCurrentEmbeddings(
@@ -88,10 +116,15 @@ public class EmbeddingReconciliationJob {
                             PageRequest.of(0, backfillSlots))
                     : List.of();
             for (MediaAsset asset : backfill) queueService.enqueueBackfill(asset.getId());
-            if (!draftImages.isEmpty() || !pending.isEmpty() || !backfill.isEmpty()) {
-                log.info("EmbeddingReconciliationJob: enqueued {} draft images, {} incomplete assets, "
+            if (!draftImages.isEmpty() || !draftClassifications.isEmpty()
+                    || !historicalClassifications.isEmpty()
+                    || !pending.isEmpty() || !backfill.isEmpty()) {
+                log.info("EmbeddingReconciliationJob: enqueued {} draft image vectors, "
+                                + "{} draft classifications, {} historical classifications, "
+                                + "{} incomplete assets, "
                                 + "and {} institution-fair historical backfills",
-                        draftImages.size(), pending.size(), backfill.size());
+                        draftImages.size(), draftClassifications.size(), historicalClassifications.size(),
+                        pending.size(), backfill.size());
             }
             healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
         } catch (Exception error) {

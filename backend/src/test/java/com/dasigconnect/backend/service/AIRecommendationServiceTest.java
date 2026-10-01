@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.springframework.web.server.ResponseStatusException;
@@ -49,6 +50,22 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 class AIRecommendationServiceTest {
+
+    @Test
+    void mediaFormatCompatibility_requiresExactGraphicType() {
+        MediaAsset infographic = asset(UUID.randomUUID(), "campaign.png", "Education");
+        infographic.setAssetType("Infographic");
+        MediaAsset anotherInfographic = asset(UUID.randomUUID(), "summary.png", "Education");
+        anotherInfographic.setAssetType("Infographic");
+        MediaAsset poster = asset(UUID.randomUUID(), "poster.png", "Education");
+        poster.setAssetType("Poster");
+        MediaAsset eventPhoto = asset(UUID.randomUUID(), "meeting.jpg", "Education");
+        eventPhoto.setAssetType("Event Photo");
+
+        assertTrue(AIRecommendationService.hasCompatibleMediaFormat(anotherInfographic, List.of(infographic)));
+        assertFalse(AIRecommendationService.hasCompatibleMediaFormat(poster, List.of(infographic)));
+        assertFalse(AIRecommendationService.hasCompatibleMediaFormat(eventPhoto, List.of(infographic)));
+    }
 
     @Test
     void reciprocalRankFusion_prioritizesCandidatesSupportedByBothSignals() {
@@ -424,6 +441,11 @@ class AIRecommendationServiceTest {
         MediaAsset secondLibraryPick = asset(UUID.randomUUID(), "library-pick-2.jpg", "Event");
         MediaAsset unselected = asset(UUID.randomUUID(), "unselected.jpg", "Event");
         MediaAsset candidate = asset(UUID.randomUUID(), "recommended.jpg", "Event");
+        List.of(firstStagedUpload, secondStagedUpload, firstLibraryPick, secondLibraryPick)
+                .forEach(asset -> asset.setAssetType("Infographic"));
+        firstStagedUpload.setVisibleObjects(new String[]{"QR code", "conference text"});
+        candidate.setAssetType("Infographic");
+        candidate.setVisibleObjects(new String[]{"QR code", "university logo"});
         List<UUID> selectedIds = List.of(
                 firstStagedUpload.getId(), secondStagedUpload.getId(),
                 firstLibraryPick.getId(), secondLibraryPick.getId());
@@ -472,6 +494,13 @@ class AIRecommendationServiceTest {
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
 
         assertEquals(List.of(candidate.getId()), results.stream().map(MediaSuggestResultDto::getId).toList());
+        assertEquals("Infographic", results.getFirst().getAssetType());
+        assertEquals("Gemini detected the same format: Infographic.",
+                results.getFirst().getMatchReasons().getFirst());
+        assertThat(results.getFirst().getMatchReasons())
+                .contains("Gemini found shared details: QR code.");
+        assertEquals(1.0, results.getFirst().getScoreBreakdown().get("format"));
+        assertEquals(0.82, results.getFirst().getScoreBreakdown().get("visual"));
         verify(embeddings, never()).findTopSimilarToAssetsWithScore(
                 eq(institutionId),
                 eq(submissionId),
@@ -692,9 +721,15 @@ class AIRecommendationServiceTest {
                 submissionId,
                 dto,
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+        List<MediaSuggestResultDto> refreshedResults = service.suggestMedia(
+                submissionId,
+                dto,
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
 
         assertEquals(1, results.size());
         assertEquals(candidateId, results.getFirst().getId());
+        assertEquals(candidateId, refreshedResults.getFirst().getId());
+        verify(voyage, times(1)).embedQuery(anyString());
         verify(embeddings, never()).findTopSimilarToAssetsWithScore(
                 eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30));
     }
