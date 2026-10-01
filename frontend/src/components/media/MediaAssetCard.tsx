@@ -6,6 +6,7 @@ interface MediaAssetCardProps {
   fileName: string;
   fileType: string;
   aiCategory?: string | null;
+  assetType?: string | null;
   similarityScore?: number;
   matchReasons?: string[];
   institutionName?: string | null;
@@ -25,12 +26,29 @@ function matchLabel(score: number) {
   return "Possible match";
 }
 
+function reasonPriority(reason: string) {
+  const normalized = reason.toLowerCase();
+  if (normalized.includes("same format")) return 0;
+  if (normalized.includes("gemini") || normalized.includes("media format")) return 1;
+  if (normalized.includes("visual")) return 2;
+  if (/context|category|tag|metadata|details|mention/.test(normalized)) return 3;
+  if (/recent|variety|used/.test(normalized)) return 8;
+  return 5;
+}
+
+function readableReasons(reasons: string[]) {
+  return [...new Set(reasons.map((reason) => reason.trim()).filter(Boolean))]
+    .sort((a, b) => reasonPriority(a) - reasonPriority(b))
+    .slice(0, 2);
+}
+
 export default function MediaAssetCard({
   id,
   storageUrl,
   fileName,
   fileType,
   aiCategory,
+  assetType,
   similarityScore,
   matchReasons = [],
   institutionName,
@@ -42,11 +60,8 @@ export default function MediaAssetCard({
   const shortName = fileName.length > 20 ? fileName.slice(0, 17) + "..." : fileName;
   const scorePct = similarityScore != null ? Math.round(similarityScore * 100) : null;
   const scoreLabel = similarityScore != null ? matchLabel(similarityScore) : null;
-  const visibleReasons = matchReasons.filter(Boolean).slice(0, 3);
-  const matchSummary =
-    scorePct != null && scoreLabel
-      ? [`${scoreLabel} (${scorePct}% relevance)`, ...visibleReasons].join(" ")
-      : fileName;
+  const visibleReasons = readableReasons(matchReasons);
+  const primaryReason = visibleReasons[0];
   const reasonId = `mac-match-${id}`;
 
   return (
@@ -60,7 +75,13 @@ export default function MediaAssetCard({
         .filter(Boolean)
         .join(" ")}
       onClick={onToggle}
-      title={alreadyAdded ? `${fileName} (already in post). ${matchSummary}` : matchSummary}
+      aria-label={[
+        fileName,
+        assetType ? `Gemini format ${assetType}` : null,
+        scoreLabel,
+        primaryReason,
+        alreadyAdded ? "already in post" : null,
+      ].filter(Boolean).join(", ")}
       aria-pressed={selected}
       aria-describedby={visibleReasons.length > 0 ? reasonId : undefined}
     >
@@ -91,9 +112,15 @@ export default function MediaAssetCard({
             {scoreLabel}
           </span>
         )}
+        {assetType && assetType.toLowerCase() !== "other" && (
+          <span className="mac-format">{assetType}</span>
+        )}
         {visibleReasons.length > 0 && (
           <span className="mac-match-tooltip" id={reasonId}>
-            <span className="mac-match-title">Why this match</span>
+            <span className="mac-match-title">
+              Why this matches
+              {scorePct != null && <span className="mac-match-score"> · {scorePct}%</span>}
+            </span>
             {visibleReasons.map((reason) => (
               <span className="mac-match-reason" key={reason}>
                 {reason}
@@ -102,7 +129,13 @@ export default function MediaAssetCard({
           </span>
         )}
       </div>
-      <p className="mac-name" title={fileName}>{shortName}</p>
+      <p className="mac-name">{shortName}</p>
+      {primaryReason && (
+        <p className="mac-reason-preview">
+          <i className="ti ti-sparkles" aria-hidden />
+          <span>{primaryReason}</span>
+        </p>
+      )}
       {aiCategory && <p className="mac-category">{aiCategory}</p>}
       {institutionName && <p className="mac-institution">{institutionName}</p>}
       {alreadyAdded && <p className="mac-added-label">In post</p>}

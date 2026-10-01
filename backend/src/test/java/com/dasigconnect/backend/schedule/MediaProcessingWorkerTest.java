@@ -37,14 +37,14 @@ class MediaProcessingWorkerTest {
     private final SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
 
     private MediaProcessingWorker worker(boolean configured) {
-        return worker(configured ? "anthropic" : "", configured ? "voyage" : "");
+        return worker(configured ? "gemini" : "", configured ? "voyage" : "");
     }
 
-    private MediaProcessingWorker worker(String anthropicApiKey, String voyageApiKey) {
+    private MediaProcessingWorker worker(String geminiApiKey, String voyageApiKey) {
         return new MediaProcessingWorker(
                 queue, assets, classification, imageEmbedding, retrievalEmbedding, semanticEmbedding,
                 health, context, submissionMedia, 2,
-                anthropicApiKey, voyageApiKey);
+                geminiApiKey, voyageApiKey);
     }
 
     @Test
@@ -106,8 +106,8 @@ class MediaProcessingWorkerTest {
     }
 
     @Test
-    void processBatch_anthropicOnlyDoesNotClaimImageEmbeddingJobs() {
-        worker("anthropic", "").processBatch();
+    void processBatch_geminiOnlyDoesNotClaimImageEmbeddingJobs() {
+        worker("gemini", "").processBatch();
 
         verify(queue).claimBatch(anyString(), org.mockito.ArgumentMatchers.eq(2),
                 org.mockito.ArgumentMatchers.eq(true),

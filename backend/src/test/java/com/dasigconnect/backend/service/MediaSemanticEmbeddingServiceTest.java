@@ -31,13 +31,19 @@ class MediaSemanticEmbeddingServiceTest {
             new MediaSemanticEmbeddingService(assets, tags, embeddings, voyage, mock(MediaSearchCacheService.class));
 
     @Test
-    void generateOrReuse_buildsDocumentFromTrustedMetadataOnly() {
+    void generateOrReuse_combinesUserMetadataWithGeminiObservations() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
         asset.setDisplayTitle("Innovation Summit");
         asset.setFileName("IMG_hackathon-day1.jpg");
         asset.setAssetType("event-photo");
+        asset.setAiCategory("Event");
+        asset.setAiDescription("Students presenting projects in a lecture hall.");
+        asset.setVisibleObjects(new String[]{"presentation screen", "tables"});
+        asset.setObservedActivities(new String[]{"project presentation"});
+        asset.setOcrText(new String[]{"Innovation Summit 2026"});
+        asset.setAiTags(new String[]{"student projects", "indoor event"});
         asset.setTemporalClassification("evergreen");
         MediaAlbum album = new MediaAlbum();
         album.setName("Student Events");
@@ -65,7 +71,13 @@ class MediaSemanticEmbeddingServiceTest {
                 .contains("filename: IMG hackathon day1")
                 .contains("album: Student Events")
                 .contains("tags: hackathon")
-                .contains("format: event-photo")
+                .contains("category: Event")
+                .contains("description: Students presenting projects in a lecture hall")
+                .contains("asset type: event-photo")
+                .contains("visible objects: presentation screen, tables")
+                .contains("activities: project presentation")
+                .contains("visible text: Innovation Summit 2026")
+                .contains("ai tags: indoor event, student projects")
                 .contains("temporal: evergreen")
                 .doesNotContain("ignored-ai-tag");
         verify(embeddings).upsertSemanticIfCurrent(

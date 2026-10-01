@@ -140,6 +140,7 @@ export function useSubmissionMediaAutosave({
     const latestItems = desiredRef.current;
     const latestClientIds = new Set(latestItems.map((item) => item.clientId));
     const requestedDetachIds = new Set(removedRef.current);
+    let detachedAsset = false;
     uploadAssetIdsRef.current.forEach((assetId, clientId) => {
       if (!latestClientIds.has(clientId)) requestedDetachIds.add(assetId);
     });
@@ -151,10 +152,9 @@ export function useSubmissionMediaAutosave({
         if (requestStatus(error) !== 404) throw error;
       }
       serverIds.delete(assetId);
+      detachedAsset = true;
     }
 
-    summary = (await getSubmission(id, signal)).data;
-    serverIds = new Set((summary.mediaAssets ?? []).map((asset) => asset.id));
     const resolvedDesiredIds = latestItems
       .map((item) => item.assetId ?? uploadAssetIdsRef.current.get(item.clientId))
       .filter((assetId): assetId is string => Boolean(assetId));
@@ -175,6 +175,11 @@ export function useSubmissionMediaAutosave({
         );
       });
       summary = (await reorderSubmissionMedia(id, resolvedDesiredIds, captions, flags, signal)).data;
+    } else if (detachedAsset) {
+      // Attach and upload responses already contain the current media summary.
+      // A delete has no response body, so refresh only when reorder cannot give
+      // us the authoritative post-delete state (for example, removing all media).
+      summary = (await getSubmission(id, signal)).data;
     }
 
     const assetsById = new Map((summary.mediaAssets ?? []).map((asset) => [asset.id, asset]));

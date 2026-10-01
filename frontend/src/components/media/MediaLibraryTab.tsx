@@ -148,7 +148,7 @@ export default function MediaLibraryTab({
             ref={searchRef}
             type="search"
             className="mlt-search"
-            placeholder="Search by filename or tags…"
+            placeholder="Search by meaning, filename, or tags…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search media library"

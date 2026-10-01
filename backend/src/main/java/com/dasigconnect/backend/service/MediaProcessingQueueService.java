@@ -20,10 +20,10 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MediaProcessingQueueService {
 
-    public static final String PROCESSING_VERSION = "media-retrieval-v1";
-    public static final String ENRICHMENT_VERSION = "claude-enrichment-v1";
+    public static final String PROCESSING_VERSION = "media-retrieval-v2";
+    public static final String ENRICHMENT_VERSION = "gemini-enrichment-v1";
     public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
-    public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v1";
+    public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v2";
     public static final String CONTEXT_VERSION = "submission-context-v1";
     public static final int BACKFILL_PRIORITY = 100;
     private static final int MAX_ERROR_LENGTH = 500;
@@ -34,18 +34,21 @@ public class MediaProcessingQueueService {
     private final Duration leaseDuration;
     private final int maxJobsPerInstitutionPerBatch;
     private final int maxQueueDepth;
+    private final boolean enrichmentConfigured;
 
     public MediaProcessingQueueService(
             MediaProcessingJobRepository repository,
             @Value("${app.media-processing.max-attempts:5}") int maxAttempts,
             @Value("${app.media-processing.lease-seconds:300}") long leaseSeconds,
             @Value("${app.media-processing.max-jobs-per-institution-per-batch:2}") int maxJobsPerInstitutionPerBatch,
-            @Value("${app.media-processing.max-queue-depth:100}") int maxQueueDepth) {
+            @Value("${app.media-processing.max-queue-depth:100}") int maxQueueDepth,
+            @Value("${gemini.api.key:}") String geminiApiKey) {
         this.repository = repository;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.leaseDuration = Duration.ofSeconds(Math.max(30, leaseSeconds));
         this.maxJobsPerInstitutionPerBatch = Math.max(1, Math.min(maxJobsPerInstitutionPerBatch, 10));
         this.maxQueueDepth = Math.max(10, maxQueueDepth);
+        this.enrichmentConfigured = geminiApiKey != null && !geminiApiKey.isBlank();
     }
 
     public void enqueue(UUID assetId) {
@@ -80,6 +83,28 @@ public class MediaProcessingQueueService {
 
     public void enqueueImageOnlyAfterCommit(UUID assetId) {
         runAfterCommit(() -> enqueueImageOnlySafely(assetId));
+    }
+
+    /**
+     * Draft suggestions need both Gemini's structured media type and Voyage's
+     * visual vector. Queue both durable jobs after the upload transaction so
+     * format-aware ranking can distinguish infographics from event photos.
+     */
+    public void enqueueDraftAnalysisAfterCommit(UUID assetId) {
+        runAfterCommit(() -> enqueueDraftAnalysis(assetId));
+    }
+
+    public void enqueueDraftAnalysis(UUID assetId) {
+        if (enrichmentConfigured) enqueueEnrichmentSafely(assetId);
+        enqueueImageOnlySafely(assetId);
+    }
+
+    public boolean isEnrichmentConfigured() {
+        return enrichmentConfigured;
+    }
+
+    public void enqueueEnrichmentIfConfigured(UUID assetId) {
+        if (enrichmentConfigured) enqueueEnrichmentSafely(assetId);
     }
 
     public void enqueueSemanticOnly(UUID assetId) {
@@ -166,6 +191,14 @@ public class MediaProcessingQueueService {
             enqueueSubmissionContext(submissionId);
         } catch (Exception error) {
             log.warn("Failed to enqueue media context for submission {}: {}", submissionId, error.getMessage());
+        }
+    }
+
+    private void enqueueEnrichmentSafely(UUID assetId) {
+        try {
+            enqueueEnrichment(assetId);
+        } catch (Exception error) {
+            log.warn("Failed to enqueue media enrichment for asset {}: {}", assetId, error.getMessage());
         }
     }
 

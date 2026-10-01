@@ -912,7 +912,7 @@ public class SubmissionService {
         }
         if (fileType.isImage()) {
             if (stage) {
-                mediaProcessingQueueService.enqueueImageOnlyAfterCommit(asset.getId());
+                mediaProcessingQueueService.enqueueDraftAnalysisAfterCommit(asset.getId());
             } else {
                 mediaProcessingQueueService.enqueueAfterCommit(asset.getId());
             }

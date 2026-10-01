@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.MediaClassificationClient;
 import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
 import com.dasigconnect.backend.model.entity.AssetTag;
@@ -24,14 +24,15 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Classifies media assets using Claude Vision and generates Voyage AI embeddings (UC-3.3).
+ * Classifies media assets using Gemini and generates Voyage AI embeddings (UC-3.3).
  *
  * Transaction discipline: each repository call runs in its own short implicit transaction.
- * No DB connection is held across external API calls (Claude or Voyage AI).
+ * No DB connection is held across external API calls (Gemini or Voyage AI).
  * All methods are @Async — failures are logged and swallowed so upload is never blocked.
  */
 @Service
@@ -46,7 +47,7 @@ public class AIClassificationService {
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final AssetTagRepository assetTagRepository;
-    private final ClaudeVisionClient claudeVisionClient;
+    private final MediaClassificationClient classificationClient;
     private final VoyageAIClient voyageAIClient;
     private final MediaImageEmbeddingService mediaImageEmbeddingService;
     private final MediaProcessingQueueService mediaProcessingQueueService;
@@ -57,14 +58,14 @@ public class AIClassificationService {
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
                                    AssetTagRepository assetTagRepository,
-                                   ClaudeVisionClient claudeVisionClient,
+                                   MediaClassificationClient classificationClient,
                                    VoyageAIClient voyageAIClient,
                                    MediaImageEmbeddingService mediaImageEmbeddingService,
                                    MediaProcessingQueueService mediaProcessingQueueService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
-        this.claudeVisionClient = claudeVisionClient;
+        this.classificationClient = classificationClient;
         this.voyageAIClient = voyageAIClient;
         this.mediaImageEmbeddingService = mediaImageEmbeddingService;
         this.mediaProcessingQueueService = mediaProcessingQueueService;
@@ -105,23 +106,25 @@ public class AIClassificationService {
         MediaClassificationDto result = null;
         boolean requiresStructuredRefresh = requiredProcessingVersion != null
                 && !requiredProcessingVersion.equals(asset.getAiProcessingVersion());
-        if (asset.getAiClassifiedAt() == null || requiresStructuredRefresh) {
+        boolean classifiedByCurrentModel = asset.getAiClassifiedAt() != null
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel());
+        if (!classifiedByCurrentModel || requiresStructuredRefresh) {
             long classificationStartedAt = System.nanoTime();
             try {
-                result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+                result = classificationClient.classifyMedia(List.of(storageUrl));
                 persistClassification(assetId, result);
                 persistSuggestedTags(assetId, result.suggestedTags());
-                recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+                recordProviderStage("GEMINI_CLASSIFICATION", assetId,
                         classificationStartedAt, "SUCCESS");
             } catch (Exception error) {
-                recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+                recordProviderStage("GEMINI_CLASSIFICATION", assetId,
                         classificationStartedAt, "FAILURE");
                 log.warn("AI classification failed for asset {}: {}", assetId, error.getMessage());
                 mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
                 return false;
             }
         } else {
-            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, System.nanoTime(), "REUSED", 0, 1);
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, System.nanoTime(), "REUSED", 0, 1);
         }
 
         if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
@@ -157,7 +160,7 @@ public class AIClassificationService {
     }
 
     /**
-     * Adds optional Claude metadata without controlling retrieval readiness.
+     * Adds optional Gemini metadata without controlling retrieval readiness.
      * A failure is returned to the durable queue for retry, but never changes
      * the media asset status or removes already stored Voyage vectors.
      */
@@ -166,23 +169,24 @@ public class AIClassificationService {
         if (asset == null || asset.getFileType() == null || !asset.getFileType().isImage()) {
             return true;
         }
-        if (asset.getAiClassifiedAt() != null) {
-            recordProviderStage("CLAUDE_CLASSIFICATION", assetId,
+        if (asset.getAiClassifiedAt() != null
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel())) {
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId,
                     System.nanoTime(), "REUSED", 0, 1);
             return true;
         }
 
         long startedAt = System.nanoTime();
         try {
-            MediaClassificationDto result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+            MediaClassificationDto result = classificationClient.classifyMedia(List.of(storageUrl));
             persistClassification(assetId, result);
             persistSuggestedTags(assetId, result.suggestedTags());
             mediaAssetRepository.incrementSemanticRevision(assetId);
             mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
-            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, startedAt, "SUCCESS");
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, startedAt, "SUCCESS");
             return true;
         } catch (Exception error) {
-            recordProviderStage("CLAUDE_CLASSIFICATION", assetId, startedAt, "FAILURE");
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, startedAt, "FAILURE");
             log.warn("Optional media enrichment failed for asset {}: {}", assetId, error.getMessage());
             return false;
         }
@@ -194,14 +198,14 @@ public class AIClassificationService {
      * use MediaProcessingWorker and the synchronous, stage-aware processAsset path.
      *
      * @param assetId    UUID of the saved MediaAsset
-     * @param storageUrl Supabase Storage URL used as image input for Claude
+     * @param storageUrl storage URL used as image input for Gemini
      */
     @Async
     public void classifyAndEmbed(UUID assetId, String storageUrl) {
-        // Step 1: Classify via Claude Vision (external HTTP, no DB connection held)
+        // Step 1: Classify via Gemini (external HTTP, no DB connection held)
         MediaClassificationDto result;
         try {
-            result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+            result = classificationClient.classifyMedia(List.of(storageUrl));
         } catch (Exception e) {
             log.warn("AI classification failed for asset {}: {}", assetId, e.getMessage());
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
@@ -254,7 +258,7 @@ public class AIClassificationService {
      * a classification (ai_classified_at set) but is stuck in PROCESSING/FAILED
      * because a prior embedding call failed. Used by EmbeddingReconciliationJob
      * instead of {@link #classifyAndEmbed} so a stuck asset isn't fully
-     * reclassified by Claude Vision on every 5-minute retry — that used to
+     * reclassified by the vision provider on every 5-minute retry — that used to
      * silently re-run classifyAndEmbed's classification step indefinitely for
      * any asset stuck on the embedding side, which (before persistSuggestedTags
      * was made to replace rather than accumulate) let one asset's AI tags grow
@@ -347,7 +351,7 @@ public class AIClassificationService {
         asset.setVisualQualitySignals(toArray(result.visualQualitySignals()));
         asset.setCompositionSignals(toArray(result.compositionSignals()));
         asset.setAiClassifiedAt(java.time.Instant.now());
-        asset.setAiClassificationModel(claudeVisionClient.modelName());
+        asset.setAiClassificationModel(classificationClient.modelName());
         mediaAssetRepository.save(asset);
     }
 
@@ -376,7 +380,7 @@ public class AIClassificationService {
      * run's output (bounded to MAX_AI_TAGS_TO_STORE by normalizeTags), rather
      * than only adding to what's there. This used to be purely additive —
      * exact-label dedup (DB unique constraint on (media_asset_id, label))
-     * blocked a re-run from re-inserting an identical label, but Claude's
+     * blocked a re-run from re-inserting an identical label, but an AI model's
      * wording is not deterministic across calls ("Outdoor Event" one run,
      * "outdoor gathering" the next), so every reclassification of the same
      * asset just kept adding ~15-30 more rows with no ceiling — one asset in

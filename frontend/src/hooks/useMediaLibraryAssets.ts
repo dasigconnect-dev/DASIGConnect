@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { searchMediaAssets, type MediaAsset } from "../api/mediaApi";
+import {
+  searchMediaAssets,
+  semanticSearchMediaAssets,
+  type MediaAsset,
+} from "../api/mediaApi";
 
 const PAGE_SIZE = 24;
 const DEBOUNCE_MS = 300;
@@ -74,15 +78,25 @@ export function useMediaLibraryAssets(
       pageRef.current = pageNum;
       setLoading(true);
       setError(false);
-      return searchMediaAssets({
-        query: q || undefined,
-        mediaType: type || undefined,
-        albumId: album || undefined,
-        institutionId: networkView ? undefined : institutionId || undefined,
-        networkView,
-        page: pageNum,
-        pageSize: PAGE_SIZE,
-      }, request.controller.signal)
+      const useSemanticSearch = q.trim().length >= 2 && !type && !album;
+      const requestPromise = useSemanticSearch
+        ? semanticSearchMediaAssets(
+            q.trim(),
+            networkView ? undefined : institutionId || undefined,
+            pageNum,
+            PAGE_SIZE,
+            request.controller.signal,
+          )
+        : searchMediaAssets({
+            query: q || undefined,
+            mediaType: type || undefined,
+            albumId: album || undefined,
+            institutionId: networkView ? undefined : institutionId || undefined,
+            networkView,
+            page: pageNum,
+            pageSize: PAGE_SIZE,
+          }, request.controller.signal);
+      return requestPromise
         .then((result) => {
           if (requestRef.current?.id !== request.id) return;
           setAssets((prev) => (append ? [...prev, ...result.items] : result.items));

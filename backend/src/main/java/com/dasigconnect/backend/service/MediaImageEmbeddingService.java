@@ -53,7 +53,7 @@ public class MediaImageEmbeddingService {
 
         ClaudeVisionClient.PreparedImage image;
         try {
-            image = imagePreparation.prepareImageForEmbedding(storageUrl);
+            image = imagePreparation.prepareImageForVisualEmbedding(storageUrl);
         } catch (Exception error) {
             log.warn("Failed to fetch image for multimodal embedding for asset {}: {}",
                     assetId, error.getMessage());

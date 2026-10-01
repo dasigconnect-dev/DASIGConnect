@@ -55,8 +55,10 @@ export interface MediaSuggestResult {
   fileType: string;
   fileSizeBytes: number;
   aiCategory: string | null;
+  assetType?: string | null;
   similarityScore: number;
   matchReasons?: string[];
+  scoreBreakdown?: Record<string, number>;
   rankingVersion?: string;
   createdAt: string;
 }

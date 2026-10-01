@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.MediaClassificationClient;
 import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
 import com.dasigconnect.backend.model.entity.MediaAsset;
@@ -38,6 +39,7 @@ class AIClassificationServiceTest {
     @Mock private MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     @Mock private AssetTagRepository assetTagRepository;
     @Mock private ClaudeVisionClient claudeVisionClient;
+    @Mock private MediaClassificationClient classificationClient;
     @Mock private VoyageAIClient voyageAIClient;
     @Mock private MediaImageEmbeddingService mediaImageEmbeddingService;
     @Mock private MediaProcessingQueueService mediaProcessingQueueService;
@@ -49,7 +51,7 @@ class AIClassificationServiceTest {
     private AIClassificationService service(MediaImageEmbeddingService imageEmbeddingService) {
         return new AIClassificationService(
                 mediaAssetRepository, mediaAssetEmbeddingRepository, assetTagRepository,
-                claudeVisionClient, voyageAIClient, imageEmbeddingService, mediaProcessingQueueService);
+                classificationClient, voyageAIClient, imageEmbeddingService, mediaProcessingQueueService);
     }
 
     private AIClassificationService serviceWithRealImageEmbedding() {
@@ -67,7 +69,7 @@ class AIClassificationServiceTest {
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
 
-        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
                 .thenReturn(true);
@@ -81,9 +83,9 @@ class AIClassificationServiceTest {
     }
 
     @Test
-    void classifyAndEmbed_claudeFails_marksFailedAndNeverReady() {
+    void classifyAndEmbed_geminiFails_marksFailedAndNeverReady() {
         UUID assetId = UUID.randomUUID();
-        when(claudeVisionClient.classifyMedia(any())).thenThrow(new RuntimeException("Claude down"));
+        when(classificationClient.classifyMedia(any())).thenThrow(new RuntimeException("Gemini down"));
 
         service().classifyAndEmbed(assetId, "https://example.com/a.jpg");
 
@@ -97,7 +99,7 @@ class AIClassificationServiceTest {
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
 
-        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
                 .thenReturn(true);
@@ -125,7 +127,7 @@ class AIClassificationServiceTest {
         service().retryStuckImageEmbedding(assetId, "https://example.com/a.jpg");
 
         // Claude Vision must NOT be called again — that's the whole point of this path.
-        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(classificationClient, never()).classifyMedia(any());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
         verify(mediaAssetRepository, never()).updateStatus(assetId, MediaAssetStatus.FAILED.name());
     }
@@ -142,7 +144,7 @@ class AIClassificationServiceTest {
 
         service().retryStuckImageEmbedding(assetId, "https://example.com/a.jpg");
 
-        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(classificationClient, never()).classifyMedia(any());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.FAILED.name());
         verify(mediaAssetRepository, never()).updateStatus(eq(assetId), eq(MediaAssetStatus.READY.name()));
     }
@@ -154,9 +156,11 @@ class AIClassificationServiceTest {
         asset.setId(assetId);
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setAiClassificationModel("gemini-3.8-flash");
         asset.setFileName("event.jpg");
         String imageModel = "voyage-multimodal-3.5";
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(classificationClient.modelName()).thenReturn("gemini-3.8-flash");
         when(voyageAIClient.multimodalModelName()).thenReturn(imageModel);
         when(mediaAssetEmbeddingRepository.existsCurrentVersionedEmbedding(
                 eq(assetId),
@@ -173,8 +177,8 @@ class AIClassificationServiceTest {
                 .processAsset(assetId, "https://example.com/a.jpg");
 
         assertThat(completed).isTrue();
-        verify(claudeVisionClient, never()).classifyMedia(any());
-        verify(claudeVisionClient, never()).prepareImageForEmbedding(anyString());
+        verify(classificationClient, never()).classifyMedia(any());
+        verify(claudeVisionClient, never()).prepareImageForVisualEmbedding(anyString());
         verify(voyageAIClient, never()).embedImageDocument(any(), anyString());
         verify(mediaAssetEmbeddingRepository, never()).upsertVersioned(
                 eq(assetId),
@@ -190,12 +194,14 @@ class AIClassificationServiceTest {
         asset.setId(assetId);
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setAiClassificationModel("gemini-3.8-flash");
         asset.setAiProcessingVersion("media-ai-v2");
+        when(classificationClient.modelName()).thenReturn("gemini-3.8-flash");
         String imageModel = "voyage-multimodal-3.5";
         String storageUrl = "https://example.com/a.jpg";
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(voyageAIClient.multimodalModelName()).thenReturn(imageModel);
-        when(claudeVisionClient.prepareImageForEmbedding(storageUrl))
+        when(claudeVisionClient.prepareImageForVisualEmbedding(storageUrl))
                 .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2}, "image/jpeg"));
         when(voyageAIClient.embedImageDocument(any(), eq("image/jpeg"))).thenReturn("[0.1]");
         when(mediaAssetEmbeddingRepository.findEmbedding(
@@ -212,7 +218,7 @@ class AIClassificationServiceTest {
                 eq(com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE.dbValue()),
                 eq("[0.1]"), eq(imageModel), anyString(), eq(0L),
                 eq(MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION));
-        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(classificationClient, never()).classifyMedia(any());
         verify(voyageAIClient, never()).embedDocument(anyString());
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
     }
@@ -227,7 +233,7 @@ class AIClassificationServiceTest {
         asset.setAiProcessingVersion("media-ai-v1");
         asset.setFileName("legacy-event.jpg");
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
         when(mediaImageEmbeddingService.generateOrReuse(
                 assetId, "https://example.com/legacy-event.jpg"))
                 .thenReturn(true);
@@ -238,9 +244,9 @@ class AIClassificationServiceTest {
                 assetId, "https://example.com/legacy-event.jpg", "media-ai-v2");
 
         assertThat(completed).isTrue();
-        verify(claudeVisionClient).classifyMedia(any());
+        verify(classificationClient).classifyMedia(any());
         verify(voyageAIClient).embedDocument(anyString());
-        verify(claudeVisionClient, never()).prepareImageForEmbedding(anyString());
+        verify(claudeVisionClient, never()).prepareImageForVisualEmbedding(anyString());
     }
 
     @Test
@@ -253,7 +259,7 @@ class AIClassificationServiceTest {
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
 
-        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
         when(mediaImageEmbeddingService.generateOrReuse(assetId, "https://example.com/a.jpg"))
                 .thenReturn(true);
@@ -266,13 +272,13 @@ class AIClassificationServiceTest {
     }
 
     @Test
-    void enrichAsset_claudeFailureDoesNotMarkSearchableAssetFailed() {
+    void enrichAsset_geminiFailureDoesNotMarkSearchableAssetFailed() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
         asset.setId(assetId);
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.classifyMedia(any())).thenThrow(new RuntimeException("Claude down"));
+        when(classificationClient.classifyMedia(any())).thenThrow(new RuntimeException("Gemini down"));
 
         boolean completed = service().enrichAsset(assetId, "https://example.com/a.jpg");
 
@@ -290,12 +296,32 @@ class AIClassificationServiceTest {
         asset.setId(assetId);
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
 
         assertThat(service().enrichAsset(assetId, "https://example.com/a.jpg")).isTrue();
 
         verify(mediaAssetRepository).incrementSemanticRevision(assetId);
         verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
         verify(mediaImageEmbeddingService, never()).generateOrReuse(any(), anyString());
+    }
+
+    @Test
+    void enrichAsset_existingClaudeMetadata_isRefreshedByGemini() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setAiClassificationModel("claude-haiku-4-5-20251001");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(classificationClient.modelName()).thenReturn("gemini-3.8-flash");
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
+
+        assertThat(service().enrichAsset(assetId, "https://example.com/a.jpg")).isTrue();
+
+        verify(classificationClient).classifyMedia(any());
+        assertThat(asset.getAiClassificationModel()).isEqualTo("gemini-3.8-flash");
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 }

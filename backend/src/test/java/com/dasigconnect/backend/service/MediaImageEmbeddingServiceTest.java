@@ -47,7 +47,7 @@ class MediaImageEmbeddingServiceTest {
 
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isTrue();
 
-        verify(imagePreparation, never()).prepareImageForEmbedding(anyString());
+        verify(imagePreparation, never()).prepareImageForVisualEmbedding(anyString());
         verify(imagePreparation, never()).classifyMedia(any());
         verify(voyageAIClient, never()).embedImageDocument(any(), anyString());
         verify(voyageAIClient, never()).embedDocument(anyString());
@@ -63,7 +63,7 @@ class MediaImageEmbeddingServiceTest {
         UUID assetId = UUID.randomUUID();
         String model = "voyage-multimodal-3.5";
         when(voyageAIClient.multimodalModelName()).thenReturn(model);
-        when(imagePreparation.prepareImageForEmbedding("https://example.com/image.png"))
+        when(imagePreparation.prepareImageForVisualEmbedding("https://example.com/image.png"))
                 .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/png"));
         when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
 
@@ -81,7 +81,7 @@ class MediaImageEmbeddingServiceTest {
     void generateOrReuse_imagePreparationFails_returnsFalseWithoutProviderCall() {
         UUID assetId = UUID.randomUUID();
         when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal-3.5");
-        when(imagePreparation.prepareImageForEmbedding(anyString()))
+        when(imagePreparation.prepareImageForVisualEmbedding(anyString()))
                 .thenThrow(new RuntimeException("fetch failed"));
 
         assertThat(service().generateOrReuse(assetId, "https://example.com/image.jpg")).isFalse();
@@ -96,7 +96,7 @@ class MediaImageEmbeddingServiceTest {
     void generateOrReuse_providerFails_returnsFalseWithoutPersistence() {
         UUID assetId = UUID.randomUUID();
         when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal-3.5");
-        when(imagePreparation.prepareImageForEmbedding(anyString()))
+        when(imagePreparation.prepareImageForVisualEmbedding(anyString()))
                 .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1}, "image/jpeg"));
         when(voyageAIClient.embedImageDocument(any(), anyString()))
                 .thenThrow(new RuntimeException("provider unavailable"));
@@ -113,7 +113,7 @@ class MediaImageEmbeddingServiceTest {
         UUID assetId = UUID.randomUUID();
         String model = "voyage-multimodal-3.5";
         when(voyageAIClient.multimodalModelName()).thenReturn(model);
-        when(imagePreparation.prepareImageForEmbedding(anyString()))
+        when(imagePreparation.prepareImageForVisualEmbedding(anyString()))
                 .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1}, "image/jpeg"));
         when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
         doThrow(new RuntimeException("database unavailable"))

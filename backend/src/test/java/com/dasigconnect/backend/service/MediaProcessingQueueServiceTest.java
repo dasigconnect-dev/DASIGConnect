@@ -22,7 +22,7 @@ class MediaProcessingQueueServiceTest {
 
     private final MediaProcessingJobRepository repository = mock(MediaProcessingJobRepository.class);
     private final MediaProcessingQueueService service = new MediaProcessingQueueService(
-            repository, 5, 300, 2, 100);
+            repository, 5, 300, 2, 100, "gemini-key");
 
     @Test
     void enqueue_usesStableVersionAndConfiguredAttemptLimit() {
@@ -70,6 +70,18 @@ class MediaProcessingQueueServiceTest {
 
         service.enqueueImageOnly(assetId);
 
+        verify(repository).enqueueImageOnly(
+                assetId, MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION, 5);
+    }
+
+    @Test
+    void enqueueDraftAnalysis_queuesGeminiEnrichmentAndVisualEmbedding() {
+        UUID assetId = UUID.randomUUID();
+
+        service.enqueueDraftAnalysis(assetId);
+
+        verify(repository).enqueueEnrichment(
+                assetId, MediaProcessingQueueService.ENRICHMENT_VERSION, 5);
         verify(repository).enqueueImageOnly(
                 assetId, MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION, 5);
     }

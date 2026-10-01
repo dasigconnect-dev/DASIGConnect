@@ -23,7 +23,10 @@ export interface UseAiMediaSuggestionsReturn {
   accept: () => void;
 }
 
-const PROCESSING_RETRY_DELAYS_MS = [2_000, 4_000, 6_000, 10_000, 15_000] as const;
+// Keep the first checks close together so a completed visual embedding is not
+// hidden behind a multi-second polling gap. The later backoff still protects
+// the status endpoint when an external provider is slow.
+const PROCESSING_RETRY_DELAYS_MS = [750, 1_000, 1_500, 2_000, 3_000, 5_000, 8_000] as const;
 
 export function hasSufficientMediaContext(eventTitle: string, caption: string, category: string, tags: string[]) {
   return [eventTitle, caption, category, ...tags].join(" ").trim().length >= 10;
@@ -109,10 +112,10 @@ export function useAiMediaSuggestions(
       hasResultsRef.current = response.results.length > 0;
       setResults(response.results);
       setProcessing(response.processing && !retriesExhausted);
-      if (response.results.length > 0) {
-        setState("ready");
-      } else if (response.outcome === "PROCESSING" && !retriesExhausted) {
+      if (response.processing && !retriesExhausted) {
         setState("processing");
+      } else if (response.results.length > 0) {
+        setState("ready");
       } else if (response.outcome === "EMBEDDING_FAILED") {
         setState("embedding_error");
       } else if (response.outcome === "NO_INDEXED_CANDIDATES") {
@@ -206,7 +209,7 @@ export function useAiMediaSuggestions(
           }
           if (retry.attempts >= PROCESSING_RETRY_DELAYS_MS.length) {
             setProcessing(false);
-            if (!hasResultsRef.current) setState("error");
+            setState(hasResultsRef.current ? "ready" : "error");
             return;
           }
           setProcessingCheckVersion((version) => version + 1);

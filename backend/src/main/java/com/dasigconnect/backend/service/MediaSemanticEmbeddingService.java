@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-/** Generates the trusted-metadata semantic vector independently of Claude. */
+/** Generates a Voyage semantic vector from user metadata plus persisted Gemini observations. */
 @Service
 public class MediaSemanticEmbeddingService {
 
@@ -132,7 +132,22 @@ public class MediaSemanticEmbeddingService {
         append(text, "filename", cleanFileName(asset.getFileName()));
         if (asset.getMediaAlbum() != null) append(text, "album", asset.getMediaAlbum().getName());
         appendAll(text, "tags", manualTags);
-        append(text, "format", asset.getAssetType());
+        append(text, "category", asset.getAiCategory());
+        append(text, "description", asset.getAiDescription());
+        append(text, "asset type", asset.getAssetType());
+        appendAll(text, "visible objects", asset.getVisibleObjects());
+        appendAll(text, "specific subjects", asset.getSpecificSubjects());
+        appendAll(text, "scenes", asset.getObservedScenes());
+        appendAll(text, "activities", asset.getObservedActivities());
+        append(text, "people", asset.getPeopleCountRange());
+        appendAll(text, "equipment", asset.getEquipmentSignals());
+        appendAll(text, "recognition signals", asset.getRecognitionSignals());
+        appendAll(text, "visible text", asset.getOcrText());
+        appendAll(text, "visible dates", asset.getVisibleDates());
+        appendAll(text, "visual style", asset.getVisualStyle());
+        appendAll(text, "dominant colors", asset.getDominantColors());
+        appendAll(text, "use cases", asset.getPossibleUseCases());
+        appendAll(text, "ai tags", asset.getAiTags());
         append(text, "temporal", asset.getTemporalClassification());
         return text.toString().trim();
     }
@@ -172,6 +187,10 @@ public class MediaSemanticEmbeddingService {
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
         if (!cleaned.isEmpty()) append(target, label, String.join(", ", cleaned));
+    }
+
+    private static void appendAll(StringBuilder target, String label, String[] values) {
+        if (values != null) appendAll(target, label, List.of(values));
     }
 
     private void record(UUID assetId, long startedAt, String outcome,
