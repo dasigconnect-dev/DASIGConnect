@@ -88,6 +88,9 @@ export interface UserProfileResponse {
   adminPromotionExpiresAt?: string | null;
   /** True when adminPromotionRequestedBy/ExpiresAt describe a still-live (unexpired) promotion. */
   adminPromotionPending?: boolean;
+  moderatorPromotionRequestedBy?: string | null;
+  moderatorPromotionExpiresAt?: string | null;
+  moderatorPromotionPending?: boolean;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -442,4 +445,17 @@ export interface InvitationResponse {
   createdAt: string;
   emailDelivered: boolean;
   invitationUrl: string;
+}
+
+
+export function confirmModeratorPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/moderator/confirm");
+}
+
+export function declineModeratorPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/moderator/decline");
+}
+
+export function cancelModeratorPromotion(userId: string) {
+  return api.delete<UserProfileResponse>(`/users/${userId}/promotion/moderator`);
 }
