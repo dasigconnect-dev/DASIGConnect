@@ -27,6 +27,9 @@ public class UserDto {
     private UUID adminPromotionRequestedBy;
     private Instant adminPromotionExpiresAt;
     private boolean adminPromotionPending;
+    private UUID moderatorPromotionRequestedBy;
+    private Instant moderatorPromotionExpiresAt;
+    private boolean moderatorPromotionPending;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
@@ -58,6 +61,11 @@ public class UserDto {
         dto.adminPromotionPending = user.getAdminPromotionRequestedBy() != null
                 && user.getAdminPromotionExpiresAt() != null
                 && user.getAdminPromotionExpiresAt().isAfter(java.time.Instant.now());
+        dto.moderatorPromotionRequestedBy = user.getModeratorPromotionRequestedBy();
+        dto.moderatorPromotionExpiresAt = user.getModeratorPromotionExpiresAt();
+        dto.moderatorPromotionPending = user.getModeratorPromotionRequestedBy() != null
+                && user.getModeratorPromotionExpiresAt() != null
+                && user.getModeratorPromotionExpiresAt().isAfter(java.time.Instant.now());
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
@@ -143,6 +151,18 @@ public class UserDto {
 
     public boolean isAdminPromotionPending() {
         return adminPromotionPending;
+    }
+
+    public UUID getModeratorPromotionRequestedBy() {
+        return moderatorPromotionRequestedBy;
+    }
+
+    public Instant getModeratorPromotionExpiresAt() {
+        return moderatorPromotionExpiresAt;
+    }
+
+    public boolean isModeratorPromotionPending() {
+        return moderatorPromotionPending;
     }
 
     public UUID getInstitutionId() {

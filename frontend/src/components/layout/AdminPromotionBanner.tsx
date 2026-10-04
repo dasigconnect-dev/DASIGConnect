@@ -1,15 +1,9 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { confirmAdminPromotion, declineAdminPromotion } from '../../api/authApi'
+import { confirmAdminPromotion, declineAdminPromotion, confirmModeratorPromotion, declineModeratorPromotion } from '../../api/authApi'
 import { currentProfileQueryOptions, useCurrentProfile } from '../../hooks/useCurrentProfile'
 import type { User } from '../../types/auth.types'
 
-/**
- * UC-1.1 - "the promoted person must accept". A Contributor or Moderator with
- * a live pending Administrator promotion sees this on every screen until they
- * confirm or decline. It reuses the verified current-profile cache so mounting
- * the protected layout does not trigger another /me request.
- */
 export default function AdminPromotionBanner({ user }: { user: User }) {
   const queryClient = useQueryClient()
   const profileQueryOptions = currentProfileQueryOptions(user)
@@ -18,15 +12,23 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
   const [dismissed, setDismissed] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
-  if (!profile?.adminPromotionPending || dismissed) return null
+  const isModeratorPromotion = profile?.moderatorPromotionPending
+  const isAdminPromotion = profile?.adminPromotionPending
+  const hasPromotion = (isAdminPromotion || isModeratorPromotion) && !dismissed
+
+  if (!hasPromotion) return null
+  
+  const roleName = isModeratorPromotion ? 'Moderator' : 'Administrator'
 
   async function handleConfirm() {
     setBusy('confirm')
     try {
-      await confirmAdminPromotion()
+      if (isModeratorPromotion) {
+        await confirmModeratorPromotion()
+      } else {
+        await confirmAdminPromotion()
+      }
       setConfirmed(true)
-      // The backend invalidated this account's session tokens on confirm. The
-      // next authenticated request will 401 and session-expired handling takes over.
     } catch {
       setBusy(null)
     }
@@ -35,7 +37,9 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
   async function handleDecline() {
     setBusy('decline')
     try {
-      const response = await declineAdminPromotion()
+      const response = isModeratorPromotion 
+        ? await declineModeratorPromotion()
+        : await declineAdminPromotion()
       queryClient.setQueryData(profileQueryOptions.queryKey, response.data)
       setDismissed(true)
     } catch {
@@ -49,8 +53,8 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
         <i className="ti ti-shield-plus" aria-hidden="true"></i>
         <span>
           {confirmed
-            ? 'Administrator access confirmed. Sign in again to continue with your new access.'
-            : "You've been proposed for Administrator access. Confirm to accept, or decline to keep your current role."}
+            ? `${roleName} access confirmed. Sign in again to continue with your new access.`
+            : `You've been proposed for ${roleName} access. Confirm to accept, or decline to keep your current role.`}
         </span>
       </div>
       {!confirmed && (
@@ -61,7 +65,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
             onClick={() => void handleConfirm()}
             disabled={busy !== null}
           >
-            {busy === 'confirm' ? 'Confirmingâ€¦' : 'Confirm'}
+            {busy === 'confirm' ? 'Confirming…' : 'Confirm'}
           </button>
           <button
             type="button"
@@ -69,7 +73,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
             onClick={() => void handleDecline()}
             disabled={busy !== null}
           >
-            {busy === 'decline' ? 'Decliningâ€¦' : 'Decline'}
+            {busy === 'decline' ? 'Declining…' : 'Decline'}
           </button>
         </div>
       )}
