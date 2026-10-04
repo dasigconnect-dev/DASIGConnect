@@ -215,7 +215,7 @@ public class UserController {
     }
 
     @PostMapping("/users/admin-transfer/confirm")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
     public ResponseEntity<ApiResponse<UserDto>> confirmAdminTransfer(
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminTransfer(user)));
