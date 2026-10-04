@@ -94,6 +94,12 @@ public class User {
     @Column(name = "admin_promotion_expires_at")
     private Instant adminPromotionExpiresAt;
 
+    @Column(name = "moderator_promotion_requested_by")
+    private UUID moderatorPromotionRequestedBy;
+
+    @Column(name = "moderator_promotion_expires_at")
+    private Instant moderatorPromotionExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -249,6 +255,22 @@ public class User {
 
     public void setAdminPromotionExpiresAt(Instant adminPromotionExpiresAt) {
         this.adminPromotionExpiresAt = adminPromotionExpiresAt;
+    }
+
+    public UUID getModeratorPromotionRequestedBy() {
+        return moderatorPromotionRequestedBy;
+    }
+
+    public void setModeratorPromotionRequestedBy(UUID moderatorPromotionRequestedBy) {
+        this.moderatorPromotionRequestedBy = moderatorPromotionRequestedBy;
+    }
+
+    public Instant getModeratorPromotionExpiresAt() {
+        return moderatorPromotionExpiresAt;
+    }
+
+    public void setModeratorPromotionExpiresAt(Instant moderatorPromotionExpiresAt) {
+        this.moderatorPromotionExpiresAt = moderatorPromotionExpiresAt;
     }
 
     public Instant getCreatedAt() {

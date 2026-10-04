@@ -249,6 +249,29 @@ public class UserController {
      * DELETE /api/v1/users/{id}/promotion Admin-Owner-only: rescinds a pending
      * Administrator promotion before the invitee has responded.
      */
+
+    @PostMapping("/users/promotion/moderator/confirm")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> confirmModeratorPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmModeratorPromotion(user)));
+    }
+
+    @PostMapping("/users/promotion/moderator/decline")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> declineModeratorPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.declineModeratorPromotion(user)));
+    }
+
+    @DeleteMapping("/users/{id}/promotion/moderator")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> cancelModeratorPromotion(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.cancelModeratorPromotion(id, user)));
+    }
+
     @DeleteMapping("/users/{id}/promotion")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserDto>> cancelAdminPromotion(

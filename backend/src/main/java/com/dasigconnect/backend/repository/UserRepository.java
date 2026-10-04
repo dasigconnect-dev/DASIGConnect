@@ -66,6 +66,15 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """)
     boolean hasLivePendingAdminPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
 
+    @Query("""
+            select (count(u) > 0)
+            from User u
+            where u.id = :id
+              and u.moderatorPromotionRequestedBy is not null
+              and u.moderatorPromotionExpiresAt > :now
+            """)
+    boolean hasLivePendingModeratorPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
+
     /**
      * A3: check if institution has any active moderators before reactivating
      */
