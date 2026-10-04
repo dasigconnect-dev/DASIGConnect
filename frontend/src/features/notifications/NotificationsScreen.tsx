@@ -41,7 +41,7 @@ const ADMIN_FILTERS: NotificationFilter[] = [
 ];
 
 function isContributorWorkflowNotification(notification: Notification) {
-  return ["submissions", "publishing", "deadline", "overrides"].includes(notification.category);
+  return ["submissions", "publishing", "deadline", "overrides", "system"].includes(notification.category);
 }
 
 function isModeratorWorkflowNotification(notification: Notification) {

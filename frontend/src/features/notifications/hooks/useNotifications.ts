@@ -253,6 +253,15 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     badgeClass: "badge-failed",
     critical: true,
   },
+  admin_promotion_requested: {
+    trigger: "ACCOUNT",
+    category: "system",
+    icon: "ti ti-shield-plus",
+    iconClass: "icon-navy",
+    sender: "Account",
+    linkLabel: "Go to Dashboard",
+    badgeClass: "badge-revision",
+  },
   user_role_changed: {
     trigger: "ACCOUNT",
     category: "system",
