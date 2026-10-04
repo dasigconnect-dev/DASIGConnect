@@ -65,7 +65,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
             onClick={() => void handleConfirm()}
             disabled={busy !== null}
           >
-            {busy === 'confirm' ? 'Confirming…' : 'Confirm'}
+            {busy === 'confirm' ? 'Confirmingâ€¦' : 'Confirm'}
           </button>
           <button
             type="button"
@@ -73,7 +73,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
             onClick={() => void handleDecline()}
             disabled={busy !== null}
           >
-            {busy === 'decline' ? 'Declining…' : 'Decline'}
+            {busy === 'decline' ? 'Decliningâ€¦' : 'Decline'}
           </button>
         </div>
       )}
