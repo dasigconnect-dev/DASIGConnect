@@ -14,11 +14,15 @@ import java.util.UUID;
 public record PageSettingsDto(
         UUID institutionId,
         boolean guardrailsEnforced,
+        int postingWindowStartHour,
+        int postingWindowEndHour,
         Instant updatedAt) {
     public static PageSettingsDto from(PageSettings value) {
         return new PageSettingsDto(
                 value.getInstitution() == null ? null : value.getInstitution().getId(),
                 value.isGuardrailsEnforced(),
+                value.getPostingWindowStartHour(),
+                value.getPostingWindowEndHour(),
                 value.getUpdatedAt());
     }
 }

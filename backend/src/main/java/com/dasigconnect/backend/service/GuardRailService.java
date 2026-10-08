@@ -45,14 +45,19 @@ public class GuardRailService {
     private static final int SUGGESTION_COUNT = 3;
     private static final Duration SUGGESTION_SEARCH = Duration.ofHours(2);
 
+    private static final java.time.ZoneId PAGE_ZONE = java.time.ZoneId.of("Asia/Manila");
+
     private final SlotReservationRepository slotReservationRepository;
     private final SubmissionRepository submissionRepository;
+    private final GuardRailSettingsService guardRailSettingsService;
 
     public GuardRailService(
             SlotReservationRepository slotReservationRepository,
-            SubmissionRepository submissionRepository) {
+            SubmissionRepository submissionRepository,
+            GuardRailSettingsService guardRailSettingsService) {
         this.slotReservationRepository = slotReservationRepository;
         this.submissionRepository = submissionRepository;
+        this.guardRailSettingsService = guardRailSettingsService;
     }
 
     /** @see #validate(UUID, Instant, UUID) — with no submission to exclude from the slot-conflict checks. */
@@ -99,11 +104,20 @@ public class GuardRailService {
             ));
         }
 
-        // GR-H3: Scheduled time must be ≤30 days in the future
-        if (requestedSlot.isAfter(now.plus(GR_H3_MAX_FUTURE))) {
+
+
+        // GR-H4: Posting window
+        java.time.ZonedDateTime localTime = requestedSlot.atZone(PAGE_ZONE);
+        int startHour = guardRailSettingsService.postingWindowStartHour();
+        int endHour = guardRailSettingsService.postingWindowEndHour();
+        if (localTime.getHour() < startHour || localTime.getHour() >= endHour) {
+            String startAmPm = startHour < 12 ? "AM" : "PM";
+            String endAmPm = endHour < 12 ? "AM" : "PM";
+            int displayStart = startHour % 12 == 0 ? 12 : startHour % 12;
+            int displayEnd = endHour % 12 == 0 ? 12 : endHour % 12;
             hardBlocks.add(new GuardRailViolation(
-                    "GR-H3",
-                    "Scheduled time cannot be more than 30 days in the future."
+                    "GR-H4",
+                    String.format("Publish time must be between %d:00 %s and %d:00 %s.", displayStart, startAmPm, displayEnd, endAmPm)
             ));
         }
 
@@ -179,3 +193,5 @@ public class GuardRailService {
         return suggestions;
     }
 }
+
+

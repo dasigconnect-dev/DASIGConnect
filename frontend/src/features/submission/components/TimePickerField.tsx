@@ -76,7 +76,7 @@ export function TimePickerField({
   }
 
   const draftMinutes = draftToMinutes(draft);
-  const isOutOfRange = draftMinutes < 8 * 60 || draftMinutes > 20 * 60;
+  const isOutOfRange = draftMinutes < startHour * 60 || draftMinutes > endHour * 60;
 
   function adjust(part: "hour" | "minute", offset: number) {
     setDraft((current) => {
@@ -176,7 +176,7 @@ export function TimePickerField({
           {isOutOfRange && (
             <div className="sub-time-range-error">
               <i className="ti ti-alert-triangle"></i>
-              Time must be between 8:00 AM and 8:00 PM.
+              Time must be between {startHour}:00 and {endHour}:00.
             </div>
           )}
 
@@ -199,3 +199,6 @@ export function TimePickerField({
     </div>
   );
 }
+
+
+

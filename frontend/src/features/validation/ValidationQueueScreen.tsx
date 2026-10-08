@@ -4164,3 +4164,4 @@ function readApiError(error: unknown, fallback: string) {
   const err = error as { response?: { data?: { error?: string; message?: string } }; message?: string };
   return err?.response?.data?.error || err?.response?.data?.message || err?.message || fallback;
 }
+

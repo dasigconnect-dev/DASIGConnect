@@ -64,6 +64,8 @@ public class SubmissionController {
     public ResponseEntity<ApiResponse<SubmissionLookupsDto>> lookups() {
         SubmissionLookupsDto dto = new SubmissionLookupsDto();
         dto.setGuardrailsEnforced(guardRailSettings.enforced());
+        dto.setPostingWindowStartHour(guardRailSettings.postingWindowStartHour());
+        dto.setPostingWindowEndHour(guardRailSettings.postingWindowEndHour());
         return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
@@ -247,3 +249,4 @@ public class SubmissionController {
         return ResponseEntity.noContent().build();
     }
 }
+
