@@ -1,48 +1,31 @@
 # UC-1.8 Engagement Helpers
 
-**Use Case ID:** UC-1.8
+**Use Case ID**
+UC-1.8
 
-**Use Case Name:** Engagement Helpers
+**Use Case Name**
+Engagement Helpers 
 
-**Actor(s):** Contributor, Moderator, Administrator — all three use the same composer (UC-1.5); the recommendation endpoint is `hasAnyRole('CONTRIBUTOR','MODERATOR','ADMIN')`, and the panel is only skipped for an Admin composer that hasn't picked an institution scope yet (guard rails can't be evaluated without one).
+**Actor(s)**
+Contributor, Moderator, Administrator � all three use the same composer (UC-1.5). The panel is skipped for an Administrator composer until an institution scope has been selected, because guard-rail evaluation requires an institution context. Moderators are network-wide and are not blocked by an institution scope requirement. 
 
-**Precondition(s):** The actor is in an active composer session (UC-1.5), on the **Organize & Schedule** step, with a Standard (non-Fast-Track) draft. Confirmed accurate: the recommendation query and the whole recommendations panel are both gated on `!form.fastTrack` — Live Event Fast-Track drafts skip scheduling entirely and never see this panel.
+**Precondition(s)**
+The actor is in an active composer session (UC-1.5), on the Organize & Schedule step, with a Standard (non-Fast-Track) draft. Live Event Fast-Track drafts skip scheduling entirely and never see this panel. 
 
 ## Main Flow
-
-1. The actor opens the scheduling panel within the composer's Organize & Schedule step (the panel loads automatically for a Standard draft — there's no separate "open" action).
-2. The system queries **real historical Facebook engagement** for the DASIG Page: the last 100 posts' `created_time` + reactions + comments + shares (`FacebookEngagementAnalyticsClient.fetchRecentPostEngagement`, Graph API), scored as `reactions + comments + shares` per post.
-3. Samples are bucketed by (day-of-week, hour) restricted to the **Administrator-configured posting window (defaulting to 8 AM–8 PM)** local time (`Asia/Manila`), averaged per bucket, and the top 5 buckets become candidate windows — provided there are at least **20** samples total; otherwise a fixed default of Tue/Wed/Thu 6 PM is used (see A1).
-4. For each candidate window, the system walks the next **30 days** looking for the first matching weekday, checks it against the same scheduling guard rails as a manual pick (`GuardRailService.validate`), and keeps it only if not hard-blocked — up to **3** recommended slots total, each labeled e.g. "Best engagement: Tuesdays 6 PM - 7 PM" (a single-hour window, not the two-hour example in the prior draft) and carrying any soft warnings and a rounded score.
-5. The actor selects a recommended slot (`onSelect` fills the date/time fields, same as typing them manually), or ignores the recommendation and manually chooses a custom date/time in the Date / Time pickers shown right below the panel.
-   - **Presentation (2026-09-24):** the panel and pickers sit together under one **"When to Post \*"** group label. Each recommendation is a calendar-style **tile** (weekday · date · time) in a single row of three, at every screen width.
-     - **Source tag:** "Based on *N* posts" (`HISTORICAL`, green) or "General guidance" (`DEFAULT`).
-     - **Only with real Page history:** a **"Top pick"** badge on the highest-scoring slot (only when the scores actually differ), and a relative-engagement bar per tile (`score / max score`). With general guidance every slot scores the same, so neither is shown.
-     - **Warnings:** a ⚠ marks a slot that carries a soft warning.
-     - **Explanations:** the source explanation (the backend `notice`, or a built-in sentence) and "you can choose any valid time yourself" are behind an **ⓘ toggle**, not always on screen. The slot's reason ("Best engagement: …") and its first warning appear only under the **selected** tile.
-6. The system validates the selected slot — recommended or manual — against the same guard rails (conflict prevention, lead time, publish window, daily cap) via `POST /guardrails/validate`, debounced on every change to `scheduledAt`.
+1. The actor opens the scheduling panel within Organize & Schedule; it loads automatically for a Standard draft, with no separate "open" action.
+2. The system queries recent historical social media engagement for the DASIG Page. It analyzes recent post performance to identify high-engagement periods. If sufficient historical data exists, it recommends optimal posting windows.
+3. Samples are bucketed by day-of-week and hour, restricted to the organization's approved daytime posting window, averaged per bucket, and the top 5 buckets become candidate windows � provided at least 20 samples exist; otherwise a fixed default of Tuesday/Wednesday/Thursday 6 PM is used (A1).
+4. For each candidate window, the system walks the next 30 days for the first matching weekday, validates it against the same scheduling guard rails as a manual pick, and keeps it only if not hard-blocked � up to 3 recommended slots total, each labeled with a single-hour window (e.g., "Best engagement: Tuesdays 6 PM - 7 PM") and carrying any soft warnings and a rounded score.
+5. The actor selects a recommended slot (filling the date/time fields, same as typing manually), or ignores the recommendation and chooses a custom date/time in the standard picker shown below the panel.
+6. The system validates the selected slot � recommended or manual � against the same scheduling rules. When guard rails are enabled, conflicts within �30 minutes, insufficient lead time, and times outside the Administrator-configured posting window are hard-blocked. The six-post daily threshold is surfaced as a soft warning and does not block scheduling. Validation is debounced as the actor changes the date or time.
 7. The selected schedule is saved to the draft on the next autosave/save, same as any other field.
 
-## Alternative Flows
-
-- **A1 — Insufficient Historical Data:** confirmed. Fewer than 20 samples (or no engagement in the configured posting window at all) falls back to a fixed default (Tuesday/Wednesday/Thursday 6 PM, descending weight) with `source: "DEFAULT"` and the notice "Using general weekday evening guidance. Recommendations will improve as more Facebook history is collected." — shown in the panel as a "General guidance" tag instead of "Based on N posts" (the notice text itself is behind the panel's ⓘ toggle).
-- **A2 — Recommended Slot Conflicts with Guard Rail:** confirmed, and specifically the **exclude** branch, not the **flag** branch — a hard-blocked candidate slot (e.g. inside another post's ±30-min buffer) is simply skipped and never appears in the list; it is not shown with a "blocked" annotation.
-- **A3 — Analytics Service Unavailable:** confirmed. Any failure fetching Facebook data (no Page token configured, Graph API error, network failure) returns `available: false`; the frontend maps that straight to `null` and the panel renders nothing (`EngagementRecommendationsPanel` returns `null` when `recommendations` is falsy) — the date/time picker underneath is unaffected either way.
-- **A4 — Manual Override of Recommendation:** confirmed. The actor can pick any non-recommended time, blocked only by a hard guard rail (same as a recommended slot). If it clears the hard block but still carries a soft warning (and guard rails are network-wide enforced), the composer now shows it inline right under the date/time fields — `guardRails.softWarnings[0].message` in a `.sub-inline-warning` banner, the same treatment as the mixed-media notice (UC-1.7 A7). The *recommended*-slot tiles already flag a recommendation's own warning (⚠ on the tile; `slot.warnings[0]` under it once selected); this closes the gap for a manually-typed time specifically.
+## Alternative Flow(s)
+- **A1 � Insufficient Historical Data**: Fewer than 20 samples (or no engagement in the Administrator-configured posting window at all) falls back to the fixed default (Tuesday/Wednesday/Thursday 6 PM, descending weight), shown in the panel as "Best-practice guidance" with a notice that recommendations will improve as more Facebook history accumulates.
+- **A2 � Recommended Slot Conflicts with Guard Rail**: A hard-blocked candidate slot (e.g., inside another post's �30-minute buffer) is excluded from the list entirely � not shown with a "blocked" annotation.
+- **A3 � Analytics Service Unavailable**: If analytics data is unavailable due to integration or network issues, results in the panel renders nothing; the date/time picker underneath is unaffected.
+- **A4 � Manual Override of Recommendation**: The actor may pick any non-recommended time, blocked only by a hard guard rail (same as a recommended slot). If it clears the hard block but carries a soft warning, the composer shows it inline beneath the date/time fields, the same treatment used for the mixed-media notice (UC-1.7 A7). This applies only when the network-wide guard-rail toggle is enabled.
 
 ## Postcondition(s)
-
-The draft has an assigned scheduled date/time, either selected from a system recommendation or chosen manually by the actor, validated against the same scheduling guard rails either way. Confirmed accurate.
-
----
-
-## Corrections from the prior draft of this UC
-
-- **Actors:** added Administrator — the composer (and this panel) is shared by all three roles, same as UC-1.5/1.6/1.7; there's no separate "Moderator acting as Contributor" mode.
-- **"Per-institution quotas" is the wrong scope** for the ≤6-posts/day guard rail referenced here — `GuardRailService.GR_S2_MAX_PER_DAY` is enforced **network-wide** (`slotReservationRepository.countActiveOnDay`, no institution filter), same nuance already corrected in UC-1.5. The ±30-minute buffer (GR-H1) is likewise network-wide, not per-institution.
-- **A4's soft-warning display was missing and has been added (2026-09-12)** — a manually-typed time that clears hard guard rails but still carries a soft warning now surfaces it inline (gated on `lookups.guardrailsEnforced`, same as the rest of the composer's guard-rail-driven UI, so the banner doesn't appear when the network-wide toggle is off). Everything else in the Main Flow and A1–A3 matched the running code closely on first read, including the exact sample-size threshold (20), the lookback window (100 posts / configured posting window), the slot cap (3), and the lookahead window (30 days), none of which were in the prior draft.
-- The example label "Best engagement: Tuesdays 6–8 PM" implies a 2-hour window; the actual generated label is a single hour (e.g. "Tuesdays 6 PM - 7 PM").
-
----
-
-_Verified against the running code as of 2026-09-12 (soft-warning display landed the same day). Primary sources: `EngagementRecommendationService` (`MINIMUM_SAMPLE_SIZE`, `DEFAULT_WINDOWS`, `MAX_SLOTS`, `buildSlots`, `PAGE_ZONE`), `FacebookEngagementAnalyticsClient.fetchRecentPostEngagement`, `EngagementRecommendationController` (`GET /engagement-recommendations`), `EngagementRecommendationServiceTest` (`insufficientHistoryReturnsDefaultSlots`, `analyticsFailureHidesRecommendations`, `hardBlockedCandidatesAreExcluded`, `sufficientHistoryUsesFacebookEngagementWindows`), `GuardRailService` (`GR_S2_MAX_PER_DAY`, GR-H1 network-wide framing), `frontend/src/features/submission/components/EngagementRecommendationsPanel.tsx`, `SubmissionScreen.tsx` (`shouldLoadEngagementRecommendations`, `applyEngagementSlot`, the guard-rail validation `useEffect`, the new soft-warning banner next to the Preferred Date/Time fields), `frontend/src/features/validation/ValidationQueueScreen.tsx` / `ResolutionRetryModal.tsx` (the reviewer reschedule flow's own `softWarnings` rendering, the pattern this reuses)._
+The draft has an assigned scheduled date and time, either selected from a system recommendation or entered manually. When guard rails are enabled, the time is checked against the applicable hard rules and soft warnings; when disabled, the guard-rail restrictions are skipped. Standard posts still require a future scheduled time and slot reservation. Fast-Track posts do not require a scheduled time or reservation.
