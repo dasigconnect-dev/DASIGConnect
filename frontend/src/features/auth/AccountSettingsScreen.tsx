@@ -135,6 +135,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
+  const [postingWindowStartHour, setPostingWindowStartHour] = useState(8);
+  const [postingWindowEndHour, setPostingWindowEndHour] = useState(20);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -302,6 +304,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   useEffect(() => {
     if (pageSettingsQuery.data && !pageSettingsHydratedRef.current) {
       setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
+      setPostingWindowStartHour(pageSettingsQuery.data.data.postingWindowStartHour ?? 8);
+      setPostingWindowEndHour(pageSettingsQuery.data.data.postingWindowEndHour ?? 20);
       pageSettingsHydratedRef.current = true;
     }
 
@@ -395,10 +399,28 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   }
 
   async function saveGuardrails() {
+    if (guardrailsEnforced) {
+      if (!Number.isInteger(postingWindowStartHour) || postingWindowStartHour < 0 || postingWindowStartHour > 23) {
+        return toast.error("Start hour must be a whole number between 0 and 23.");
+      }
+      if (!Number.isInteger(postingWindowEndHour) || postingWindowEndHour < 0 || postingWindowEndHour > 23) {
+        return toast.error("End hour must be a whole number between 0 and 23.");
+      }
+      if (postingWindowStartHour >= postingWindowEndHour) {
+        return toast.error("Start hour must be strictly before the end hour.");
+      }
+    }
+
     setSaving("guardrails");
     try {
-      const { data } = await updatePageSettings({ guardrailsEnforced }, pageInstitutionId);
+      const { data } = await updatePageSettings({
+        guardrailsEnforced,
+        postingWindowStartHour,
+        postingWindowEndHour,
+      }, pageInstitutionId);
       setGuardrailsEnforced(data.guardrailsEnforced ?? true);
+      setPostingWindowStartHour(data.postingWindowStartHour ?? 8);
+      setPostingWindowEndHour(data.postingWindowEndHour ?? 20);
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -1080,6 +1102,58 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     checked={guardrailsEnforced}
                     onChange={setGuardrailsEnforced}
                   />
+                  <div
+                    className="settings-studio-summary-box"
+                    style={{
+                      marginTop: "16px",
+                      opacity: guardrailsEnforced ? 1 : 0.6,
+                      pointerEvents: guardrailsEnforced ? "auto" : "none",
+                      display: "block",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span className="settings-summary-stat-label">Posting Window</span>
+                      <span className={`settings-summary-stat-badge ${guardrailsEnforced ? "is-active" : "is-inactive"}`}>
+                        {guardrailsEnforced ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="settings-field-hint" style={{ marginBottom: "16px", marginTop: 0 }}>
+                      Submissions can only be scheduled between these hours (local time).
+                    </p>
+                    <div style={{ display: "flex", gap: "16px", alignItems: "flex-end" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-window-start" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Start Hour (0-23)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-window-start"
+                            type="number"
+                            min="0"
+                            max="23"
+                            className="settings-input"
+                            value={postingWindowStartHour}
+                            onChange={(e) => setPostingWindowStartHour(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <span style={{ paddingBottom: "10px", color: "var(--d-muted)", fontWeight: 500 }}>to</span>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-window-end" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>End Hour (0-23)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-window-end"
+                            type="number"
+                            min="0"
+                            max="23"
+                            className="settings-input"
+                            value={postingWindowEndHour}
+                            onChange={(e) => setPostingWindowEndHour(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <SettingsFooter
                   label="Save"

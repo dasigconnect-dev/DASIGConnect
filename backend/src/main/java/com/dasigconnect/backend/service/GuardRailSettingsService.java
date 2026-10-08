@@ -35,4 +35,19 @@ public class GuardRailSettingsService {
                 .map(PageSettings::isGuardrailsEnforced)
                 .orElse(defaultEnforced);
     }
+
+    @Transactional(readOnly = true)
+    public int postingWindowStartHour() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPostingWindowStartHour)
+                .orElse(8);
+    }
+
+    @Transactional(readOnly = true)
+    public int postingWindowEndHour() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPostingWindowEndHour)
+                .orElse(20);
+    }
 }
+

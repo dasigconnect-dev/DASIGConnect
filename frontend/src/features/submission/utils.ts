@@ -477,7 +477,7 @@ export function getReadinessChecklist(
   const guardRailsEnforced = lookups.guardrailsEnforced;
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
   const futureSlot = !scheduledDate || scheduledDate > new Date();
-  const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime);
+  const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour);
   // A Standard post always needs a future scheduled slot. The guard-rail switch
   // only relaxes the *rules* on that slot — off means any interval, any time of
   // day (no ±30-min spacing, daily cap, lead time, or 8 AM–8 PM window).
@@ -550,7 +550,7 @@ export function getReadinessChecklist(
             : !futureSlot
               ? "Schedule can't be in the past"
               : guardRailsEnforced && !publishWindow
-                ? "Publish time must be 8:00 AM - 8:00 PM"
+                ? `Publish time must be ${lookups.postingWindowStartHour}:00 - ${lookups.postingWindowEndHour}:00`
                 : guardRailsEnforced && guardRails?.blocked
                   ? "Resolve blocked publishing slot"
                   : formatDateTime(scheduledAt),
@@ -669,8 +669,8 @@ export function getPreviewValidation(
     missingItems.push("Schedule must be set in the future.");
   }
   if (guardRailsEnforced && form.scheduledTime) {
-    if (!isWithinPublishWindow(form.scheduledTime)) {
-      missingItems.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
+      missingItems.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (oversizedFile) {
@@ -695,8 +695,8 @@ export function getPreviewValidation(
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
   if (guardRailsEnforced && form.scheduledTime) {
-    if (!isWithinPublishWindow(form.scheduledTime)) {
-      blockingErrors.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
+      blockingErrors.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (oversizedFile) {
@@ -711,11 +711,11 @@ export function getPreviewValidation(
   return { missingItems, blockingErrors };
 }
 
-export function isWithinPublishWindow(timeValue: string) {
+export function isWithinPublishWindow(timeValue: string, startHour: number, endHour: number) {
   const [h] = timeValue.split(":").map(Number);
   const m = Number(timeValue.split(":")[1]) || 0;
   const totalMin = h * 60 + m;
-  return totalMin >= 8 * 60 && totalMin <= 20 * 60;
+  return totalMin >= startHour * 60 && totalMin <= endHour * 60;
 }
 
 export function captionTone(caption: string) {
@@ -877,3 +877,7 @@ export function stepLabel(step: ProgressStep) {
 export function readinessTone(score: number): "good" | "fair" | "low" {
   return score >= 80 ? "good" : score >= 60 ? "fair" : "low";
 }
+
+
+
+

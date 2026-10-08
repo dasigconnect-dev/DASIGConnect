@@ -32,6 +32,10 @@ public class PageSettings {
      */
     @Column(name = "guardrails_enforced", nullable = false)
     private boolean guardrailsEnforced = true;
+    @Column(name = "posting_window_start_hour", nullable = false)
+    private int postingWindowStartHour = 8;
+    @Column(name = "posting_window_end_hour", nullable = false)
+    private int postingWindowEndHour = 20;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
@@ -51,6 +55,10 @@ public class PageSettings {
     public void setFacebookPageId(String value) { facebookPageId = value; }
     public boolean isGuardrailsEnforced() { return guardrailsEnforced; }
     public void setGuardrailsEnforced(boolean value) { guardrailsEnforced = value; }
+    public int getPostingWindowStartHour() { return postingWindowStartHour; }
+    public void setPostingWindowStartHour(int value) { postingWindowStartHour = value; }
+    public int getPostingWindowEndHour() { return postingWindowEndHour; }
+    public void setPostingWindowEndHour(int value) { postingWindowEndHour = value; }
     public void setUpdatedBy(User value) { updatedBy = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

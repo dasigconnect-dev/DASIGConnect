@@ -180,6 +180,8 @@ export interface PageSettingsResponse {
   institutionId: string | null;
   /** Network-wide scheduling guard-rail switch. Only meaningful / editable on the no-institution row. */
   guardrailsEnforced: boolean;
+  postingWindowStartHour: number;
+  postingWindowEndHour: number;
   updatedAt: string | null;
 }
 
@@ -195,7 +197,7 @@ export function getPageSettings(institutionId?: string | null, signal?: AbortSig
 // (/settings/watermark); the Facebook Page ID/token used for publishing is
 // managed in System Health -> Tokens, not here.
 export function updatePageSettings(
-  data: { guardrailsEnforced?: boolean },
+  data: { guardrailsEnforced?: boolean; postingWindowStartHour?: number; postingWindowEndHour?: number },
   institutionId?: string | null,
 ) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
@@ -459,3 +461,4 @@ export function declineModeratorPromotion() {
 export function cancelModeratorPromotion(userId: string) {
   return api.delete<UserProfileResponse>(`/users/${userId}/promotion/moderator`);
 }
+

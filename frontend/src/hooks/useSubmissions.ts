@@ -23,6 +23,8 @@ const emptyLookups: SubmissionLookups = {
   categories: [],
   availableTags: [],
   guardrailsEnforced: true,
+  postingWindowStartHour: 8,
+  postingWindowEndHour: 20,
 };
 
 const SUBMISSIONS_STALE_TIME_MS = 30_000;

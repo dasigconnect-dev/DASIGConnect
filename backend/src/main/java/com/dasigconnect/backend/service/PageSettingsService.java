@@ -32,7 +32,7 @@ public class PageSettingsService {
     public PageSettingsDto get(UUID institutionId, JwtUserDetails actor) {
         authorize(institutionId, actor);
         return find(institutionId).map(PageSettingsDto::from)
-                .orElse(new PageSettingsDto(institutionId, guardRailSettings.enforced(), null));
+                .orElse(new PageSettingsDto(institutionId, guardRailSettings.enforced(), guardRailSettings.postingWindowStartHour(), guardRailSettings.postingWindowEndHour(), null));
     }
 
     @Transactional
@@ -45,8 +45,16 @@ public class PageSettingsService {
         }
         // The guard-rail switch is network-wide — only honoured on the
         // no-institution row; ignored on per-institution Page Settings.
-        if (institutionId == null && request.guardrailsEnforced() != null) {
-            settings.setGuardrailsEnforced(request.guardrailsEnforced());
+        if (institutionId == null) {
+            if (request.guardrailsEnforced() != null) {
+                settings.setGuardrailsEnforced(request.guardrailsEnforced());
+            }
+            if (request.postingWindowStartHour() != null) {
+                settings.setPostingWindowStartHour(request.postingWindowStartHour());
+            }
+            if (request.postingWindowEndHour() != null) {
+                settings.setPostingWindowEndHour(request.postingWindowEndHour());
+            }
         }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));
         return PageSettingsDto.from(repository.save(settings));
@@ -61,3 +69,4 @@ public class PageSettingsService {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Page Settings access denied");
     }
 }
+
