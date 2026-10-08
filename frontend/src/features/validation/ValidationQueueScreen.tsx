@@ -77,6 +77,7 @@ import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { invalidateQueryRoots } from "../../lib/queryInvalidation";
 import { mutationCacheDependencies, queryKeys } from "../../lib/queryKeys";
+import { useSubmissionLookups } from "../../hooks/useSubmissions";
 import {
   useValidationLog,
   useValidationQueue,
@@ -335,6 +336,9 @@ export default function ValidationQueueScreen({
     loading,
     error,
   } = useValidationQueue(user, queueView, queueSort, queueSearch, !isFailedMode);
+  
+  const { lookups } = useSubmissionLookups(user, true);
+
   const queueSentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
@@ -2425,6 +2429,8 @@ export default function ValidationQueueScreen({
                                 id="val-edit-scheduled-time"
                                 value={editForm.scheduledTime}
                                 placeholder="Pick a time"
+                                startHour={lookups?.postingWindowStartHour ?? 8}
+                                endHour={lookups?.postingWindowEndHour ?? 20}
                                 onChange={(value) => setEditForm((f) => ({ ...f, scheduledTime: value }))}
                               />
                             </div>

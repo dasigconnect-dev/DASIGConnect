@@ -3249,6 +3249,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     value={form.scheduledTime}
                     readOnly={isReadOnlySubmission || form.fastTrack}
                     placeholder="Pick a time"
+                    startHour={lookups.postingWindowStartHour}
+                    endHour={lookups.postingWindowEndHour}
                     onChange={(value) => updateField("scheduledTime", value)}
                   />
                 </Field>

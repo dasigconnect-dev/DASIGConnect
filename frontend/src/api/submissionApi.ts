@@ -146,10 +146,12 @@ export interface SubmissionLookups {
   availableTags: string[];
   /**
    * Network-wide scheduling guard-rail switch (Page Settings). When false the
-   * composer treats a preferred schedule and the 8:00 AM–8:00 PM publish window
+   * composer treats a preferred schedule and the Administrator-configured publish window
    * as non-blocking; a future date is still required if one is set.
    */
   guardrailsEnforced: boolean;
+  postingWindowStartHour: number;
+  postingWindowEndHour: number;
 }
 
 export interface GuardRailViolation {

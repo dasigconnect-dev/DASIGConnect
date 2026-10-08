@@ -34,12 +34,16 @@ export function TimePickerField({
   placeholder = "Pick a time",
   readOnly,
   id,
+  startHour,
+  endHour,
   onChange,
 }: {
   value: string;
   placeholder?: string;
   readOnly?: boolean;
   id?: string;
+  startHour: number;
+  endHour: number;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
