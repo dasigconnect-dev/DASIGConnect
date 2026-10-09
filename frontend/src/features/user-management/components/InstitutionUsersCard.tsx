@@ -385,7 +385,7 @@ export default function InstitutionUsersCard({
                           <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
                             {formatRoleLabel(managedUser.role)}
                           </span>
-                          {managedUser.adminPromotionPending && (
+                          {(managedUser.adminPromotionPending || managedUser.moderatorPromotionPending) && (
                             <span className="um-badge um-badge-promotion-pending" title="Awaiting the invitee's confirmation">
                               Promotion pending
                             </span>
