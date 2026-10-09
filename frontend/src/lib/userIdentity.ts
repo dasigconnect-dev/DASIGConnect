@@ -75,3 +75,28 @@ function capitalizeName(value: string): string {
   if (!lettersOnly) return ''
   return lettersOnly.charAt(0).toUpperCase() + lettersOnly.slice(1)
 }
+
+export type PendingPromotion = {
+  role: 'admin' | 'moderator'
+  requestedBy: string | null
+  expiresAt: string | null
+}
+
+export function getPendingPromotion(user: UserProfileResponse | null | undefined): PendingPromotion | null {
+  if (!user) return null
+  if (user.adminPromotionPending) {
+    return {
+      role: 'admin',
+      requestedBy: user.adminPromotionRequestedBy || null,
+      expiresAt: user.adminPromotionExpiresAt || null,
+    }
+  }
+  if (user.moderatorPromotionPending) {
+    return {
+      role: 'moderator',
+      requestedBy: user.moderatorPromotionRequestedBy || null,
+      expiresAt: user.moderatorPromotionExpiresAt || null,
+    }
+  }
+  return null
+}

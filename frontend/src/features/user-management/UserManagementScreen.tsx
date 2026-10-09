@@ -24,7 +24,7 @@ import InvitationComposer from './components/InvitationComposer'
 import { SkeletonBlock } from './components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from './types'
 import { useToast } from '../../context/ToastContext'
-import { getUserDisplayName } from '../../lib/userIdentity'
+import { getUserDisplayName, getPendingPromotion } from '../../lib/userIdentity'
 import {
   emptyUserManagementData,
   useInvalidateUserManagementData,
@@ -309,7 +309,9 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   }
 
   function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
-    const roleName = managedUser.moderatorPromotionPending ? 'Moderator' : 'Administrator'
+    const promotion = getPendingPromotion(managedUser)
+    if (!promotion) return
+    const roleName = promotion.role === 'admin' ? 'Administrator' : 'Moderator'
     setConfirmDialog({
       title: 'Cancel Promotion',
       message: `Rescind the ${roleName} promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
@@ -325,7 +327,8 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   async function executeCancelPromotion(managedUser: UserProfileResponse) {
     setUpdatingUserId(managedUser.id)
     try {
-      if (managedUser.moderatorPromotionPending) {
+      const promotion = getPendingPromotion(managedUser)
+      if (promotion?.role === 'moderator') {
         await cancelModeratorPromotion(managedUser.id)
       } else {
         await cancelAdminPromotion(managedUser.id)

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { UserProfileResponse } from '../../../api/authApi'
 import type { User } from '../../../types/auth.types'
-import { getUserDisplayName, getUserInitials } from '../../../lib/userIdentity'
+import { getUserDisplayName, getUserInitials, getPendingPromotion } from '../../../lib/userIdentity'
 import ActionMenu from './ActionMenu'
 import { InlineSpinner, SkeletonRows } from './LoadingPrimitives'
 
@@ -341,7 +341,7 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
-                        onCancelAdminPromotion && (managedUser.adminPromotionPending || managedUser.moderatorPromotionPending)
+                        onCancelAdminPromotion && getPendingPromotion(managedUser)
                           ? {
                               label: 'Cancel promotion',
                               icon: 'ti ti-shield-x',
@@ -385,7 +385,7 @@ export default function InstitutionUsersCard({
                           <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
                             {formatRoleLabel(managedUser.role)}
                           </span>
-                          {(managedUser.adminPromotionPending || managedUser.moderatorPromotionPending) && (
+                          {getPendingPromotion(managedUser) && (
                             <span className="um-badge um-badge-promotion-pending" title="Awaiting the invitee's confirmation">
                               Promotion pending
                             </span>
