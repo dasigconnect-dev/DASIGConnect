@@ -20,8 +20,8 @@ interface InstitutionUsersCardProps {
   onChangeRole?: (user: UserProfileResponse) => void
   onEraseData?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
-  /** Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
-  onCancelAdminPromotion?: (user: UserProfileResponse) => void
+  /** Owner-only: rescinds a pending promotion before the invitee has responded. */
+  onCancelPromotion?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
@@ -56,7 +56,7 @@ export default function InstitutionUsersCard({
   onChangeRole,
   onEraseData,
   onRequestSuperAdminTransfer,
-  onCancelAdminPromotion,
+  onCancelPromotion,
   resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
@@ -341,11 +341,11 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
-                        onCancelAdminPromotion && getPendingPromotion(managedUser)
+                        onCancelPromotion && getPendingPromotion(managedUser)
                           ? {
                               label: 'Cancel promotion',
                               icon: 'ti ti-shield-x',
-                              onClick: () => onCancelAdminPromotion(managedUser),
+                              onClick: () => onCancelPromotion(managedUser),
                               dangerous: true,
                             }
                           : null,

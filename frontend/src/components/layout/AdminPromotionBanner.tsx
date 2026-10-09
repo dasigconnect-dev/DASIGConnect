@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { confirmAdminPromotion, declineAdminPromotion, confirmModeratorPromotion, declineModeratorPromotion } from '../../api/authApi'
+import { confirmPromotion, declinePromotion } from '../../api/authApi'
 import { currentProfileQueryOptions, useCurrentProfile } from '../../hooks/useCurrentProfile'
 import type { User } from '../../types/auth.types'
+import { getPendingPromotion } from '../../lib/userIdentity'
 
 export default function AdminPromotionBanner({ user }: { user: User }) {
   const queryClient = useQueryClient()
@@ -12,22 +13,17 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
   const [dismissed, setDismissed] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
 
-  const isModeratorPromotion = profile?.moderatorPromotionPending
-  const isAdminPromotion = profile?.adminPromotionPending
-  const hasPromotion = (isAdminPromotion || isModeratorPromotion) && !dismissed
+  const promotion = getPendingPromotion(profile)
+  const hasPromotion = !!promotion && !dismissed
 
   if (!hasPromotion) return null
   
-  const roleName = isModeratorPromotion ? 'Moderator' : 'Administrator'
+  const roleName = promotion.role === 'admin' ? 'Administrator' : 'Moderator'
 
   async function handleConfirm() {
     setBusy('confirm')
     try {
-      if (isModeratorPromotion) {
-        await confirmModeratorPromotion()
-      } else {
-        await confirmAdminPromotion()
-      }
+      await confirmPromotion()
       setConfirmed(true)
     } catch {
       setBusy(null)
@@ -37,9 +33,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
   async function handleDecline() {
     setBusy('decline')
     try {
-      const response = isModeratorPromotion 
-        ? await declineModeratorPromotion()
-        : await declineAdminPromotion()
+      const response = await declinePromotion()
       queryClient.setQueryData(profileQueryOptions.queryKey, response.data)
       setDismissed(true)
     } catch {

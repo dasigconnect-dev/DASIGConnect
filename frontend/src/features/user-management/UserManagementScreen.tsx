@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
-  cancelAdminPromotion,
-  cancelModeratorPromotion,
+  cancelPromotion,
   cancelInvitationByUser,
   changeUserRole,
   deleteUser,
@@ -308,7 +307,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
-  function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
+  function handleCancelPromotion(managedUser: UserProfileResponse) {
     const promotion = getPendingPromotion(managedUser)
     if (!promotion) return
     const roleName = promotion.role === 'admin' ? 'Administrator' : 'Moderator'
@@ -327,12 +326,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   async function executeCancelPromotion(managedUser: UserProfileResponse) {
     setUpdatingUserId(managedUser.id)
     try {
-      const promotion = getPendingPromotion(managedUser)
-      if (promotion?.role === 'moderator') {
-        await cancelModeratorPromotion(managedUser.id)
-      } else {
-        await cancelAdminPromotion(managedUser.id)
-      }
+      await cancelPromotion(managedUser.id)
       toast.success('Promotion cancelled.')
       await invalidateUserManagementData()
     } catch (error: unknown) {
@@ -553,7 +547,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onReassign={handleOpenReassign}
           onChangeRole={handleOpenChangeRole}
           onEraseData={isOwner ? handleEraseData : undefined}
-          onCancelAdminPromotion={isOwner ? handleCancelAdminPromotion : undefined}
+          onCancelPromotion={isOwner ? handleCancelPromotion : undefined}
           showRoleControls
           showInstitutionColumn
           title="All Users"

@@ -222,62 +222,37 @@ public class UserController {
     }
 
     /**
-     * POST /api/v1/users/promotion/confirm A Contributor or Moderator accepts
-     * their own pending Administrator promotion (UC-1.1). Any authenticated
-     * account may call this — the service verifies a pending promotion actually
-     * exists for the caller.
+     * POST /api/v1/users/promotion/confirm
+     * A Contributor or Moderator accepts their own pending promotion.
      */
     @PostMapping("/users/promotion/confirm")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> confirmAdminPromotion(
+    public ResponseEntity<ApiResponse<UserDto>> confirmPromotion(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminPromotion(user)));
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmPromotion(user)));
     }
 
     /**
-     * POST /api/v1/users/promotion/decline Declines a pending Administrator
-     * promotion, releasing the reserved slot immediately.
+     * POST /api/v1/users/promotion/decline
+     * Declines a pending promotion, releasing any reserved slots.
      */
     @PostMapping("/users/promotion/decline")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> declineAdminPromotion(
+    public ResponseEntity<ApiResponse<UserDto>> declinePromotion(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.declineAdminPromotion(user)));
+        return ResponseEntity.ok(ApiResponse.success(userService.declinePromotion(user)));
     }
 
     /**
-     * DELETE /api/v1/users/{id}/promotion Admin-Owner-only: rescinds a pending
-     * Administrator promotion before the invitee has responded.
+     * DELETE /api/v1/users/{id}/promotion
+     * Cancels a pending promotion.
      */
-
-    @PostMapping("/users/promotion/moderator/confirm")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> confirmModeratorPromotion(
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.confirmModeratorPromotion(user)));
-    }
-
-    @PostMapping("/users/promotion/moderator/decline")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> declineModeratorPromotion(
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.declineModeratorPromotion(user)));
-    }
-
-    @DeleteMapping("/users/{id}/promotion/moderator")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<UserDto>> cancelModeratorPromotion(
-            @PathVariable UUID id,
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.cancelModeratorPromotion(id, user)));
-    }
-
     @DeleteMapping("/users/{id}/promotion")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<UserDto>> cancelAdminPromotion(
+    public ResponseEntity<ApiResponse<UserDto>> cancelPromotion(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.cancelAdminPromotion(id, user)));
+        return ResponseEntity.ok(ApiResponse.success(userService.cancelPromotion(id, user)));
     }
 
     /**

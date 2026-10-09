@@ -52,8 +52,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("""
             select count(u)
             from User u
-            where u.adminPromotionRequestedBy is not null
-              and u.adminPromotionExpiresAt > :now
+            where u.pendingPromotionRole = com.dasigconnect.backend.model.entity.UserRole.admin
+              and u.pendingPromotionRequestedBy is not null
+              and u.pendingPromotionExpiresAt > :now
             """)
     long countLivePendingAdminPromotions(@Param("now") java.time.Instant now);
 
@@ -61,19 +62,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             select (count(u) > 0)
             from User u
             where u.id = :id
-              and u.adminPromotionRequestedBy is not null
-              and u.adminPromotionExpiresAt > :now
+              and u.pendingPromotionRole = :role
+              and u.pendingPromotionRequestedBy is not null
+              and u.pendingPromotionExpiresAt > :now
             """)
-    boolean hasLivePendingAdminPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
-
-    @Query("""
-            select (count(u) > 0)
-            from User u
-            where u.id = :id
-              and u.moderatorPromotionRequestedBy is not null
-              and u.moderatorPromotionExpiresAt > :now
-            """)
-    boolean hasLivePendingModeratorPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
+    boolean hasLivePendingPromotion(@Param("id") UUID id, @Param("role") UserRole role, @Param("now") java.time.Instant now);
 
     /**
      * A3: check if institution has any active moderators before reactivating

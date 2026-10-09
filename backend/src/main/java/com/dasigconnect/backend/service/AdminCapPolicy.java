@@ -72,7 +72,7 @@ public class AdminCapPolicy {
 
         long pendingPromotions = userRepository.countLivePendingAdminPromotions(now);
         if (excludePromotionUserId != null
-                && userRepository.hasLivePendingAdminPromotion(excludePromotionUserId, now)) {
+                && userRepository.hasLivePendingPromotion(excludePromotionUserId, com.dasigconnect.backend.model.entity.UserRole.admin, now)) {
             pendingPromotions--;
         }
 

@@ -24,12 +24,9 @@ public class UserDto {
     private boolean adminOwner;
     private UUID superAdminTransferRequestedBy;
     private Instant superAdminTransferExpiresAt;
-    private UUID adminPromotionRequestedBy;
-    private Instant adminPromotionExpiresAt;
-    private boolean adminPromotionPending;
-    private UUID moderatorPromotionRequestedBy;
-    private Instant moderatorPromotionExpiresAt;
-    private boolean moderatorPromotionPending;
+    private String pendingPromotionRole;
+    private UUID pendingPromotionRequestedBy;
+    private Instant pendingPromotionExpiresAt;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
@@ -56,16 +53,9 @@ public class UserDto {
         dto.adminOwner = user.isAdminOwner();
         dto.superAdminTransferRequestedBy = user.getSuperAdminTransferRequestedBy();
         dto.superAdminTransferExpiresAt = user.getSuperAdminTransferExpiresAt();
-        dto.adminPromotionRequestedBy = user.getAdminPromotionRequestedBy();
-        dto.adminPromotionExpiresAt = user.getAdminPromotionExpiresAt();
-        dto.adminPromotionPending = user.getAdminPromotionRequestedBy() != null
-                && user.getAdminPromotionExpiresAt() != null
-                && user.getAdminPromotionExpiresAt().isAfter(java.time.Instant.now());
-        dto.moderatorPromotionRequestedBy = user.getModeratorPromotionRequestedBy();
-        dto.moderatorPromotionExpiresAt = user.getModeratorPromotionExpiresAt();
-        dto.moderatorPromotionPending = user.getModeratorPromotionRequestedBy() != null
-                && user.getModeratorPromotionExpiresAt() != null
-                && user.getModeratorPromotionExpiresAt().isAfter(java.time.Instant.now());
+        dto.pendingPromotionRole = user.getPendingPromotionRole() != null ? user.getPendingPromotionRole().name() : null;
+        dto.pendingPromotionRequestedBy = user.getPendingPromotionRequestedBy();
+        dto.pendingPromotionExpiresAt = user.getPendingPromotionExpiresAt();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
@@ -141,28 +131,22 @@ public class UserDto {
         return superAdminTransferExpiresAt;
     }
 
-    public UUID getAdminPromotionRequestedBy() {
-        return adminPromotionRequestedBy;
+    public String getPendingPromotionRole() {
+        return pendingPromotionRole;
     }
 
-    public Instant getAdminPromotionExpiresAt() {
-        return adminPromotionExpiresAt;
+    public UUID getPendingPromotionRequestedBy() {
+        return pendingPromotionRequestedBy;
     }
 
-    public boolean isAdminPromotionPending() {
-        return adminPromotionPending;
+    public Instant getPendingPromotionExpiresAt() {
+        return pendingPromotionExpiresAt;
     }
 
-    public UUID getModeratorPromotionRequestedBy() {
-        return moderatorPromotionRequestedBy;
-    }
-
-    public Instant getModeratorPromotionExpiresAt() {
-        return moderatorPromotionExpiresAt;
-    }
-
-    public boolean isModeratorPromotionPending() {
-        return moderatorPromotionPending;
+    public boolean isPendingPromotionActive() {
+        return pendingPromotionRequestedBy != null
+                && pendingPromotionExpiresAt != null
+                && pendingPromotionExpiresAt.isAfter(Instant.now());
     }
 
     public UUID getInstitutionId() {
