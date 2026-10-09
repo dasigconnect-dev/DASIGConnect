@@ -574,8 +574,8 @@ class UserServiceTest {
                 principal(peerAdmin.getId(), "admin", null));
 
         assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(result.isAdminPromotionPending()).isTrue();
-        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+        assertThat(result.getPendingPromotionRole() != null).isTrue();
+        assertThat(target.getPendingPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
     }
 
     @Test
@@ -624,9 +624,9 @@ class UserServiceTest {
 
         // Role is NOT applied yet — the target must confirm (UC-1.1).
         assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(result.isAdminPromotionPending()).isTrue();
-        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(owner.getId());
-        assertThat(target.getAdminPromotionExpiresAt()).isAfter(java.time.Instant.now());
+        assertThat(result.getPendingPromotionRole() != null).isTrue();
+        assertThat(target.getPendingPromotionRequestedBy()).isEqualTo(owner.getId());
+        assertThat(target.getPendingPromotionExpiresAt()).isAfter(java.time.Instant.now());
         verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
                 .isA(com.dasigconnect.backend.event.AdminPromotionRequestedEvent.class));
@@ -639,7 +639,7 @@ class UserServiceTest {
         owner.setAdminOwner(true);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.hasLivePendingAdminPromotion(eq(target.getId()), any())).thenReturn(true);
+        when(userRepository.hasLivePendingPromotion(eq(target.getId()), com.dasigconnect.backend.model.entity.UserRole.admin, any())).thenReturn(true);
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null)))
@@ -1013,18 +1013,18 @@ class UserServiceTest {
     // ── Administrator promotion confirmation (UC-1.1) ─────────────────────
 
     @Test
-    void confirmAdminPromotion_pendingAndUnderCap_appliesAdminRole() {
+    void confirmPromotion_pendingAndUnderCap_appliesAdminRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         UUID ownerId = UUID.randomUUID();
-        self.setAdminPromotionRequestedBy(ownerId);
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        self.setPendingPromotionRequestedBy(ownerId);
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
         when(userRepository.save(self)).thenReturn(self);
 
-        UserDto result = userService.confirmAdminPromotion(principal(self.getId(), "moderator", null));
+        UserDto result = userService.confirmPromotion(principal(self.getId(), "moderator", null));
 
         assertThat(result.getRole()).isEqualTo("admin");
-        assertThat(result.isAdminPromotionPending()).isFalse();
+        assertThat(result.getPendingPromotionRole() != null).isFalse();
         assertThat(self.getInstitution()).isNull();
         assertThat(self.isAdminOwner()).isFalse();
         verify(jwtService).invalidateUserTokens(self.getId());
@@ -1032,42 +1032,42 @@ class UserServiceTest {
     }
 
     @Test
-    void confirmAdminPromotion_noPendingPromotion_throws409() {
+    void confirmPromotion_noPendingPromotion_throws409() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
-    void confirmAdminPromotion_expired_clearsAndThrows410() {
+    void confirmPromotion_expired_clearsAndThrows410() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        self.setAdminPromotionRequestedBy(UUID.randomUUID());
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
+        self.setPendingPromotionRequestedBy(UUID.randomUUID());
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
         when(userRepository.save(self)).thenReturn(self);
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.GONE);
-        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(self.getPendingPromotionRequestedBy()).isNull();
         assertThat(self.getRole()).isEqualTo(UserRole.moderator);
     }
 
     @Test
-    void confirmAdminPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
+    void confirmPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        self.setAdminPromotionRequestedBy(UUID.randomUUID());
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        self.setPendingPromotionRequestedBy(UUID.randomUUID());
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
                 .when(adminCapPolicy).assertHasFreeSlot(null, self.getId());
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -1075,18 +1075,18 @@ class UserServiceTest {
     }
 
     @Test
-    void declineAdminPromotion_clearsPendingSlotAndNotifiesRequester() {
+    void declinePromotion_clearsPendingSlotAndNotifiesRequester() {
         User self = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         UUID ownerId = UUID.randomUUID();
-        self.setAdminPromotionRequestedBy(ownerId);
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        self.setPendingPromotionRequestedBy(ownerId);
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
         when(userRepository.save(self)).thenReturn(self);
 
-        UserDto result = userService.declineAdminPromotion(principal(self.getId(), "contributor", institutionId));
+        UserDto result = userService.declinePromotion(principal(self.getId(), "contributor", institutionId));
 
-        assertThat(result.isAdminPromotionPending()).isFalse();
-        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(result.getPendingPromotionRole() != null).isFalse();
+        assertThat(self.getPendingPromotionRequestedBy()).isNull();
         assertThat(self.getRole()).isEqualTo(UserRole.contributor);
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
                 .isA(com.dasigconnect.backend.event.AdminPromotionDeclinedEvent.class));
@@ -1094,31 +1094,31 @@ class UserServiceTest {
     }
 
     @Test
-    void cancelAdminPromotion_ownerRescinds_clearsPendingSlot() {
+    void cancelPromotion_ownerRescinds_clearsPendingSlot() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        target.setAdminPromotionRequestedBy(UUID.randomUUID());
-        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        target.setPendingPromotionRequestedBy(UUID.randomUUID());
+        target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         when(userRepository.save(target)).thenReturn(target);
 
-        UserDto result = userService.cancelAdminPromotion(target.getId(), principal(owner.getId(), "admin", null));
+        UserDto result = userService.cancelPromotion(target.getId(), principal(owner.getId(), "admin", null));
 
-        assertThat(result.isAdminPromotionPending()).isFalse();
-        assertThat(target.getAdminPromotionRequestedBy()).isNull();
+        assertThat(result.getPendingPromotionRole() != null).isFalse();
+        assertThat(target.getPendingPromotionRequestedBy()).isNull();
     }
 
     @Test
-    void cancelAdminPromotion_peerAdminForbidden() {
+    void cancelPromotion_peerAdminForbidden() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        target.setAdminPromotionRequestedBy(UUID.randomUUID());
-        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        target.setPendingPromotionRequestedBy(UUID.randomUUID());
+        target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
-        assertThatThrownBy(() -> userService.cancelAdminPromotion(target.getId(),
+        assertThatThrownBy(() -> userService.cancelPromotion(target.getId(),
                 principal(peerAdmin.getId(), "admin", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
