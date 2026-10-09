@@ -52,28 +52,21 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("""
             select count(u)
             from User u
-            where u.adminPromotionRequestedBy is not null
-              and u.adminPromotionExpiresAt > :now
+            where u.pendingPromotionRole = :role
+              and u.pendingPromotionRequestedBy is not null
+              and u.pendingPromotionExpiresAt > :now
             """)
-    long countLivePendingAdminPromotions(@Param("now") java.time.Instant now);
+    long countLivePendingPromotionsByRole(@Param("role") UserRole role, @Param("now") java.time.Instant now);
 
     @Query("""
             select (count(u) > 0)
             from User u
             where u.id = :id
-              and u.adminPromotionRequestedBy is not null
-              and u.adminPromotionExpiresAt > :now
+              and u.pendingPromotionRole = :role
+              and u.pendingPromotionRequestedBy is not null
+              and u.pendingPromotionExpiresAt > :now
             """)
-    boolean hasLivePendingAdminPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
-
-    @Query("""
-            select (count(u) > 0)
-            from User u
-            where u.id = :id
-              and u.moderatorPromotionRequestedBy is not null
-              and u.moderatorPromotionExpiresAt > :now
-            """)
-    boolean hasLivePendingModeratorPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
+    boolean hasLivePendingPromotionByRole(@Param("id") UUID id, @Param("role") UserRole role, @Param("now") java.time.Instant now);
 
     /**
      * A3: check if institution has any active moderators before reactivating
@@ -125,3 +118,5 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query(value = "DELETE FROM invitation_tokens WHERE lower(recipient_email) = lower(:email)", nativeQuery = true)
     void deleteInvitationTokensByRecipientEmail(@Param("email") String email);
 }
+
+

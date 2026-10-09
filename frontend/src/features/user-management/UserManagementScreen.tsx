@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
-  cancelAdminPromotion,
+  cancelPromotion,
   cancelInvitationByUser,
   changeUserRole,
   deleteUser,
@@ -23,7 +23,7 @@ import InvitationComposer from './components/InvitationComposer'
 import { SkeletonBlock } from './components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from './types'
 import { useToast } from '../../context/ToastContext'
-import { getUserDisplayName } from '../../lib/userIdentity'
+import { getUserDisplayName, getPendingPromotion } from '../../lib/userIdentity'
 import {
   emptyUserManagementData,
   useInvalidateUserManagementData,
@@ -307,24 +307,28 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
-  function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
+  function handleCancelPromotion(managedUser: UserProfileResponse) {
+    const promotion = getPendingPromotion(managedUser)
+    if (!promotion) return
+    if (promotion.role === 'admin' && !isOwner) return
+    const roleName = promotion.role === 'admin' ? 'Administrator' : 'Moderator'
     setConfirmDialog({
       title: 'Cancel Promotion',
-      message: `Rescind the Administrator promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
+      message: `Rescind the ${roleName} promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
       confirmLabel: 'Cancel promotion',
       dangerous: true,
       onConfirm: () => {
         setConfirmDialog(null)
-        void executeCancelAdminPromotion(managedUser)
+        void executeCancelPromotion(managedUser)
       },
     })
   }
 
-  async function executeCancelAdminPromotion(managedUser: UserProfileResponse) {
+  async function executeCancelPromotion(managedUser: UserProfileResponse) {
     setUpdatingUserId(managedUser.id)
     try {
-      await cancelAdminPromotion(managedUser.id)
-      toast.success('Administrator promotion cancelled.')
+      await cancelPromotion(managedUser.id)
+      toast.success('Promotion cancelled.')
       await invalidateUserManagementData()
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel the promotion.'))
@@ -453,8 +457,10 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setRoleError('')
     try {
       await changeUserRole(roleUser.id, role, institutionId)
-      if (role === 'admin') {
-        toast.success(`Administrator promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
+      const isPromotion = role === 'admin' || (role === 'moderator' && roleUser.role.toLowerCase() === 'contributor')
+      if (isPromotion) {
+        const roleName = role === 'admin' ? 'Administrator' : 'Moderator'
+        toast.success(`${roleName} promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
       } else {
         toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
       }
@@ -542,7 +548,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onReassign={handleOpenReassign}
           onChangeRole={handleOpenChangeRole}
           onEraseData={isOwner ? handleEraseData : undefined}
-          onCancelAdminPromotion={isOwner ? handleCancelAdminPromotion : undefined}
+          onCancelPromotion={handleCancelPromotion}
           showRoleControls
           showInstitutionColumn
           title="All Users"
@@ -802,3 +808,4 @@ function getApiErrorMessage(error: unknown, fallback: string) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
+

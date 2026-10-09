@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, useNavigate, Navigate } from "react-router-dom";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import AuthLayout from "../components/layout/AuthLayout";
-import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
+import RolePromotionBanner from "../components/layout/RolePromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
 import AppErrorBoundary from "../components/common/AppErrorBoundary";
@@ -163,7 +163,7 @@ function App() {
               element={
                 currentUser ? (
                   <>
-                    <AdminPromotionBanner user={currentUser} />
+                    <RolePromotionBanner user={currentUser} />
                     <DashboardLayout
                       user={currentUser}
                       showBanner={layout.showBanner}
