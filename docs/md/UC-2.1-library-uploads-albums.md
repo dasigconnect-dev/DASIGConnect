@@ -52,6 +52,7 @@ Bulk delete, tiered per-asset delete authorization, usage tracking (`/history`, 
 - **2026-09-13 — `READY`-status bug fixed.** `AIClassificationService.classifyAndEmbed` previously never transitioned a successfully-classified asset off `PROCESSING` — only `FAILED` was ever written. It now sets `READY` once classification and both embeddings succeed. A video is marked `READY` immediately on upload instead of sitting on `PROCESSING` forever with nothing queued for it.
 - **2026-09-13 — A5 "unassign" tried and reverted.** A null-`albumId` "remove from all albums" path was briefly implemented, then reverted on the correct call that every library asset is meant to always belong to exactly one album — there's no "unfiled" state in the actual product design.
 - **2026-09-13 — A10 scope question resolved: the code is correct.** Moderator's unrestricted cross-institution move rights (same tier as Administrator, not Contributor) are the intended design; no code change made.
+- **2026-10-09 — Dueling Logic in Auto-Match Fixed.** Prevented the backend's fallback `autoMatchAlbum` from silently overwriting the frontend's sophisticated match. By setting `autoMatchAlbum: false` in the UI payload (`UploadModal.tsx`), the backend now trusts the specific `albumName` resolved by the frontend's algorithms.
 
 ---
 
