@@ -308,9 +308,10 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
-  function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
+  function handleCancelPromotion(managedUser: UserProfileResponse) {
     const promotion = getPendingPromotion(managedUser)
     if (!promotion) return
+    if (promotion.role === 'admin' && !isOwner) return
     const roleName = promotion.role === 'admin' ? 'Administrator' : 'Moderator'
     setConfirmDialog({
       title: 'Cancel Promotion',
@@ -553,7 +554,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onReassign={handleOpenReassign}
           onChangeRole={handleOpenChangeRole}
           onEraseData={isOwner ? handleEraseData : undefined}
-          onCancelAdminPromotion={isOwner ? handleCancelAdminPromotion : undefined}
+          onCancelPromotion={handleCancelPromotion}
           showRoleControls
           showInstitutionColumn
           title="All Users"
@@ -813,3 +814,4 @@ function getApiErrorMessage(error: unknown, fallback: string) {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
+

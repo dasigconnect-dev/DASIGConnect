@@ -21,7 +21,7 @@ interface InstitutionUsersCardProps {
   onEraseData?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
   /** Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
-  onCancelAdminPromotion?: (user: UserProfileResponse) => void
+  onCancelPromotion?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
@@ -56,7 +56,7 @@ export default function InstitutionUsersCard({
   onChangeRole,
   onEraseData,
   onRequestSuperAdminTransfer,
-  onCancelAdminPromotion,
+  onCancelPromotion,
   resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
@@ -341,13 +341,14 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
-                        onCancelAdminPromotion && getPendingPromotion(managedUser)
-                          ? {
-                              label: 'Cancel promotion',
-                              icon: 'ti ti-shield-x',
-                              onClick: () => onCancelAdminPromotion(managedUser),
-                              dangerous: true,
-                            }
+                          onCancelPromotion && getPendingPromotion(managedUser) &&
+                          (getPendingPromotion(managedUser)?.role === 'moderator' || currentUser?.adminOwner)
+                            ? {
+                                label: 'Cancel promotion',
+                                icon: 'ti ti-shield-x',
+                                onClick: () => onCancelPromotion(managedUser),
+                                dangerous: true,
+                              }
                           : null,
                       ].filter((item): item is NonNullable<typeof item> => item !== null)
 

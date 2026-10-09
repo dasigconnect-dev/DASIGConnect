@@ -126,20 +126,22 @@ export default function ChangeRoleModal({
             </div>
           )}
 
-          <div className="im-reassign-notice">
-            <i className="ti ti-info-circle" aria-hidden="true"></i>
-            <span>
-              {role === 'admin' || (role === 'moderator' && currentRole === 'contributor') ? (
-                `This proposes ${ROLE_LABEL[role]} access — nothing changes until they confirm. `
-                + 'They keep their current role and access until then, and can decline instead.'
-              ) : (
-                <>
-                  This person will be signed out and must sign in again.
-                  {currentRole === 'admin' && ' They will lose network-admin access.'}
-                </>
-              )}
-            </span>
-          </div>
+          {role !== '' && (
+            <div className="im-reassign-notice">
+              <i className="ti ti-info-circle" aria-hidden="true"></i>
+              <span>
+                {role === 'admin' || (role === 'moderator' && currentRole === 'contributor') ? (
+                  `This proposes ${ROLE_LABEL[role]} access — nothing changes until they confirm. `
+                  + 'They keep their current role and access until then, and can decline instead.'
+                ) : (
+                  <>
+                    This person will be signed out and must sign in again.
+                    {currentRole === 'admin' && ' They will lose network-admin access.'}
+                  </>
+                )}
+              </span>
+            </div>
+          )}
 
           {error && (
             <div className="alert alert-err im-modal-alert" role="alert">
