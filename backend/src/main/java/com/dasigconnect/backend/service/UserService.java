@@ -239,6 +239,10 @@ public class UserService {
             }
         }
 
+        if (newStatus == UserStatus.inactive || newStatus == UserStatus.cancelled) {
+            clearAdminPromotion(user);
+            clearModeratorPromotion(user);
+        }
         user.setAccountState(newStatus);
         User saved = userRepository.save(user);
         if (newStatus == UserStatus.inactive) {
@@ -458,6 +462,8 @@ public class UserService {
         target.setAdminOwner(false);
         target.setSuperAdminTransferRequestedBy(null);
         target.setSuperAdminTransferExpiresAt(null);
+        clearAdminPromotion(target);
+        clearModeratorPromotion(target);
         target.setAccountState(UserStatus.inactive);
         target.setPurgedAt(Instant.now());
         target.setPurgedByUserId(actor.getId());
