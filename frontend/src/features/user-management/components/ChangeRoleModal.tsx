@@ -129,8 +129,8 @@ export default function ChangeRoleModal({
           <div className="im-reassign-notice">
             <i className="ti ti-info-circle" aria-hidden="true"></i>
             <span>
-              {role === 'admin' ? (
-                'This proposes Administrator access — nothing changes until they confirm. '
+              {role === 'admin' || (role === 'moderator' && currentRole === 'contributor') ? (
+                `This proposes ${ROLE_LABEL[role]} access — nothing changes until they confirm. `
                 + 'They keep their current role and access until then, and can decline instead.'
               ) : (
                 <>
@@ -161,9 +161,9 @@ export default function ChangeRoleModal({
               {busy ? (
                 <>
                   <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
-                  {role === 'admin' ? 'Sending...' : 'Applying...'}
+                  {role === 'admin' || (role === 'moderator' && currentRole === 'contributor') ? 'Sending...' : 'Applying...'}
                 </>
-              ) : role === 'admin' ? (
+              ) : role === 'admin' || (role === 'moderator' && currentRole === 'contributor') ? (
                 'Send promotion request'
               ) : (
                 'Change role'

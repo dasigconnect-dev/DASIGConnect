@@ -1,41 +1,51 @@
-# UC-1.10 Moderator Account Management
+﻿### Use Case ID
+UC-1.10
 
-**Use Case ID:** UC-1.10
+### Use Case Name
+Moderator Account Management
 
-**Use Case Name:** Moderator Account Management
+### Actor(s)
+Administrator, Moderator (limited to managing Contributor invitations they personally sent)
 
-**Actor(s):** Administrator (full management of Moderator accounts), Moderator (invitation/management privileges over Contributor accounts they personally invited — see UC-1.3)
+### Precondition(s)
+The actor holds a valid, authenticated, ACTIVE session. Administrator privileges are required for all Moderator-account management actions. Moderators hold network-wide scope without an institution assignment. 
 
-**Precondition(s):** The actor holds a valid, authenticated ACTIVE session with Administrator privileges. Moderators are network-wide and hold no institution assignment.
+### Main Flow
+1. The Administrator navigates to User Management and selects Invite User, which opens the invitation modal.
+2. The Administrator inputs the invitee's email address and selects the **Moderator** role. Selecting this role hides the destination institution selector, automatically enforcing a network-wide scope.
+3. The Administrator submits the invitation request.
+4. The system validates the request as a network-scoped Moderator invitation.
+5. The system generates a unique, single-use invitation token bound to the invitee's email address, valid for 72 hours, and stores the hashed token.
+6. The system creates or updates the invitee's account record in PENDING state, reusing any existing PENDING, PENDING_EMAIL_UNDELIVERED, CANCELLED, or EXPIRED record for that email. If an account with the email exists in an ACTIVE or INACTIVE state, the system rejects the invitation. Older unused invitation tokens for the same email are invalidated.
+7. The system dispatches an activation email containing the activation link.
+8. The invitee completes activation by setting their password.
+9. The account transitions to ACTIVE, receives the Moderator role, remains institution-agnostic, and gains network-wide access to the Approval Workflow and Contributor-management privileges.
 
-## Main Flow
+### Alternative Flow(s)
+**A1 — Invitation Email Undelivered:** If email dispatch fails after all retries, the account remains in PENDING_EMAIL_UNDELIVERED until an Administrator verifies the address and triggers a resend (A8). 
 
-1. The Admin navigates to Moderator Management and selects Invite Moderator.
-2. The system validates the request as a network-scoped Moderator invitation with no institution assignment.
-3. The system generates a unique, single-use, time-sensitive invitation token bound to the invitee's email address, valid for 72 hours, and stores only the token hash.
-4. The system creates or updates the invitee's account record in `PENDING` state, reusing an existing `PENDING`, `PENDING_EMAIL_UNDELIVERED`, `CANCELLED`, or `EXPIRED` record for that email if one exists (an existing `ACTIVE` account, or a re-invitation targeting an `INACTIVE` account, returns a conflict error — the latter must go through Reactivation, A3), and marks any older unused invitation tokens for the same email as used.
-5. The system dispatches an activation email containing the activation link with the raw token.
-6. The invitee completes activation by setting their password.
-7. The account transitions to `ACTIVE`, receives the Moderator role, remains institutionless, and gains network-wide access to the UC-2.4 Approval Workflow plus the Contributor-management privileges defined in UC-1.3.
+**A2 — Deactivate Moderator Account:** An active Administrator deactivates an ACTIVE Moderator account. The system revokes all active sessions, blocks login, retains historical review activity and audit data, and records the action in the audit log.
 
-## Alternative Flows
+**A3 — Reactivate Moderator Account:** An active Administrator reactivates an INACTIVE Moderator account. Existing credentials remain valid, and no new session token is issued. 
 
-- **A1 — Invitation Email Undelivered:** If dispatch fails after retries, the account remains `PENDING_EMAIL_UNDELIVERED` until an Admin verifies the address and triggers a resend (A8).
-- **A2 — Deactivate Moderator Account:** *(Any active Admin — not Owner-restricted, since the target is not an Admin account.)* Deactivates an `ACTIVE` Moderator account (a non-active target returns a validation error). Revokes all active sessions, blocks login, retains historical review activity and audit data, and records the action in the audit log.
-- **A3 — Reactivate Moderator Account:** *(Any active Admin.)* Reactivates a previously deactivated (`INACTIVE`) Moderator account. Existing credentials remain valid; no new session token is issued. A non-inactive target returns a validation error. Re-inviting a deactivated Moderator is rejected; reactivation is the only path back to `ACTIVE`.
-- **A4 — Delete Moderator Account:** *(Any active Admin.)* Permanently removes a Moderator account only when it is `INACTIVE`, `CANCELLED`, or `EXPIRED` (an `ACTIVE` target is rejected, requiring deactivation first). If the account has any historical footprint — submissions, media uploads, validation logs/review actions, albums created, or any audit entry — it is not hard-deleted; it persists as an anonymized-at-rest inactive row with a `USER_REMOVED` audit entry. Only a completely footprint-free account is hard-deleted, writing `USER_DELETED` instead. (A moderator who was previously a Contributor may still carry submission/upload footprint from that earlier role.)
-- **A5 — Erase Moderator Account (Right to Be Forgotten):** *(Admin Owner only, consistent with UC-1.1 A6's treatment of this sensitive action regardless of target role.)* Target must be `INACTIVE` or `CANCELLED` and must not already be erased. Anonymizes the record in place and writes a `USER_ANONYMIZED` audit entry.
-- **A6 — Moderator Invites Contributor:** A Moderator invites a Contributor to any institution (Moderators are not institution-scoped) but may only assign the Contributor role — attempting to invite an Admin or Moderator role returns an authorization error. Full behavior specified in UC-1.3.
-- **A7 — Moderator Manages Own Sent Invitations:** A Moderator may resend, cancel, or (once cancelled/expired) delete a Contributor invitation they personally sent, per UC-1.3 A5/A6. A Moderator cannot deactivate, reactivate, or delete an already-`ACTIVE` Contributor account — those actions remain Admin-only.
-- **A8 — Cancel Pending Moderator Invitation:** *(Any active Admin.)* Cancels a pending Moderator invitation while the target account is `PENDING`, `PENDING_EMAIL_UNDELIVERED`, or `EXPIRED`. Deletes all outstanding tokens for that email and sets the account to `CANCELLED`.
-- **A9 — Resend Pending Moderator Invitation:** *(Any active Admin.)* Resends an invitation for a Moderator account in `PENDING_EMAIL_UNDELIVERED`, `EXPIRED`, or `CANCELLED` state. Generates a fresh 72-hour token, invalidates all prior open tokens, and resets the account to `PENDING`.
-- **A10 — Moderator as Promotion or Transfer Target:** A Moderator may be the target of an Admin promotion proposal (UC-1.1 A7) or an Admin Owner Transfer (UC-1.1 A8). Both are specified fully in UC-1.1 and are not duplicated here.
-- **A11 — Moderator as Lateral Role-Change Target:** Any active Admin may move an account directly between Contributor and Moderator — immediate, no confirmation step, distinct from A10's promotion-to-admin path. Contributor → Moderator clears the institution assignment; Moderator → Contributor requires assigning an active target institution. Either direction invalidates the account's sessions, and leaving the Moderator role releases any review locks the account currently holds. Recorded as `USER_ROLE_CHANGED`.
+**A4 — Remove Moderator Account:** An active Administrator removes a Moderator account. If the account has any historical footprint (submissions, media uploads, review actions, albums, or audit entries), it is automatically deactivated to preserve data integrity. A completely footprint-free account is permanently hard-deleted.
 
-## Postcondition(s)
+**A5 — Erase Personal Data (Right to Be Forgotten):** The Admin Owner permanently scrubs the user's name, email, avatar, credentials, and unpublished media uploads. Their submissions and review history remain but no longer identify them.
 
-A new Moderator account exists in `PENDING` or `ACTIVE` state; an existing Moderator account has been deactivated, reactivated, deleted (if footprint-free), anonymized, or had its role changed directly (A11); or its pending invitation has been cancelled or resent. All state-changing actions are reflected in the audit log.
+**A6 — Moderator Invites Contributor:** A Moderator invites a Contributor to any institution, assigning only the Contributor role (UC-1.3). 
 
----
+**A7 — Moderator Manages Own Sent Invitations:** A Moderator may resend, cancel, or delete a Contributor invitation they personally sent. A Moderator cannot deactivate, reactivate, or delete an already-ACTIVE Contributor account. 
 
-_Verified against the running code as of 2026-09-10. Primary sources: `InvitationService`, `UserService` (`updateStatus`, `removeUser`, `erasePersonalData`, `changeRole`), `InvitationController`, `UserController`._
+**A8 — Cancel Pending Moderator Invitation:** An active Administrator cancels a pending Moderator invitation (PENDING, PENDING_EMAIL_UNDELIVERED, or EXPIRED). The system deletes all outstanding tokens for that email and sets the account to CANCELLED. 
+
+**A9 — Resend Pending Moderator Invitation:** An active Administrator resends an invitation for an account in PENDING_EMAIL_UNDELIVERED, EXPIRED, or CANCELLED state. The system generates a fresh 72-hour token, invalidates prior open tokens, and resets the account to PENDING. 
+
+**A10 — Moderator as Promotion or Transfer Target:** A Moderator may be the target of an Administrator promotion proposal or an Admin Owner Transfer (UC-1.1). 
+
+**A11 — Change Role:** Any active Administrator may move an active account directly between Contributor and Moderator using the Change Role modal.
+* **Contributor → Moderator (Promotion):** The Admin proposes promoting an active Contributor to Moderator. This requires the Contributor's confirmation. Upon confirmation, the system changes the role to Moderator, automatically clears the account's institution assignment, invalidates active sessions requiring a re-login, and records USER_ROLE_CHANGED.
+* **Moderator → Contributor (Demotion):** The Admin selects Contributor and is required to assign an active target institution. This change is immediate.
+* **Either direction:** Any submissions the account currently holds under an active review lock are released back to the queue.
+
+### Postcondition(s)
+A new Moderator account exists in PENDING or ACTIVE state, whether created through invitation or through role change from Contributor. An existing Moderator account has been deactivated, reactivated, removed (or deactivated if footprint exists), anonymized, demoted to Contributor, or had its pending invitation cancelled or resent. Any review locks held at the time of a role change or deactivation have been released back to the Approval Queue. All state-changing actions are reflected in the audit log.

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
   cancelAdminPromotion,
+  cancelModeratorPromotion,
   cancelInvitationByUser,
   changeUserRole,
   deleteUser,
@@ -308,23 +309,28 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   }
 
   function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
+    const roleName = managedUser.moderatorPromotionPending ? 'Moderator' : 'Administrator'
     setConfirmDialog({
       title: 'Cancel Promotion',
-      message: `Rescind the Administrator promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
+      message: `Rescind the ${roleName} promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
       confirmLabel: 'Cancel promotion',
       dangerous: true,
       onConfirm: () => {
         setConfirmDialog(null)
-        void executeCancelAdminPromotion(managedUser)
+        void executeCancelPromotion(managedUser)
       },
     })
   }
 
-  async function executeCancelAdminPromotion(managedUser: UserProfileResponse) {
+  async function executeCancelPromotion(managedUser: UserProfileResponse) {
     setUpdatingUserId(managedUser.id)
     try {
-      await cancelAdminPromotion(managedUser.id)
-      toast.success('Administrator promotion cancelled.')
+      if (managedUser.moderatorPromotionPending) {
+        await cancelModeratorPromotion(managedUser.id)
+      } else {
+        await cancelAdminPromotion(managedUser.id)
+      }
+      toast.success('Promotion cancelled.')
       await invalidateUserManagementData()
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel the promotion.'))
@@ -453,8 +459,10 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setRoleError('')
     try {
       await changeUserRole(roleUser.id, role, institutionId)
-      if (role === 'admin') {
-        toast.success(`Administrator promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
+      const isPromotion = role === 'admin' || (role === 'moderator' && roleUser.role.toLowerCase() === 'contributor')
+      if (isPromotion) {
+        const roleName = role === 'admin' ? 'Administrator' : 'Moderator'
+        toast.success(`${roleName} promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
       } else {
         toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
       }

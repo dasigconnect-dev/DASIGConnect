@@ -341,7 +341,7 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
-                        onCancelAdminPromotion && managedUser.adminPromotionPending
+                        onCancelAdminPromotion && (managedUser.adminPromotionPending || managedUser.moderatorPromotionPending)
                           ? {
                               label: 'Cancel promotion',
                               icon: 'ti ti-shield-x',
