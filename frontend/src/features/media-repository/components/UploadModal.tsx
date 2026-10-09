@@ -354,7 +354,7 @@ export default function UploadModal({
         institutionId = effectiveInstId;
       }
 
-      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags, institutionId };
+      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum: false, tags, institutionId };
       const finished = await uploadFromIndex(0, metadata, controller.signal);
       if (!finished) return;
       setProgress(100);
