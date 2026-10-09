@@ -509,7 +509,7 @@ class UserServiceTest {
     // ── changeRole (promotion / demotion) ────────────────────────────────
 
     @Test
-    void changeRole_promoteContributorToModerator_clearsInstitutionAndInvalidatesTokens() {
+    void changeRole_promoteContributorToModerator_queuesPendingPromotionWithoutApplyingRoleYet() {
         User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
@@ -519,11 +519,13 @@ class UserServiceTest {
         UserDto result = userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null));
 
-        assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(target.getInstitution()).isNull();
-        verify(jwtService).invalidateUserTokens(target.getId());
-        verify(eventPublisher).publishEvent(
-                org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.UserRoleChangedEvent.class));
+        // Role is NOT applied yet — the target must confirm (same as admin promotions).
+        assertThat(result.getRole()).isEqualTo("contributor");
+        assertThat(result.getPendingPromotionRole()).isEqualTo("moderator");
+        assertThat(target.getPendingPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
+                .isA(com.dasigconnect.backend.event.ModeratorPromotionRequestedEvent.class));
     }
 
     @Test
@@ -639,7 +641,7 @@ class UserServiceTest {
         owner.setAdminOwner(true);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.hasLivePendingPromotion(eq(target.getId()), com.dasigconnect.backend.model.entity.UserRole.admin, any())).thenReturn(true);
+        when(userRepository.hasLivePendingPromotion(eq(target.getId()), eq(UserRole.admin), any())).thenReturn(true);
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null)))
@@ -1016,6 +1018,7 @@ class UserServiceTest {
     void confirmPromotion_pendingAndUnderCap_appliesAdminRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         UUID ownerId = UUID.randomUUID();
+        self.setPendingPromotionRole(UserRole.admin);
         self.setPendingPromotionRequestedBy(ownerId);
         self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
@@ -1045,6 +1048,7 @@ class UserServiceTest {
     @Test
     void confirmPromotion_expired_clearsAndThrows410() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        self.setPendingPromotionRole(UserRole.admin);
         self.setPendingPromotionRequestedBy(UUID.randomUUID());
         self.setPendingPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
@@ -1061,6 +1065,7 @@ class UserServiceTest {
     @Test
     void confirmPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        self.setPendingPromotionRole(UserRole.admin);
         self.setPendingPromotionRequestedBy(UUID.randomUUID());
         self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
@@ -1078,6 +1083,7 @@ class UserServiceTest {
     void declinePromotion_clearsPendingSlotAndNotifiesRequester() {
         User self = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         UUID ownerId = UUID.randomUUID();
+        self.setPendingPromotionRole(UserRole.admin);
         self.setPendingPromotionRequestedBy(ownerId);
         self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
@@ -1096,6 +1102,7 @@ class UserServiceTest {
     @Test
     void cancelPromotion_ownerRescinds_clearsPendingSlot() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        target.setPendingPromotionRole(UserRole.admin);
         target.setPendingPromotionRequestedBy(UUID.randomUUID());
         target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
@@ -1113,9 +1120,11 @@ class UserServiceTest {
     @Test
     void cancelPromotion_peerAdminForbidden() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        target.setPendingPromotionRole(UserRole.admin);
         target.setPendingPromotionRequestedBy(UUID.randomUUID());
         target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.cancelPromotion(target.getId(),
