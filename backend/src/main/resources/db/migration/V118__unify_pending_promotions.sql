@@ -7,14 +7,14 @@ ALTER TABLE users
 
 -- Migrate existing pending admin promotions
 UPDATE users
-SET pending_promotion_role = 'ADMIN',
+SET pending_promotion_role = 'admin',
     pending_promotion_requested_by = admin_promotion_requested_by,
     pending_promotion_expires_at = admin_promotion_expires_at
 WHERE admin_promotion_requested_by IS NOT NULL;
 
 -- Migrate existing pending moderator promotions (overwrites if somehow both are set, though shouldn't be)
 UPDATE users
-SET pending_promotion_role = 'MODERATOR',
+SET pending_promotion_role = 'moderator',
     pending_promotion_requested_by = moderator_promotion_requested_by,
     pending_promotion_expires_at = moderator_promotion_expires_at
 WHERE moderator_promotion_requested_by IS NOT NULL;

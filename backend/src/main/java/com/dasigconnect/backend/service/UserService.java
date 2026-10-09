@@ -491,13 +491,13 @@ public class UserService {
      *       Only the Admin Owner may change an <em>existing</em> admin's role
      *       (demotion).</li>
      *   <li>Proposing a promotion does NOT apply the role change. It reserves
-     *       an Administrator slot and records
-     *       {@code adminPromotionRequestedBy}/{@code adminPromotionExpiresAt}
-     *       on the target (72h TTL). The role only becomes {@code admin} once
-     *       the target calls {@link #confirmAdminPromotion}; they may instead
-     *       {@link #declineAdminPromotion}, or the proposer can
-     *       {@link #cancelAdminPromotion} before either happens. Every demotion
-     *       and every contributor/moderator move, by contrast, still applies
+     *       a slot (for admin) and records
+     *       {@code pendingPromotionRole}/{@code pendingPromotionRequestedBy}/{@code pendingPromotionExpiresAt}
+     *       on the target (72h TTL). The role only becomes the target once
+     *       the target calls {@link #confirmPromotion}; they may instead
+     *       {@link #declinePromotion}, or the proposer can
+     *       {@link #cancelPromotion} before either happens. Every demotion
+     *       and every immediate lateral role move, by contrast, still applies
      *       immediately.</li>
      *   <li>{@code contributor} requires an active {@code institutionId}; the
      *       network-wide roles clear the institution.</li>
