@@ -39,3 +39,4 @@ ALTER TABLE users
 CREATE INDEX idx_users_pending_promotion_expires 
     ON users (pending_promotion_expires_at) 
     WHERE pending_promotion_requested_by IS NOT NULL;
+

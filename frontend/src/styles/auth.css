@@ -778,7 +778,7 @@ body {
 
 /* UC-1.1 — pending Administrator promotion. Static (not fixed) so it stacks
    above the dashboard shell without overlapping #session-banner. */
-#admin-promotion-banner {
+#role-promotion-banner {
   position: relative;
   z-index: 850;
   background: #1a2a4a;
@@ -791,25 +791,25 @@ body {
   flex-wrap: wrap;
 }
 
-#admin-promotion-banner .banner-msg {
+#role-promotion-banner .banner-msg {
   color: #93c5fd;
 }
 
-#admin-promotion-banner .banner-msg i {
+#role-promotion-banner .banner-msg i {
   color: #60a5fa;
 }
 
-#admin-promotion-banner .banner-btn-stay {
+#role-promotion-banner .banner-btn-stay {
   background: #60a5fa;
   color: #0b1929;
 }
 
-#admin-promotion-banner .banner-btn-dismiss {
+#role-promotion-banner .banner-btn-dismiss {
   color: #93c5fd;
   border: 1px solid rgba(96, 165, 250, 0.3) !important;
 }
 
-#admin-promotion-banner .banner-btn-dismiss:hover {
+#role-promotion-banner .banner-btn-dismiss:hover {
   background: rgba(96, 165, 250, 0.08);
 }
 
@@ -2776,7 +2776,7 @@ body {
   }
 
   #session-banner,
-  #admin-promotion-banner {
+  #role-promotion-banner {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;

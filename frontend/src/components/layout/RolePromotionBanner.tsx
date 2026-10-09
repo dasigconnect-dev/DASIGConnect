@@ -5,7 +5,7 @@ import { currentProfileQueryOptions, useCurrentProfile } from '../../hooks/useCu
 import type { User } from '../../types/auth.types'
 import { getPendingPromotion } from '../../lib/userIdentity'
 
-export default function AdminPromotionBanner({ user }: { user: User }) {
+export default function RolePromotionBanner({ user }: { user: User }) {
   const queryClient = useQueryClient()
   const profileQueryOptions = currentProfileQueryOptions(user)
   const profile = useCurrentProfile(user).data
@@ -42,7 +42,7 @@ export default function AdminPromotionBanner({ user }: { user: User }) {
   }
 
   return (
-    <div id="admin-promotion-banner">
+    <div id="role-promotion-banner">
       <div className="banner-msg">
         <i className="ti ti-shield-plus" aria-hidden="true"></i>
         <span>
