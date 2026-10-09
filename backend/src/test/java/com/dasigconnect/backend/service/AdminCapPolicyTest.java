@@ -50,7 +50,7 @@ class AdminCapPolicyTest {
                 .when(invitationTokenRepository.findPendingNetworkRoleInvitations(eq(UserRole.admin), any()))
                 .thenReturn(List.of());
         org.mockito.Mockito.lenient()
-                .when(userRepository.countLivePendingAdminPromotions(any())).thenReturn(0L);
+                .when(userRepository.countLivePendingPromotionsByRole(eq(UserRole.admin), any())).thenReturn(0L);
     }
 
     private InvitationToken pendingInvite(String email) {
@@ -66,7 +66,7 @@ class AdminCapPolicyTest {
         when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(1L);
         when(invitationTokenRepository.findPendingNetworkRoleInvitations(eq(UserRole.admin), any()))
                 .thenReturn(List.of(pendingInvite("a@x.com")));
-        when(userRepository.countLivePendingAdminPromotions(any())).thenReturn(1L);
+        when(userRepository.countLivePendingPromotionsByRole(eq(UserRole.admin), any())).thenReturn(1L);
 
         assertThat(adminCapPolicy.slotsInUse(null, null)).isEqualTo(3L);
     }
@@ -94,8 +94,8 @@ class AdminCapPolicyTest {
     void slotsInUse_excludesTheTargetsOwnLivePendingPromotion() {
         UUID targetId = UUID.randomUUID();
         when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(1L);
-        when(userRepository.countLivePendingAdminPromotions(any())).thenReturn(2L);
-        when(userRepository.hasLivePendingAdminPromotion(eq(targetId), any())).thenReturn(true);
+        when(userRepository.countLivePendingPromotionsByRole(eq(UserRole.admin), any())).thenReturn(2L);
+        when(userRepository.hasLivePendingPromotionByRole(eq(targetId), eq(UserRole.admin), any())).thenReturn(true);
 
         // 1 active admin + 2 pending promotions - 1 (the one converting now) = 2
         assertThat(adminCapPolicy.slotsInUse(null, targetId)).isEqualTo(2L);

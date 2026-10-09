@@ -88,17 +88,15 @@ public class User {
      * role is not changed until confirmation. Cleared on confirm, decline,
      * admin rescind, or (lazily) expiry.
      */
-    @Column(name = "admin_promotion_requested_by")
-    private UUID adminPromotionRequestedBy;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pending_promotion_role")
+    private UserRole pendingPromotionRole;
 
-    @Column(name = "admin_promotion_expires_at")
-    private Instant adminPromotionExpiresAt;
+    @Column(name = "pending_promotion_requested_by")
+    private UUID pendingPromotionRequestedBy;
 
-    @Column(name = "moderator_promotion_requested_by")
-    private UUID moderatorPromotionRequestedBy;
-
-    @Column(name = "moderator_promotion_expires_at")
-    private Instant moderatorPromotionExpiresAt;
+    @Column(name = "pending_promotion_expires_at")
+    private Instant pendingPromotionExpiresAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -241,36 +239,28 @@ public class User {
         this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
     }
 
-    public UUID getAdminPromotionRequestedBy() {
-        return adminPromotionRequestedBy;
+    public UserRole getPendingPromotionRole() {
+        return pendingPromotionRole;
     }
 
-    public void setAdminPromotionRequestedBy(UUID adminPromotionRequestedBy) {
-        this.adminPromotionRequestedBy = adminPromotionRequestedBy;
+    public void setPendingPromotionRole(UserRole pendingPromotionRole) {
+        this.pendingPromotionRole = pendingPromotionRole;
     }
 
-    public Instant getAdminPromotionExpiresAt() {
-        return adminPromotionExpiresAt;
+    public UUID getPendingPromotionRequestedBy() {
+        return pendingPromotionRequestedBy;
     }
 
-    public void setAdminPromotionExpiresAt(Instant adminPromotionExpiresAt) {
-        this.adminPromotionExpiresAt = adminPromotionExpiresAt;
+    public void setPendingPromotionRequestedBy(UUID pendingPromotionRequestedBy) {
+        this.pendingPromotionRequestedBy = pendingPromotionRequestedBy;
     }
 
-    public UUID getModeratorPromotionRequestedBy() {
-        return moderatorPromotionRequestedBy;
+    public Instant getPendingPromotionExpiresAt() {
+        return pendingPromotionExpiresAt;
     }
 
-    public void setModeratorPromotionRequestedBy(UUID moderatorPromotionRequestedBy) {
-        this.moderatorPromotionRequestedBy = moderatorPromotionRequestedBy;
-    }
-
-    public Instant getModeratorPromotionExpiresAt() {
-        return moderatorPromotionExpiresAt;
-    }
-
-    public void setModeratorPromotionExpiresAt(Instant moderatorPromotionExpiresAt) {
-        this.moderatorPromotionExpiresAt = moderatorPromotionExpiresAt;
+    public void setPendingPromotionExpiresAt(Instant pendingPromotionExpiresAt) {
+        this.pendingPromotionExpiresAt = pendingPromotionExpiresAt;
     }
 
     public Instant getCreatedAt() {
@@ -329,3 +319,5 @@ public class User {
         this.purgedByUserId = purgedByUserId;
     }
 }
+
+

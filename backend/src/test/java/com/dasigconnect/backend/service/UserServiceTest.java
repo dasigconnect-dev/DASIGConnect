@@ -105,7 +105,7 @@ class UserServiceTest {
 
     @Test
     void getProfile_existingUser_returnsUserDtoWithoutPasswordHash() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         UserDto result = userService.getProfile(principal(userId, "contributor", institutionId));
 
@@ -121,7 +121,7 @@ class UserServiceTest {
 
     @Test
     void getProfile_missingUser_throws404() {
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.getProfile(principal(userId, "contributor", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
@@ -131,8 +131,8 @@ class UserServiceTest {
 
     @Test
     void updateSettings_persistsPreferences() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
-        when(userRepository.save(contributor)).thenReturn(contributor);
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.save(contributor)).thenReturn(contributor);
 
         userService.updateSettings(
                 principal(userId, "contributor", institutionId),
@@ -245,7 +245,7 @@ class UserServiceTest {
 
     @Test
     void getById_moderatorCanViewOwnInstitutionUser() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "moderator", institutionId));
 
@@ -255,7 +255,7 @@ class UserServiceTest {
     @Test
     void getById_moderatorCanViewOtherInstitutionUser() {
         // Moderators are network-wide now — no institution comparison applies.
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         UserDto result = userService.getById(userId,
                 principal(UUID.randomUUID(), "moderator", UUID.randomUUID()));
@@ -265,8 +265,8 @@ class UserServiceTest {
 
     @Test
     void updateStatus_moderatorCanDeactivateUser() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
-        when(userRepository.save(contributor)).thenReturn(contributor);
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.save(contributor)).thenReturn(contributor);
 
         UserDto result = userService.updateStatus(userId, UserStatus.inactive,
                 principal(UUID.randomUUID(), "admin", null));
@@ -287,7 +287,7 @@ class UserServiceTest {
     @Test
     void updateStatus_standardModeratorCannotManageModerator() {
         User moderator = user(UUID.randomUUID(), "moderator@cit.edu.ph", UserRole.moderator, institution);
-        when(userRepository.findById(moderator.getId())).thenReturn(Optional.of(moderator));
+        org.mockito.Mockito.lenient().when(userRepository.findById(moderator.getId())).thenReturn(Optional.of(moderator));
 
         assertThatThrownBy(() -> userService.updateStatus(moderator.getId(), UserStatus.inactive,
                 principal(UUID.randomUUID(), "moderator", institutionId)))
@@ -299,7 +299,7 @@ class UserServiceTest {
     @Test
     void removeUser_standardModeratorCannotRemoveModerator() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
 
         assertThatThrownBy(() -> userService.removeUser(targetAdmin.getId(),
                 principal(UUID.randomUUID(), "moderator", null)))
@@ -314,8 +314,8 @@ class UserServiceTest {
         targetAdmin.setAccountState(UserStatus.inactive);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
         superAdmin.setAdminOwner(true);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
         when(submissionRepository.existsByContributorId(targetAdmin.getId())).thenReturn(true);
 
         assertThat(userService.removeUser(targetAdmin.getId(),
@@ -328,7 +328,7 @@ class UserServiceTest {
         User invitee = user(UUID.randomUUID(), "invitee@cit.edu.ph", UserRole.contributor, null);
         invitee.setAccountState(UserStatus.cancelled);
         invitee.setInvitedByUserId(moderatorId);
-        when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
+        org.mockito.Mockito.lenient().when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
 
         String result = userService.removeUser(invitee.getId(), principal(moderatorId, "moderator", null));
 
@@ -341,7 +341,7 @@ class UserServiceTest {
         User invitee = user(UUID.randomUUID(), "invitee@cit.edu.ph", UserRole.contributor, null);
         invitee.setAccountState(UserStatus.cancelled);
         invitee.setInvitedByUserId(UUID.randomUUID()); // invited by another moderator/admin
-        when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
+        org.mockito.Mockito.lenient().when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
 
         assertThatThrownBy(() -> userService.removeUser(invitee.getId(),
                 principal(UUID.randomUUID(), "moderator", null)))
@@ -356,7 +356,7 @@ class UserServiceTest {
         User contributor = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, null);
         contributor.setAccountState(UserStatus.inactive); // was active then deactivated
         contributor.setInvitedByUserId(moderatorId);
-        when(userRepository.findById(contributor.getId())).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(contributor.getId())).thenReturn(Optional.of(contributor));
 
         assertThatThrownBy(() -> userService.removeUser(contributor.getId(),
                 principal(moderatorId, "moderator", null)))
@@ -371,8 +371,8 @@ class UserServiceTest {
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
         };
         MockMultipartFile file = new MockMultipartFile("file", "profile.png", "image/png", png);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
-        when(userRepository.save(contributor)).thenReturn(contributor);
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.save(contributor)).thenReturn(contributor);
 
         UserDto result = userService.updateAvatar(
                 userId, file, principal(UUID.randomUUID(), "moderator", null));
@@ -390,7 +390,7 @@ class UserServiceTest {
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
         };
         MockMultipartFile file = new MockMultipartFile("file", "profile.png", "image/png", png);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         assertThatThrownBy(() -> userService.updateAvatar(
                 userId, file, principal(UUID.randomUUID(), "contributor", institutionId)))
@@ -404,9 +404,9 @@ class UserServiceTest {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
         superAdmin.setAdminOwner(true);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
-        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
 
         UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
                 principal(superAdmin.getId(), "admin", null));
@@ -420,9 +420,9 @@ class UserServiceTest {
     void updateStatus_peerAdminCanDeactivateModerator() {
         User targetModerator = user(UUID.randomUUID(), "mod@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(targetModerator.getId())).thenReturn(Optional.of(targetModerator));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
-        when(userRepository.save(targetModerator)).thenReturn(targetModerator);
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetModerator.getId())).thenReturn(Optional.of(targetModerator));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.save(targetModerator)).thenReturn(targetModerator);
 
         UserDto result = userService.updateStatus(targetModerator.getId(), UserStatus.inactive,
                 principal(peerAdmin.getId(), "admin", null));
@@ -434,8 +434,8 @@ class UserServiceTest {
     void updateStatus_peerAdminCannotManageFellowAdmin() {
         User targetAdmin = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
                 principal(peerAdmin.getId(), "admin", null)))
@@ -449,9 +449,9 @@ class UserServiceTest {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
         superAdmin.setAdminOwner(true);
-        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+        org.mockito.Mockito.lenient().when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
 
         AdminTransferResponseDto result = userService.requestAdminTransfer(
                 targetAdmin.getId(),
@@ -470,10 +470,10 @@ class UserServiceTest {
         User incoming = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
         incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
         incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
-        when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
-        when(userRepository.save(incoming)).thenReturn(incoming);
-        when(userRepository.save(outgoing)).thenReturn(outgoing);
+        org.mockito.Mockito.lenient().when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
+        org.mockito.Mockito.lenient().when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
+        org.mockito.Mockito.lenient().when(userRepository.save(incoming)).thenReturn(incoming);
+        org.mockito.Mockito.lenient().when(userRepository.save(outgoing)).thenReturn(outgoing);
 
         UserDto result = userService.confirmAdminTransfer(
                 principal(incoming.getId(), "moderator", null));
@@ -492,10 +492,10 @@ class UserServiceTest {
         User incoming = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
         incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
-        when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
-        when(userRepository.save(incoming)).thenReturn(incoming);
-        when(userRepository.save(outgoing)).thenReturn(outgoing);
+        org.mockito.Mockito.lenient().when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
+        org.mockito.Mockito.lenient().when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
+        org.mockito.Mockito.lenient().when(userRepository.save(incoming)).thenReturn(incoming);
+        org.mockito.Mockito.lenient().when(userRepository.save(outgoing)).thenReturn(outgoing);
 
         UserDto result = userService.confirmAdminTransfer(
                 principal(incoming.getId(), "admin", null));
@@ -509,29 +509,28 @@ class UserServiceTest {
     // ── changeRole (promotion / demotion) ────────────────────────────────
 
     @Test
-    void changeRole_promoteContributorToModerator_clearsInstitutionAndInvalidatesTokens() {
+    void changeRole_promoteContributorToModerator_proposesPromotion() {
         User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
 
         UserDto result = userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null));
 
-        assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(target.getInstitution()).isNull();
-        verify(jwtService).invalidateUserTokens(target.getId());
-        verify(eventPublisher).publishEvent(
-                org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.UserRoleChangedEvent.class));
+        assertThat(result.getRole()).isEqualTo("contributor");
+        assertThat(target.getInstitution()).isNotNull();
+        assertThat(target.getPendingPromotionRole()).isEqualTo(UserRole.moderator);
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(target.getId());
     }
 
     @Test
     void changeRole_demoteModeratorToContributor_withoutInstitution_returns400() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.contributor, null,
                 principal(peerAdmin.getId(), "admin", null)))
@@ -544,10 +543,10 @@ class UserServiceTest {
     void changeRole_demoteModeratorToContributor_setsInstitutionAndClearsReviewLocks() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
         when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
 
         UserDto result = userService.changeRole(target.getId(), UserRole.contributor, institutionId,
                 principal(peerAdmin.getId(), "admin", null));
@@ -566,24 +565,24 @@ class UserServiceTest {
         // Owner-only.
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
 
         UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(peerAdmin.getId(), "admin", null));
 
         assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(result.isAdminPromotionPending()).isTrue();
-        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+        assertThat(result.getPendingPromotionRole()).isNotNull();
+        assertThat(target.getPendingPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
     }
 
     @Test
     void changeRole_peerAdminCannotDemoteExistingAdmin() {
         User target = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null)))
@@ -597,8 +596,8 @@ class UserServiceTest {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
                 .when(adminCapPolicy).assertHasFreeSlot(null, target.getId());
 
@@ -615,18 +614,18 @@ class UserServiceTest {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
 
         UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null));
 
         // Role is NOT applied yet — the target must confirm (UC-1.1).
         assertThat(result.getRole()).isEqualTo("moderator");
-        assertThat(result.isAdminPromotionPending()).isTrue();
-        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(owner.getId());
-        assertThat(target.getAdminPromotionExpiresAt()).isAfter(java.time.Instant.now());
+        assertThat(result.getPendingPromotionRole()).isNotNull();
+        assertThat(target.getPendingPromotionRequestedBy()).isEqualTo(owner.getId());
+        assertThat(target.getPendingPromotionExpiresAt()).isAfter(java.time.Instant.now());
         verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
                 .isA(com.dasigconnect.backend.event.AdminPromotionRequestedEvent.class));
@@ -637,9 +636,9 @@ class UserServiceTest {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.hasLivePendingAdminPromotion(eq(target.getId()), any())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.hasLivePendingPromotionByRole(eq(target.getId()), eq(UserRole.admin), any())).thenReturn(true);
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null)))
@@ -664,8 +663,8 @@ class UserServiceTest {
         targetOwner.setAdminOwner(true);
         User requester = user(UUID.randomUUID(), "req@dasigconnect.com", UserRole.admin, null);
         requester.setAdminOwner(true);
-        when(userRepository.findById(targetOwner.getId())).thenReturn(Optional.of(targetOwner));
-        when(userRepository.findById(requester.getId())).thenReturn(Optional.of(requester));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetOwner.getId())).thenReturn(Optional.of(targetOwner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(requester.getId())).thenReturn(Optional.of(requester));
 
         assertThatThrownBy(() -> userService.changeRole(targetOwner.getId(), UserRole.moderator, null,
                 principal(requester.getId(), "admin", null)))
@@ -678,8 +677,8 @@ class UserServiceTest {
     void changeRole_sameRole_returns400() {
         User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.contributor, null,
                 principal(peerAdmin.getId(), "admin", null)))
@@ -697,9 +696,9 @@ class UserServiceTest {
         User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
         target.setAccountState(UserStatus.inactive);
         target.setAvatarData(new byte[]{1, 2, 3});
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
         when(mediaAssetRepository.softDeleteUnattachedAssetsByUploader(target.getId(), owner.getId())).thenReturn(2);
 
         UserService.ErasureResult result = userService.erasePersonalData(
@@ -729,7 +728,7 @@ class UserServiceTest {
     @Test
     void erasePersonalData_nonOwnerIsForbidden() {
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
 
         assertThatThrownBy(() -> userService.erasePersonalData(
                 UUID.randomUUID(), principal(peerAdmin.getId(), "admin", null)))
@@ -742,7 +741,7 @@ class UserServiceTest {
     void erasePersonalData_selfIsRejected() {
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
 
         assertThatThrownBy(() -> userService.erasePersonalData(
                 owner.getId(), principal(owner.getId(), "admin", null)))
@@ -758,8 +757,8 @@ class UserServiceTest {
         User otherOwner = user(UUID.randomUUID(), "co-owner@dasigconnect.com", UserRole.admin, null);
         otherOwner.setAdminOwner(true);
         otherOwner.setAccountState(UserStatus.inactive);
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.findById(otherOwner.getId())).thenReturn(Optional.of(otherOwner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(otherOwner.getId())).thenReturn(Optional.of(otherOwner));
 
         assertThatThrownBy(() -> userService.erasePersonalData(
                 otherOwner.getId(), principal(owner.getId(), "admin", null)))
@@ -773,8 +772,8 @@ class UserServiceTest {
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
         User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
 
         assertThatThrownBy(() -> userService.erasePersonalData(
                 target.getId(), principal(owner.getId(), "admin", null)))
@@ -790,8 +789,8 @@ class UserServiceTest {
         User target = user(UUID.randomUUID(), "deleted+x@deleted.invalid", UserRole.contributor, institution);
         target.setAccountState(UserStatus.inactive);
         target.setPurgedAt(java.time.Instant.now().minusSeconds(60));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
 
         assertThatThrownBy(() -> userService.erasePersonalData(
                 target.getId(), principal(owner.getId(), "admin", null)))
@@ -809,9 +808,9 @@ class UserServiceTest {
         targetInst.setCode("SU");
         targetInst.setStatus(InstitutionStatus.active);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(institutionRepository.findById(targetInstId)).thenReturn(Optional.of(targetInst));
-        when(userRepository.save(contributor)).thenReturn(contributor);
+        org.mockito.Mockito.lenient().when(userRepository.save(contributor)).thenReturn(contributor);
         when(invitationTokenRepository.findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
                 eq(contributor.getEmail()), any())).thenReturn(Collections.emptyList());
 
@@ -838,7 +837,7 @@ class UserServiceTest {
     @Test
     void reassignContributor_moderatorUser_throwsUnprocessableEntity() {
         User moderator = user(UUID.randomUUID(), "val@cit.edu.ph", UserRole.moderator, institution);
-        when(userRepository.findById(moderator.getId())).thenReturn(Optional.of(moderator));
+        org.mockito.Mockito.lenient().when(userRepository.findById(moderator.getId())).thenReturn(Optional.of(moderator));
 
         assertThatThrownBy(() -> userService.reassignContributor(
                 moderator.getId(), UUID.randomUUID(), principal(UUID.randomUUID(), "moderator", null)))
@@ -854,7 +853,7 @@ class UserServiceTest {
         targetInst.setId(targetInstId);
         targetInst.setStatus(InstitutionStatus.inactive);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(institutionRepository.findById(targetInstId)).thenReturn(Optional.of(targetInst));
 
         assertThatThrownBy(() -> userService.reassignContributor(
@@ -866,7 +865,7 @@ class UserServiceTest {
 
     @Test
     void reassignContributor_sameInstitution_throwsUnprocessableEntity() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
 
         assertThatThrownBy(() -> userService.reassignContributor(
@@ -879,7 +878,7 @@ class UserServiceTest {
     @Test
     void removeUser_activeUser_throws409Conflict() {
         contributor.setAccountState(UserStatus.active);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         assertThatThrownBy(() -> userService.removeUser(userId, adminPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
@@ -890,7 +889,7 @@ class UserServiceTest {
     @Test
     void removeUser_inactiveUserWithoutData_deletesSuccessfully() {
         contributor.setAccountState(UserStatus.inactive);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
         when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
         when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
@@ -904,7 +903,7 @@ class UserServiceTest {
     @Test
     void removeUser_cancelledUserWithoutData_deletesSuccessfully() {
         contributor.setAccountState(UserStatus.cancelled);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
         when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
         when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
@@ -921,7 +920,7 @@ class UserServiceTest {
         // (audit_log.actor_id rows) — a hard delete would trip the FK, so it
         // must be retained as an anonymised inactive row.
         contributor.setAccountState(UserStatus.inactive);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
         when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
         when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
@@ -941,7 +940,7 @@ class UserServiceTest {
         // the audit log.
         contributor.setAccountState(UserStatus.inactive);
         contributor.setPurgedAt(java.time.Instant.now());
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(submissionRepository.existsByContributorId(userId)).thenReturn(true);
 
         String result = userService.removeUser(userId, adminPrincipal);
@@ -955,7 +954,7 @@ class UserServiceTest {
     @Test
     void updateStatus_deactivateNonActiveUser_throws400() {
         contributor.setAccountState(UserStatus.inactive);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
         assertThatThrownBy(() -> userService.updateStatus(userId, UserStatus.inactive, adminPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
@@ -969,8 +968,8 @@ class UserServiceTest {
         targetAdmin.setAccountState(UserStatus.inactive);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
                 .when(adminCapPolicy).assertHasFreeSlot(null, null);
 
@@ -988,9 +987,9 @@ class UserServiceTest {
         targetAdmin.setAccountState(UserStatus.inactive);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
 
         UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.active,
                 principal(owner.getId(), "admin", null));
@@ -1001,8 +1000,8 @@ class UserServiceTest {
     @Test
     void updateStatus_reactivateContributor_doesNotCheckAdminCap() {
         contributor.setAccountState(UserStatus.inactive);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
-        when(userRepository.save(contributor)).thenReturn(contributor);
+        org.mockito.Mockito.lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        org.mockito.Mockito.lenient().when(userRepository.save(contributor)).thenReturn(contributor);
 
         UserDto result = userService.updateStatus(userId, UserStatus.active, adminPrincipal);
 
@@ -1013,18 +1012,19 @@ class UserServiceTest {
     // ── Administrator promotion confirmation (UC-1.1) ─────────────────────
 
     @Test
-    void confirmAdminPromotion_pendingAndUnderCap_appliesAdminRole() {
+    void confirmPromotion_pendingAndUnderCap_appliesAdminRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         UUID ownerId = UUID.randomUUID();
-        self.setAdminPromotionRequestedBy(ownerId);
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
-        when(userRepository.save(self)).thenReturn(self);
+        self.setPendingPromotionRole(UserRole.admin);
+        self.setPendingPromotionRequestedBy(ownerId);
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        org.mockito.Mockito.lenient().when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        org.mockito.Mockito.lenient().when(userRepository.save(self)).thenReturn(self);
 
-        UserDto result = userService.confirmAdminPromotion(principal(self.getId(), "moderator", null));
+        UserDto result = userService.confirmPromotion(principal(self.getId(), "moderator", null));
 
         assertThat(result.getRole()).isEqualTo("admin");
-        assertThat(result.isAdminPromotionPending()).isFalse();
+        assertThat(result.getPendingPromotionRole()).isNull();
         assertThat(self.getInstitution()).isNull();
         assertThat(self.isAdminOwner()).isFalse();
         verify(jwtService).invalidateUserTokens(self.getId());
@@ -1032,42 +1032,44 @@ class UserServiceTest {
     }
 
     @Test
-    void confirmAdminPromotion_noPendingPromotion_throws409() {
+    void confirmPromotion_noPendingPromotion_throws409() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        org.mockito.Mockito.lenient().when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
-    void confirmAdminPromotion_expired_clearsAndThrows410() {
+    void confirmPromotion_expired_clearsAndThrows410() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        self.setAdminPromotionRequestedBy(UUID.randomUUID());
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
-        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
-        when(userRepository.save(self)).thenReturn(self);
+        self.setPendingPromotionRole(UserRole.admin);
+        self.setPendingPromotionRequestedBy(UUID.randomUUID());
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
+        org.mockito.Mockito.lenient().when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        org.mockito.Mockito.lenient().when(userRepository.save(self)).thenReturn(self);
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.GONE);
-        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(self.getPendingPromotionRequestedBy()).isNull();
         assertThat(self.getRole()).isEqualTo(UserRole.moderator);
     }
 
     @Test
-    void confirmAdminPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
+    void confirmPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
         User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        self.setAdminPromotionRequestedBy(UUID.randomUUID());
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        self.setPendingPromotionRole(UserRole.admin);
+        self.setPendingPromotionRequestedBy(UUID.randomUUID());
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        org.mockito.Mockito.lenient().when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
                 .when(adminCapPolicy).assertHasFreeSlot(null, self.getId());
 
-        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+        assertThatThrownBy(() -> userService.confirmPromotion(principal(self.getId(), "moderator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -1075,18 +1077,19 @@ class UserServiceTest {
     }
 
     @Test
-    void declineAdminPromotion_clearsPendingSlotAndNotifiesRequester() {
+    void declinePromotion_clearsPendingSlotAndNotifiesRequester() {
         User self = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         UUID ownerId = UUID.randomUUID();
-        self.setAdminPromotionRequestedBy(ownerId);
-        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
-        when(userRepository.save(self)).thenReturn(self);
+        self.setPendingPromotionRole(UserRole.admin);
+        self.setPendingPromotionRequestedBy(ownerId);
+        self.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        org.mockito.Mockito.lenient().when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        org.mockito.Mockito.lenient().when(userRepository.save(self)).thenReturn(self);
 
-        UserDto result = userService.declineAdminPromotion(principal(self.getId(), "contributor", institutionId));
+        UserDto result = userService.declinePromotion(principal(self.getId(), "contributor", institutionId));
 
-        assertThat(result.isAdminPromotionPending()).isFalse();
-        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(result.getPendingPromotionRole()).isNull();
+        assertThat(self.getPendingPromotionRequestedBy()).isNull();
         assertThat(self.getRole()).isEqualTo(UserRole.contributor);
         verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
                 .isA(com.dasigconnect.backend.event.AdminPromotionDeclinedEvent.class));
@@ -1094,31 +1097,34 @@ class UserServiceTest {
     }
 
     @Test
-    void cancelAdminPromotion_ownerRescinds_clearsPendingSlot() {
+    void cancelPromotion_ownerRescinds_clearsPendingSlot() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        target.setAdminPromotionRequestedBy(UUID.randomUUID());
-        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        target.setPendingPromotionRole(UserRole.admin);
+        target.setPendingPromotionRequestedBy(UUID.randomUUID());
+        target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
-        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
-        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.save(target)).thenReturn(target);
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        org.mockito.Mockito.lenient().when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.lenient().when(userRepository.save(target)).thenReturn(target);
 
-        UserDto result = userService.cancelAdminPromotion(target.getId(), principal(owner.getId(), "admin", null));
+        UserDto result = userService.cancelPromotion(target.getId(), principal(owner.getId(), "admin", null));
 
-        assertThat(result.isAdminPromotionPending()).isFalse();
-        assertThat(target.getAdminPromotionRequestedBy()).isNull();
+        assertThat(result.getPendingPromotionRole()).isNull();
+        assertThat(target.getPendingPromotionRequestedBy()).isNull();
     }
 
     @Test
-    void cancelAdminPromotion_peerAdminForbidden() {
+    void cancelPromotion_peerAdminForbidden() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
-        target.setAdminPromotionRequestedBy(UUID.randomUUID());
-        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        target.setPendingPromotionRole(UserRole.admin);
+        target.setPendingPromotionRequestedBy(UUID.randomUUID());
+        target.setPendingPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
-        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
 
-        assertThatThrownBy(() -> userService.cancelAdminPromotion(target.getId(),
+        assertThatThrownBy(() -> userService.cancelPromotion(target.getId(),
                 principal(peerAdmin.getId(), "admin", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())

@@ -103,9 +103,13 @@ public class GuardRailService {
                     "Scheduled time must be at least 2 hours from now."
             ));
         }
-
-
-
+        // GR-H3: Scheduled time must be ≤30 days in the future
+        if (requestedSlot.isAfter(now.plus(GR_H3_MAX_FUTURE))) {
+            hardBlocks.add(new GuardRailViolation(
+                    "GR-H3",
+                    "Scheduled time cannot be more than 30 days in the future."
+            ));
+        }
         // GR-H4: Posting window
         java.time.ZonedDateTime localTime = requestedSlot.atZone(PAGE_ZONE);
         int startHour = guardRailSettingsService.postingWindowStartHour();

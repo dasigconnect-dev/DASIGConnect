@@ -83,14 +83,10 @@ export interface UserProfileResponse {
   adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
-  /** Set while an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
-  adminPromotionRequestedBy?: string | null;
-  adminPromotionExpiresAt?: string | null;
-  /** True when adminPromotionRequestedBy/ExpiresAt describe a still-live (unexpired) promotion. */
-  adminPromotionPending?: boolean;
-  moderatorPromotionRequestedBy?: string | null;
-  moderatorPromotionExpiresAt?: string | null;
-  moderatorPromotionPending?: boolean;
+  /** True when an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
+  pendingPromotionRole?: 'admin' | 'moderator' | null;
+  pendingPromotionRequestedBy?: string | null;
+  pendingPromotionExpiresAt?: string | null;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -423,18 +419,18 @@ export function confirmAdminTransfer() {
   return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
 }
 
-/** The invitee accepts their own pending Administrator promotion (UC-1.1). */
-export function confirmAdminPromotion() {
+/** The invitee accepts their own pending promotion. */
+export function confirmPromotion() {
   return api.post<UserProfileResponse>("/users/promotion/confirm");
 }
 
-/** The invitee declines their own pending Administrator promotion, freeing the reserved slot. */
-export function declineAdminPromotion() {
+/** The invitee declines their own pending promotion, freeing the reserved slot. */
+export function declinePromotion() {
   return api.post<UserProfileResponse>("/users/promotion/decline");
 }
 
-/** Admin-Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
-export function cancelAdminPromotion(userId: string) {
+/** Rescinds a pending promotion before the invitee has responded. */
+export function cancelPromotion(userId: string) {
   return api.delete<UserProfileResponse>(`/users/${userId}/promotion`);
 }
 
@@ -447,18 +443,5 @@ export interface InvitationResponse {
   createdAt: string;
   emailDelivered: boolean;
   invitationUrl: string;
-}
-
-
-export function confirmModeratorPromotion() {
-  return api.post<UserProfileResponse>("/users/promotion/moderator/confirm");
-}
-
-export function declineModeratorPromotion() {
-  return api.post<UserProfileResponse>("/users/promotion/moderator/decline");
-}
-
-export function cancelModeratorPromotion(userId: string) {
-  return api.delete<UserProfileResponse>(`/users/${userId}/promotion/moderator`);
 }
 
