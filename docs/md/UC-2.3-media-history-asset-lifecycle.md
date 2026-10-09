@@ -2,7 +2,7 @@
 
 **Use Case ID:** UC-2.3
 **Use Case Name:** Media History Tracking
-**Actor(s):** Contributor, Administrator
+**Actor(s):** Contributor, Moderator, Administrator
 **Precondition(s):** The actor is authenticated with an active session and is viewing an asset via the Asset Detail Panel (UC-2.2) or the audit log.
 
 **Main Flow:**
