@@ -641,6 +641,8 @@ public class UserService {
             reviewLockRepository.deleteByLockedById(userId);
         }
 
+        clearAdminPromotion(target);
+        clearModeratorPromotion(target);
         target.setRole(newRole);
         User saved = userRepository.save(target);
         jwtService.invalidateUserTokens(saved.getId());
@@ -698,6 +700,7 @@ public class UserService {
         self.setInstitution(null);
         self.setAdminOwner(false);
         clearAdminPromotion(self);
+        clearModeratorPromotion(self);
         if (fromRole == UserRole.moderator) {
             reviewLockRepository.deleteByLockedById(self.getId());
         }
@@ -799,6 +802,7 @@ public class UserService {
         self.setRole(UserRole.moderator);
         self.setInstitution(null);
         clearModeratorPromotion(self);
+        clearAdminPromotion(self);
 
         User saved = userRepository.save(self);
         jwtService.invalidateUserTokens(saved.getId());
