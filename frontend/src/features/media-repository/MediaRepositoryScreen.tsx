@@ -729,6 +729,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     let alreadyThere = 0;
     const updatedDrafts: SubmissionSummary[] = [];
     try {
+      let errorEncountered: unknown = null;
       for (const assetId of ids) {
         try {
           const { data } = await attachAsset(draftId, assetId);
@@ -736,7 +737,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           added += 1;
         } catch (err: unknown) {
           if (isConflict(err)) alreadyThere += 1;
-          else throw err;
+          else {
+            errorEncountered = err;
+            break;
+          }
         }
       }
       updatedDrafts.forEach(syncSubmissionCache);
@@ -745,13 +749,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       }
       setAddToDraftOpen(false);
       clearSelection();
+      
+      if (errorEncountered) {
+        throw errorEncountered;
+      }
+      
       const summary =
         added > 0
           ? `Added ${added} ${added === 1 ? "asset" : "assets"} to the draft.`
           : "Those assets are already in that draft.";
       toast.success(alreadyThere > 0 && added > 0 ? `${summary} ${alreadyThere} already there.` : summary);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Could not add to draft.";
+      const message = getErrorText(err, "Could not add to draft.");
       toast.error(message);
     } finally {
       setBusyDraftId(null);
