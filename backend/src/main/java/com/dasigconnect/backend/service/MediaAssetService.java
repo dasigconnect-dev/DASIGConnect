@@ -530,30 +530,42 @@ public class MediaAssetService {
                 .map(id -> loadAssetForDelete(id, user))
                 .toList();
 
-        for (UUID assetId : assetIds) {
-            validateDeleteReferences(assetId, dto.isForce());
+        List<MediaAsset> deletable = new ArrayList<>();
+        List<UUID> deletedIds = new ArrayList<>();
+        for (MediaAsset asset : assets) {
+            try {
+                validateDeleteReferences(asset.getId(), dto.isForce());
+                deletable.add(asset);
+                deletedIds.add(asset.getId());
+            } catch (MediaAssetDeletionConflictException ex) {
+                // Skip blocked assets automatically in bulk operations
+            }
+        }
+
+        if (deletable.isEmpty()) {
+            return new MediaAssetBulkDeleteResponseDto(List.of());
         }
 
         Instant deletedAt = Instant.now();
-        for (MediaAsset asset : assets) {
+        for (MediaAsset asset : deletable) {
             asset.setDeletedAt(deletedAt);
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
-        mediaAssetRepository.saveAll(assets);
+        mediaAssetRepository.saveAll(deletable);
         mediaSearchCache.invalidateAll();
 
         // One summary row instead of N per-asset rows: the operation's intent (a
         // bulk delete of `count` assets) is legible at a glance in the audit view,
         // and the id list is retained for traceability (capped so metadata stays small).
-        List<String> auditedIds = assetIds.stream().limit(50).map(UUID::toString).toList();
+        List<String> auditedIds = deletedIds.stream().limit(50).map(UUID::toString).toList();
         recordAssetAudit(user, "MEDIA_BULK_DELETED", null, Map.of(
-                "count", assetIds.size(),
+                "count", deletedIds.size(),
                 "assetIds", auditedIds,
-                "truncated", assetIds.size() > auditedIds.size(),
+                "truncated", deletedIds.size() > auditedIds.size(),
                 "force", dto.isForce()));
-        return new MediaAssetBulkDeleteResponseDto(assetIds);
+        return new MediaAssetBulkDeleteResponseDto(deletedIds);
     }
 
     @Transactional(readOnly = true)
