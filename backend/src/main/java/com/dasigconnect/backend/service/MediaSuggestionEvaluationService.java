@@ -1,5 +1,4 @@
 package com.dasigconnect.backend.service;
-
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
@@ -18,27 +17,22 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-
 /** Runs labeled, read-only relevance experiments for Phase 6. */
 @Service
 public class MediaSuggestionEvaluationService {
-
     static final int MINIMUM_SCENARIOS = 30;
     private static final int RELEVANT_GRADE = 2;
     private final AIRecommendationService recommendationService;
     private final MediaAssetRepository mediaAssetRepository;
-
     public MediaSuggestionEvaluationService(
             AIRecommendationService recommendationService,
             MediaAssetRepository mediaAssetRepository) {
         this.recommendationService = recommendationService;
         this.mediaAssetRepository = mediaAssetRepository;
     }
-
     public EvaluationReport evaluate(EvaluationDataset dataset) {
         validate(dataset);
         List<ScenarioResult> scenarios = new ArrayList<>();
-
         for (EvaluationScenario scenario : dataset.scenarios()) {
             MediaSuggestRequestDto request = toRequest(scenario.request());
             JwtUserDetails evaluationActor = new JwtUserDetails(
@@ -47,7 +41,6 @@ public class MediaSuggestionEvaluationService {
                     scenario.submissionId(), request, evaluationActor);
             Map<UUID, Integer> labels = parseLabels(scenario.relevanceLabels());
             validateLabeledAssets(scenario.id(), labels.keySet(), snapshot.institutionId());
-
             Map<MediaEvaluationStrategy, StrategyScenarioMetrics> strategyMetrics =
                     new EnumMap<>(MediaEvaluationStrategy.class);
             snapshot.rankings().forEach((strategy, candidates) -> strategyMetrics.put(
@@ -62,13 +55,11 @@ public class MediaSuggestionEvaluationService {
                     Map.copyOf(strategyMetrics),
                     snapshot.timings()));
         }
-
         Map<MediaEvaluationStrategy, AggregateMetrics> aggregates =
                 new EnumMap<>(MediaEvaluationStrategy.class);
         for (MediaEvaluationStrategy strategy : MediaEvaluationStrategy.values()) {
             aggregates.put(strategy, aggregate(strategy, scenarios));
         }
-
         return new EvaluationReport(
                 dataset.name(),
                 Instant.now(),
@@ -79,7 +70,6 @@ public class MediaSuggestionEvaluationService {
                 "Human relevance grades: 0=not relevant, 1=somewhat relevant, "
                         + "2=relevant, 3=highly relevant. A relevant result has grade >= 2.");
     }
-
     static StrategyScenarioMetrics calculateScenarioMetrics(
             List<MediaEvaluationCandidate> candidates,
             Map<UUID, Integer> labels,
@@ -114,7 +104,6 @@ public class MediaSuggestionEvaluationService {
                 crossInstitutionResults,
                 List.copyOf(rankedCandidates));
     }
-
     static double ndcgAtTen(
             List<MediaEvaluationCandidate> candidates, Map<UUID, Integer> labels) {
         double dcg = 0.0;
@@ -132,7 +121,6 @@ public class MediaSuggestionEvaluationService {
         }
         return idealDcg == 0.0 ? 0.0 : dcg / idealDcg;
     }
-
     static void validate(EvaluationDataset dataset) {
         if (dataset == null || dataset.scenarios() == null) {
             throw new IllegalArgumentException("An evaluation dataset with scenarios is required.");
@@ -159,7 +147,6 @@ public class MediaSuggestionEvaluationService {
             }
         }
     }
-
     private static AggregateMetrics aggregate(
             MediaEvaluationStrategy strategy, List<ScenarioResult> scenarios) {
         List<StrategyScenarioMetrics> values = scenarios.stream()
@@ -180,7 +167,6 @@ public class MediaSuggestionEvaluationService {
                 topRate >= 70.0,
                 crossInstitution == 0);
     }
-
     private static LatencySummary latencySummary(List<ScenarioResult> scenarios) {
         List<Long> visual = scenarios.stream()
                 .map(result -> result.timings().visualRetrievalMs()).sorted().toList();
@@ -193,7 +179,6 @@ public class MediaSuggestionEvaluationService {
                 average(semantic), percentile95(semantic),
                 average(total), percentile95(total));
     }
-
     private static Map<UUID, Integer> parseLabels(Map<String, Integer> rawLabels) {
         if (rawLabels == null || rawLabels.isEmpty()) {
             throw new IllegalArgumentException("Every scenario needs human relevance labels.");
@@ -211,7 +196,6 @@ public class MediaSuggestionEvaluationService {
         });
         return Map.copyOf(labels);
     }
-
     private void validateLabeledAssets(
             String scenarioId, Set<UUID> labeledIds, UUID expectedInstitutionId) {
         List<MediaAsset> assets = mediaAssetRepository.findActiveByIds(List.copyOf(labeledIds));
@@ -229,45 +213,36 @@ public class MediaSuggestionEvaluationService {
                     "Scenario " + scenarioId + " contains a label from another institution.");
         }
     }
-
     private static MediaSuggestRequestDto toRequest(EvaluationRequest request) {
         EvaluationRequest safeRequest = request == null
-                ? new EvaluationRequest(null, null, null, List.of(), List.of()) : request;
+                ? new EvaluationRequest(null, null, List.of(), List.of()) : request;
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
         dto.setEventTitle(safeRequest.eventTitle());
         dto.setCaption(safeRequest.caption());
-        dto.setCategory(safeRequest.category());
         dto.setTags(safeRequest.tags() == null ? List.of() : safeRequest.tags());
         dto.setSelectedAssetIds(safeRequest.selectedAssetIds() == null
                 ? List.of() : safeRequest.selectedAssetIds());
         return dto;
     }
-
     private static double gain(int relevance) {
         return Math.pow(2.0, relevance) - 1.0;
     }
-
     private static double log2(double value) {
         return Math.log(value) / Math.log(2.0);
     }
-
     private static double average(List<Long> sortedValues) {
         return round(sortedValues.stream().mapToLong(Long::longValue).average().orElse(0.0));
     }
-
     private static long percentile95(List<Long> sortedValues) {
         if (sortedValues.isEmpty()) return 0;
         int index = (int) Math.ceil(sortedValues.size() * 0.95) - 1;
         return sortedValues.get(Math.max(0, index));
     }
-
     private static double round(double value) {
         return Math.round(value * 10_000.0) / 10_000.0;
     }
-
     public record EvaluationDataset(String name, List<EvaluationScenario> scenarios) {
     }
-
     public record EvaluationScenario(
             String id,
             String topic,
@@ -275,15 +250,12 @@ public class MediaSuggestionEvaluationService {
             EvaluationRequest request,
             Map<String, Integer> relevanceLabels) {
     }
-
     public record EvaluationRequest(
             String eventTitle,
             String caption,
-            String category,
             List<String> tags,
             List<UUID> selectedAssetIds) {
     }
-
     public record StrategyScenarioMetrics(
             boolean topResultRelevant,
             double precisionAtFive,
@@ -292,7 +264,6 @@ public class MediaSuggestionEvaluationService {
             long crossInstitutionResults,
             List<EvaluatedCandidate> rankedCandidates) {
     }
-
     public record EvaluatedCandidate(
             int rank,
             UUID assetId,
@@ -300,7 +271,6 @@ public class MediaSuggestionEvaluationService {
             int relevanceGrade,
             UUID institutionId) {
     }
-
     public record AggregateMetrics(
             double topResultRelevantRatePercent,
             double meanPrecisionAtFive,
@@ -310,7 +280,6 @@ public class MediaSuggestionEvaluationService {
             boolean topResultTargetMet,
             boolean tenantIsolationTargetMet) {
     }
-
     public record LatencySummary(
             double averageVisualRetrievalMs,
             long p95VisualRetrievalMs,
@@ -319,7 +288,6 @@ public class MediaSuggestionEvaluationService {
             double averageTotalSuggestionMs,
             long p95TotalSuggestionMs) {
     }
-
     public record ScenarioResult(
             String id,
             String topic,
@@ -329,7 +297,6 @@ public class MediaSuggestionEvaluationService {
             Map<MediaEvaluationStrategy, StrategyScenarioMetrics> strategies,
             AIRecommendationService.MediaEvaluationTimings timings) {
     }
-
     public record EvaluationReport(
             String datasetName,
             Instant generatedAt,

@@ -1,9 +1,7 @@
 package com.dasigconnect.backend.repository;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -11,10 +9,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
-
 /**
  * Extends the base SubmissionRepository created by M1.
  *
@@ -22,7 +18,6 @@ import com.dasigconnect.backend.model.entity.SubmissionStatus;
  * needed by GuardRailService (GR-S1 soft rule check).
  */
 public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
-
     /**
      * GR-S1: Count submissions for a given institution that are scheduled but
      * not yet published (pending + in_review + scheduled states). Soft rule:
@@ -38,12 +33,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         )
     """)
     long countUnpublishedByInstitution(@Param("institutionId") UUID institutionId);
-
     List<Submission> findAllByInstitutionId(UUID institutionId);
-
     // UC-1.3 "My Submissions" — authored-by-caller, regardless of role
     List<Submission> findByContributorIdOrderByCreatedAtDesc(UUID contributorId);
-
     /**
      * Server-paged My Submissions query. Bucket expansion is performed by the
      * service and ownership is always constrained to the authenticated author.
@@ -60,7 +52,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
               OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
-              OR LOCATE(:search, LOWER(COALESCE(s.category, ''))) > 0
               OR (:matchesStatus = true AND s.status IN :searchStatuses)
           )
         ORDER BY s.createdAt DESC, s.id DESC
@@ -76,7 +67,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
               OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
-              OR LOCATE(:search, LOWER(COALESCE(s.category, ''))) > 0
               OR (:matchesStatus = true AND s.status IN :searchStatuses)
           )
         """)
@@ -87,12 +77,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("matchesStatus") boolean matchesStatus,
             @Param("searchStatuses") List<SubmissionStatus> searchStatuses,
             Pageable pageable);
-
     interface SubmissionStatusCount {
         SubmissionStatus getStatus();
         long getCount();
     }
-
     @Query("""
         SELECT s.status AS status, COUNT(s) AS count
         FROM Submission s
@@ -101,12 +89,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<SubmissionStatusCount> countStatusesByContributorId(
             @Param("contributorId") UUID contributorId);
-
     boolean existsByInstitutionId(UUID institutionId);
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
     boolean existsByIdAndContributorId(UUID id, UUID contributorId);
     boolean existsByContributorId(UUID contributorId);
-
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
@@ -120,7 +106,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findApproachingDeadlines(
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
-
     // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW + NEEDS_REVISION.
     // Fast-Track submissions (no scheduledAt) sort first as the urgent items
     // UC-1.9 expects; everything else follows by scheduledAt ASC, then by
@@ -143,7 +128,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
     List<Submission> findValidationQueue();
-
     // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
     // NEEDS_REVISION is intentionally excluded here: it now lives in findValidationQueue() above
     // (rendered from its frozen snapshot) so it stays visible in the active queue rather than only
@@ -166,7 +150,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.updatedAt DESC
         """)
     List<Submission> findValidationHistory();
-
     /**
      * Server-paged Review Queue/history query. The service expands the requested
      * view into statuses and selects active (ascending, Fast-Track-first) or
@@ -223,7 +206,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("activeOrdering") boolean activeOrdering,
             @Param("ascending") boolean ascending,
             Pageable pageable);
-
     @Query("""
         SELECT s.status AS status, COUNT(s) AS count
         FROM Submission s
@@ -231,7 +213,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         GROUP BY s.status
         """)
     List<SubmissionStatusCount> countValidationStatuses();
-
     @Query("""
         SELECT COUNT(s) FROM Submission s
         WHERE s.status IN :statuses
@@ -242,15 +223,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("statuses") List<SubmissionStatus> statuses,
             @Param("start") Instant start,
             @Param("end") Instant end);
-
     @Query("""
         SELECT COUNT(DISTINCT s.contributor.id) FROM Submission s
         WHERE s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
         """)
     long countDistinctValidationContributors();
-
     // ── UC-3.1 Publishing Pipeline ─────────────────────────────────────────────
-
     /** PublishingSchedulerJob: SCHEDULED and DIRECT_POST_SCHEDULED submissions due for publishing. */
     @Query("""
         SELECT s FROM Submission s
@@ -264,7 +242,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findScheduledInPublishWindow(
             @Param("from") Instant from,
             @Param("to") Instant to);
-
     /**
      * Also bumps updatedAt -- a bulk JPQL UPDATE bypasses the entity's
      * @PreUpdate lifecycle callback, so without this the column would stay
@@ -286,7 +263,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("expectedStatus") SubmissionStatus expectedStatus,
             @Param("now") Instant now,
             @Param("claimedStatus") SubmissionStatus claimedStatus);
-
     /**
      * UC-3.1: atomic reschedule for a Moderator, capped. {@code Submission} has
      * no {@code @Version}/optimistic locking, so a plain read-check-write on
@@ -312,7 +288,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("submissionId") UUID submissionId,
             @Param("newSlot") Instant newSlot,
             @Param("maxCount") int maxCount);
-
     /**
      * UC-3.1: atomic reschedule for an Admin — no cap, but still guarded on
      * {@code status = scheduled} so a concurrent status change (e.g. the post
@@ -328,7 +303,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     int claimAdminReschedule(
             @Param("submissionId") UUID submissionId,
             @Param("newSlot") Instant newSlot);
-
     /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED / DIRECT_POST_SCHEDULED submissions whose slot has passed. */
     @Query("""
         SELECT s FROM Submission s
@@ -342,7 +316,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
-
     /**
      * StaleSubmissionDetectorJob (GR-T9, added 2026-09-18): a Fast-Track
      * submission stuck in `publishing`/`direct_post_publishing` after a crash
@@ -363,7 +336,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.updatedAt ASC
         """)
     List<Submission> findStuckFastTrackPublishing(@Param("cutoff") Instant cutoff);
-
     /**
      * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions
      * whose scheduled publication time has already passed — they missed their review
@@ -391,11 +363,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findMissedReviewSubmissions(@Param("cutoff") Instant cutoff, @Param("now") Instant now);
-
     /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
     @Query("SELECT s FROM Submission s JOIN FETCH s.institution JOIN FETCH s.contributor WHERE s.id = :id")
     java.util.Optional<Submission> findByIdWithInstitution(@Param("id") UUID id);
-
     @Query("""
         SELECT s FROM Submission s
         JOIN FETCH s.institution
@@ -407,7 +377,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt DESC
         """)
     List<Submission> findPublishFailures();
-
     @EntityGraph(attributePaths = {"institution"})
     @Query(value = """
         SELECT s FROM Submission s
@@ -462,7 +431,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     Page<Submission> findPublishFailurePage(
             @Param("search") String search,
             Pageable pageable);
-
     @Query("""
         SELECT COUNT(s) FROM Submission s
         WHERE s.status IN (
@@ -472,7 +440,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         )
         """)
     long countPublishFailures();
-
     @Query("""
         SELECT s FROM Submission s
         JOIN FETCH s.institution
@@ -485,7 +452,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.tokenBlockedAt ASC
         """)
     List<Submission> findTokenBlockedScheduledSubmissions();
-
     /** UC-3.5 Category B: escalated PENDING/IN_REVIEW submissions due within the given window. */
     @Query("""
         SELECT s FROM Submission s
@@ -500,7 +466,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findEscalatedForTimeout(
             @Param("from") Instant from,
             @Param("to") Instant to);
-
     /**
      * Calendar API (admin): all submissions that have a calendar position, any
      * status. A scheduled slot OR a publish timestamp counts — the latter covers
@@ -514,7 +479,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllWithScheduledSlot();
-
     /**
      * Calendar API (contributor/validator): the caller's OWN authored submissions
      * that are in a workflow state — publish/direct-post failures, still pending or
@@ -535,7 +499,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findOwnCalendarWorkflowSlots(@Param("contributorId") UUID contributorId);
-
     /**
      * Calendar API (contributor/validator): all institutions' submissions that are in a
      * calendar-visible status only — scheduled, publishing, or published variants.
@@ -557,7 +520,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllCalendarVisibleSlots();
-
     /** Calendar API (contributor/validator): institution-scoped submissions with a slot. */
     @Query("""
         SELECT s FROM Submission s
@@ -566,7 +528,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findWithScheduledSlotByInstitution(@Param("institutionId") UUID institutionId);
-
     /** AbandonmentDetectorJob: submissions stuck in manual-publish-started state. */
     @Query("""
         SELECT s FROM Submission s
@@ -574,7 +535,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         AND s.manualPublishStartedAt < :cutoff
         """)
     List<Submission> findAbandonedManualPublishes(@Param("cutoff") Instant cutoff);
-
     /** T-07: Count upcoming scheduled posts for an institution in a time window. */
     @Query("""
         SELECT COUNT(s) FROM Submission s
@@ -589,7 +549,6 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("institutionId") UUID institutionId,
             @Param("from") Instant from,
             @Param("to") Instant to);
-
     /** T-07 / A6: Find historical published post titles for an institution. */
     @Query("""
         SELECT s.eventTitle FROM Submission s
@@ -602,21 +561,4 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         LIMIT 10
         """)
     List<String> findRecentAndHistoricalPostTitles(@Param("institutionId") UUID institutionId);
-
-    /** T-07 / A6: Find distinct categories used recently across other partner institutions. */
-    @Query("""
-        SELECT DISTINCT s.category FROM Submission s
-        WHERE s.institution.id != :institutionId
-          AND s.category IS NOT NULL
-          AND s.category != ''
-          AND s.status IN (
-              com.dasigconnect.backend.model.entity.SubmissionStatus.published,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
-          )
-          AND s.createdAt >= :since
-        """)
-    List<String> findRecentCategoriesFromOtherInstitutions(
-            @Param("institutionId") UUID institutionId,
-            @Param("since") Instant since);
 }

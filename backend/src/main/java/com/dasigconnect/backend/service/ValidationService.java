@@ -684,7 +684,7 @@ public class ValidationService {
         snapshot.put("eventDate", submission.getEventDate());
         snapshot.put("caption", submission.getCaption());
         snapshot.put("description", submission.getDescription());
-        snapshot.put("category", submission.getCategory());
+
         snapshot.put("tags", submission.getTags());
         snapshot.put("scheduledAt", submission.getScheduledAt());
         return snapshot;

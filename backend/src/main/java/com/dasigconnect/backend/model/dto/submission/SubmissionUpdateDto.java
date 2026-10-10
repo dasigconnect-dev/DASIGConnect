@@ -27,8 +27,6 @@ public class SubmissionUpdateDto {
 
     private Instant scheduledAt;
 
-    @Size(max = 100)
-    private String category;
 
     @Size(max = 100)
     private String templateId;
@@ -100,13 +98,6 @@ public class SubmissionUpdateDto {
         this.scheduledAt = scheduledAt;
     }
 
-    public String getCategory() {
-        return category;
-    }
-
-    public void setCategory(String category) {
-        this.category = category;
-    }
 
     public List<String> getTags() {
         return tags;

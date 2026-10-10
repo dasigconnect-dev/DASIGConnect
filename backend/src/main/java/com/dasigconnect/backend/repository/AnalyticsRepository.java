@@ -426,7 +426,8 @@ public class AnalyticsRepository {
                    COALESCE(SUM(sem.comments_count), 0) AS total_comments,
                    COALESCE(SUM(sem.shares), 0) AS total_shares,
                    COUNT(*) AS sample_size,
-                   COALESCE(SUM(CASE WHEN sem.fetched_at IS NULL THEN 1 ELSE 0 END), 0) AS pending_count
+                   COALESCE(SUM(CASE WHEN sem.fetched_at IS NULL THEN 1 ELSE 0 END), 0) AS pending_count,
+                   MAX(sem.fetched_at) AS last_fetched_at
             FROM submissions s
             LEFT JOIN submission_engagement_metrics sem ON sem.submission_id = s.id
             WHERE s.status IN (%s)
@@ -441,7 +442,8 @@ public class AnalyticsRepository {
                         rs.getLong("total_comments"),
                         rs.getLong("total_shares"),
                         rs.getLong("sample_size"),
-                        rs.getLong("pending_count")));
+                        rs.getLong("pending_count"),
+                        rs.getTimestamp("last_fetched_at") != null ? rs.getTimestamp("last_fetched_at").toInstant() : null));
     }
 
     public OperationalStats operationalHealth(Instant start, Instant end, Instant now, AnalyticsScope scope) {
@@ -913,5 +915,6 @@ public class AnalyticsRepository {
     public record ValidatorStats(long submissionVolume, long pendingCount, long inReviewCount,
                                  double averageTurnaroundDays, long queueAgingCount) {}
     public record FacebookEngagementStats(double averageReach, long totalReactions, long totalComments,
-                                          long totalShares, long sampleSize, long pendingCount) {}
+                                          long totalShares, long sampleSize, long pendingCount, java.time.Instant lastFetchedAt) {}
 }
+

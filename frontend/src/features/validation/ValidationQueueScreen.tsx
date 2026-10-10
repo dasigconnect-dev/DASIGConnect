@@ -2311,7 +2311,6 @@ export default function ValidationQueueScreen({
                               institutionId={selected?.institutionId}
                               eventTitle={editForm.eventTitle}
                               caption={editForm.caption}
-                              category={selected?.category ?? ""}
                               tags={editCaptionHashtags.map((h) => h.slice(1))}
                               onItemClick={(item) => setMediaSettingsKey(item.clientId)}
                               getItemCaption={(item) =>
@@ -3068,7 +3067,6 @@ export default function ValidationQueueScreen({
             .filter((x): x is string => Boolean(x))}
           eventTitle={editForm.eventTitle}
           caption={editForm.caption}
-          category={selected.category ?? ""}
           tags={editCaptionHashtags.map((h) => h.slice(1))}
           onAdd={addLibraryAssets}
           onClose={() => setAiSuggestionsOpen(false)}
@@ -3247,7 +3245,6 @@ const EDIT_DIFF_FIELD_LABELS: Record<string, string> = {
   eventDate: "Event date",
   caption: "Caption",
   description: "Moderator notes",
-  category: "Category",
   tags: "Tags",
   scheduledAt: "Publish slot",
   media: "Media",

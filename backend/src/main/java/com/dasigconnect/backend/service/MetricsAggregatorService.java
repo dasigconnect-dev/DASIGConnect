@@ -163,7 +163,8 @@ public class MetricsAggregatorService {
                 engagement.totalShares(),
                 engagement.sampleSize(),
                 engagement.pendingCount(),
-                facebookPageId());
+                facebookPageId(),
+                engagement.lastFetchedAt());
 
         return new AnalyticsSummaryDto(
                 period.label(),
@@ -525,3 +526,4 @@ public class MetricsAggregatorService {
         }
     }
 }
+

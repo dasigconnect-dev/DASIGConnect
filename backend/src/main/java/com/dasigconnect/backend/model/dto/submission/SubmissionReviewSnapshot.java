@@ -1,11 +1,8 @@
 package com.dasigconnect.backend.model.dto.submission;
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-
 import com.dasigconnect.backend.model.entity.MediaAsset;
-
 /**
  * Frozen copy of a submission's reviewable display fields, captured at
  * submit()/resubmit() time and serialized into {@code submissions.review_snapshot}.
@@ -15,11 +12,9 @@ import com.dasigconnect.backend.model.entity.MediaAsset;
  * sees until an actual resubmission replaces this snapshot.
  */
 public class SubmissionReviewSnapshot {
-
     private String eventTitle;
     private LocalDate eventDate;
     private String caption;
-    private String category;
     private String templateId;
     private boolean fastTrack;
     private String liveEventName;
@@ -40,7 +35,6 @@ public class SubmissionReviewSnapshot {
      * {@code SubmissionService.submit()} requiring at least one.
      */
     private List<SubmissionMediaPreviewDto> mediaAssets;
-
     public static SubmissionReviewSnapshot capture(
             com.dasigconnect.backend.model.entity.Submission submission,
             List<MediaAsset> orderedAssets) {
@@ -48,7 +42,6 @@ public class SubmissionReviewSnapshot {
         snapshot.eventTitle = submission.getEventTitle();
         snapshot.eventDate = submission.getEventDate();
         snapshot.caption = submission.getCaption();
-        snapshot.category = submission.getCategory();
         snapshot.templateId = submission.getTemplateId();
         snapshot.fastTrack = submission.isFastTrack();
         snapshot.liveEventName = submission.getLiveEventName();
@@ -63,7 +56,6 @@ public class SubmissionReviewSnapshot {
                 : SubmissionMediaPreviewDto.from(orderedAssets.get(0));
         return snapshot;
     }
-
     private static List<String> splitCsv(String value) {
         return (value == null || value.isBlank())
                 ? List.of()
@@ -72,46 +64,30 @@ public class SubmissionReviewSnapshot {
                         .filter(v -> !v.isEmpty())
                         .toList();
     }
-
     public String getEventTitle() { return eventTitle; }
     public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
-
     public LocalDate getEventDate() { return eventDate; }
     public void setEventDate(LocalDate eventDate) { this.eventDate = eventDate; }
-
     public String getCaption() { return caption; }
     public void setCaption(String caption) { this.caption = caption; }
-
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
-
     public String getTemplateId() { return templateId; }
     public void setTemplateId(String templateId) { this.templateId = templateId; }
-
     public boolean isFastTrack() { return fastTrack; }
     public void setFastTrack(boolean fastTrack) { this.fastTrack = fastTrack; }
-
     public String getLiveEventName() { return liveEventName; }
     public void setLiveEventName(String liveEventName) { this.liveEventName = liveEventName; }
-
     public List<String> getTags() { return tags; }
     public void setTags(List<String> tags) { this.tags = tags; }
-
     public String getAlbumName() { return albumName; }
     public void setAlbumName(String albumName) { this.albumName = albumName; }
-
     public List<String> getMediaTags() { return mediaTags; }
     public void setMediaTags(List<String> mediaTags) { this.mediaTags = mediaTags; }
-
     public Instant getScheduledAt() { return scheduledAt; }
     public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
-
     public long getMediaCount() { return mediaCount; }
     public void setMediaCount(long mediaCount) { this.mediaCount = mediaCount; }
-
     public SubmissionMediaPreviewDto getPreviewMediaAsset() { return previewMediaAsset; }
     public void setPreviewMediaAsset(SubmissionMediaPreviewDto previewMediaAsset) { this.previewMediaAsset = previewMediaAsset; }
-
     public List<SubmissionMediaPreviewDto> getMediaAssets() { return mediaAssets; }
     public void setMediaAssets(List<SubmissionMediaPreviewDto> mediaAssets) { this.mediaAssets = mediaAssets; }
 }

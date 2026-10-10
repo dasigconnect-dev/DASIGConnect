@@ -28,8 +28,7 @@ public class PostTemplate {
     @Column(nullable = false, length = 255)
     private String target;
 
-    @Column(nullable = false, length = 100)
-    private String category;
+
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String caption;
@@ -69,8 +68,7 @@ public class PostTemplate {
     public void setName(String name) { this.name = name; }
     public String getTarget() { return target; }
     public void setTarget(String target) { this.target = target; }
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
+
     public String getCaption() { return caption; }
     public void setCaption(String caption) { this.caption = caption; }
     public String getTags() { return tags; }

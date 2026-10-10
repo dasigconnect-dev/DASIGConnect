@@ -11,7 +11,6 @@ export interface FormState {
   eventDate: string;
   caption: string;
   description: string;
-  category: string;
   scheduledDate: string;
   scheduledTime: string;
   tags: string[];

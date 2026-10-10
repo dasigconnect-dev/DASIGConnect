@@ -66,7 +66,7 @@ export interface MediaSuggestResult {
 export interface MediaSuggestRequest {
   eventTitle?: string;
   caption?: string;
-  category?: string;
+
   tags?: string[];
   selectedAssetIds?: string[];
 }

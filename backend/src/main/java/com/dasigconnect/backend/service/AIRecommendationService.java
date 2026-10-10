@@ -868,7 +868,6 @@ public class AIRecommendationService {
     private static boolean hasTextContext(MediaSuggestRequestDto dto) {
         return !normalize(dto.getEventTitle()).isBlank()
                 || !normalize(dto.getCaption()).isBlank()
-                || !normalize(dto.getCategory()).isBlank()
                 || (dto.getTags() != null && dto.getTags().stream().anyMatch(tag -> !normalize(tag).isBlank()));
     }
 
@@ -1060,7 +1059,7 @@ public class AIRecommendationService {
         StringBuilder sb = new StringBuilder();
         append(sb, "event_title", dto.getEventTitle());
         append(sb, "caption", dto.getCaption());
-        append(sb, "category", dto.getCategory());
+
         appendAll(sb, "tags", dto.getTags());
         if (attachedAssets != null && !attachedAssets.isEmpty()) {
             String selectedContext = attachedAssets.stream()
@@ -1112,13 +1111,8 @@ public class AIRecommendationService {
         }
 
         String assetCategory = normalize(asset.getAiCategory());
-        String requestCategory = normalize(dto.getCategory());
         if (!assetCategory.isBlank()) {
-            if (assetCategory.equals(requestCategory)) {
-                score += 0.10;
-                metadataEvidence += 0.10;
-                reasons.add("Category matches " + asset.getAiCategory() + ".");
-            } else if (queryTerms.contains(assetCategory)) {
+            if (queryTerms.contains(assetCategory)) {
                 score += 0.06;
                 metadataEvidence += 0.06;
                 reasons.add("Detected category appears in the post text.");
@@ -1225,10 +1219,7 @@ public class AIRecommendationService {
 
         double contextScore = overlapScore(contextTerms, candidateTerms);
         double metadataScore = overlapScore(postTerms, candidateTerms);
-        String requestedCategory = normalize(dto.getCategory());
-        if (!requestedCategory.isBlank() && requestedCategory.equals(normalize(asset.getAiCategory()))) {
-            metadataScore = Math.max(metadataScore, 0.90);
-        }
+
         double freshnessScore = freshnessScore(asset);
         double usageScore = usageDiversityScore(usage.count(), usage.lastUsedAt(), Instant.now());
         double reuseSuitabilityScore = (freshnessScore + usageScore) / 2.0;
@@ -1579,7 +1570,7 @@ public class AIRecommendationService {
 
     private static Set<String> normalizedTerms(MediaSuggestRequestDto dto) {
         Set<String> terms = new LinkedHashSet<>();
-        addTerm(terms, dto.getCategory());
+
         addAllTerms(terms, dto.getTags());
         addLooseWords(terms, dto.getEventTitle());
         addLooseWords(terms, dto.getCaption());

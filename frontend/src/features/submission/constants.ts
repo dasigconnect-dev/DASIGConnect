@@ -12,7 +12,7 @@ export const initialForm: FormState = {
   eventDate: "",
   caption: "",
   description: "",
-  category: "",
+
   scheduledDate: "",
   scheduledTime: "",
   tags: [],
@@ -50,7 +50,6 @@ export const postTemplates = [
     id: "event-announcement",
     name: "Event Announcement",
     target: "Upcoming seminars, workshops, summits",
-    category: "Seminar / Webinar",
     tags: ["DASIG", "DOST", "Innovation"],
     caption: [
       "[EVENT TITLE]",
@@ -68,7 +67,6 @@ export const postTemplates = [
     id: "event-recap",
     name: "Event Recap / Milestone",
     target: "Post-activity highlights, achievements",
-    category: "Awards and Recognition",
     tags: ["DASIG", "DOST"],
     caption: [
       "HISTORY HAS BEEN MADE",
@@ -85,7 +83,6 @@ export const postTemplates = [
     id: "competition-call",
     name: "Competition / Pitching Call",
     target: "Hackathons, reverse pitching challenges",
-    category: "Innovation",
     tags: ["DASIG", "Innovation"],
     caption: [
       "CALL FOR INNOVATORS / PARTICIPANTS",
@@ -102,7 +99,6 @@ export const postTemplates = [
     id: "partner-spotlight",
     name: "Partner Feature / Spotlight",
     target: "Member university/HEI spotlights",
-    category: "Partnership / Collaboration",
     tags: ["DASIG", "Innovation", "Partnership"],
     caption: [
       "INSTITUTIONAL SPOTLIGHT: [University Name]",

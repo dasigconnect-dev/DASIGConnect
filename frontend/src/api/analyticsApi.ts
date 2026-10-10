@@ -127,6 +127,7 @@ export interface FacebookEngagementSummaryDto {
   pendingCount: number;
   /** Connected Facebook Page id, for deep-linking admins to Meta's own reach insights. */
   pageId: string | null;
+  lastFetchedAt: string | null;
 }
 
 export interface PagePerformanceDto {
@@ -135,6 +136,7 @@ export interface PagePerformanceDto {
   newFollows: number;
   views: number;
   pageId: string | null;
+  lastFetchedAt: string | null;
   periodStart: string;
   periodEnd: string;
 }

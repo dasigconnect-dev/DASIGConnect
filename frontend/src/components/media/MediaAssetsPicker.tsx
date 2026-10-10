@@ -15,7 +15,6 @@ interface MediaAssetsPickerProps {
   submissionId: string | null;
   eventTitle: string;
   caption: string;
-  category: string;
   tags: string[];
   attachedAssetIds?: string[];
   disabled?: boolean;
@@ -50,7 +49,6 @@ export default function MediaAssetsPicker({
   submissionId,
   eventTitle,
   caption,
-  category,
   tags,
   attachedAssetIds,
   disabled,
@@ -89,7 +87,6 @@ export default function MediaAssetsPicker({
     sourceTabs ? submissionId : null,
     eventTitle,
     caption,
-    category,
     tags,
     selectedImageAssetIds,
   );
@@ -209,7 +206,6 @@ export default function MediaAssetsPicker({
               alreadyAddedIds={alreadyAddedIds}
               eventTitle={eventTitle}
               caption={caption}
-              category={category}
               tags={tags}
               selectedImageCount={selectedImageCount}
               readyImageCount={selectedImageAssetIds.length}

@@ -24,7 +24,7 @@ public class SubmissionSummaryDto {
     private String contributorEmail;
     private long mediaCount;
     private SubmissionMediaPreviewDto previewMediaAsset;
-    private String category;
+
     private String templateId;
     private boolean fastTrack;
     private String liveEventName;
@@ -63,7 +63,7 @@ public class SubmissionSummaryDto {
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
         dto.previewMediaAsset = previewMediaAsset;
-        dto.category = s.getCategory();
+
         dto.templateId = s.getTemplateId();
         dto.fastTrack = s.isFastTrack();
         dto.liveEventName = s.getLiveEventName();
@@ -101,7 +101,7 @@ public class SubmissionSummaryDto {
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = snapshot.getMediaCount();
         dto.previewMediaAsset = snapshot.getPreviewMediaAsset();
-        dto.category = snapshot.getCategory();
+
         dto.templateId = snapshot.getTemplateId();
         dto.fastTrack = snapshot.isFastTrack();
         dto.liveEventName = snapshot.getLiveEventName();
@@ -168,9 +168,7 @@ public class SubmissionSummaryDto {
         return previewMediaAsset;
     }
 
-    public String getCategory() {
-        return category;
-    }
+
 
     public String getTemplateId() {
         return templateId;

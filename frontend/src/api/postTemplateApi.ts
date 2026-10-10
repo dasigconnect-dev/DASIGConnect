@@ -4,7 +4,7 @@ export interface PostTemplate {
   id: string;
   name: string;
   target: string;
-  category: string;
+
   caption: string;
   tags: string[];
   sourceSubmissionId?: string | null;
@@ -15,7 +15,7 @@ export interface PostTemplate {
 export interface PostTemplatePayload {
   name: string;
   target?: string;
-  category?: string;
+
   caption: string;
   tags?: string[];
   sourceSubmissionId?: string | null;

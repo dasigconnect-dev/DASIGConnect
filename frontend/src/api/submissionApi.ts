@@ -62,7 +62,7 @@ export interface SubmissionSummary {
   updatedAt?: string;
   mediaCount?: number;
   previewMediaAsset?: SubmissionMediaPreview | null;
-  category?: string;
+
   templateId?: string | null;
   fastTrack?: boolean;
   liveEventName?: string | null;
@@ -124,7 +124,7 @@ export interface SubmissionPayload {
   caption: string;
   description: string;
   scheduledAt?: string;
-  category?: string;
+
   templateId?: string | null;
   fastTrack?: boolean;
   liveEventName?: string | null;

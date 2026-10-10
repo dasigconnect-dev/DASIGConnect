@@ -1275,7 +1275,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ...current,
       selectedTemplateId: template.id,
       caption: template.caption,
-      category: "",
       tags: [],
     }));
     setSaveState("idle");
@@ -1323,7 +1322,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         target: form.eventTitle.trim()
           ? `Saved from ${form.eventTitle.trim()}`
           : "Saved from submission",
-        category: form.category || "Custom",
         tags: savedTags.length > 0 ? savedTags : ["Custom"],
         caption: form.caption,
         sourceSubmissionId: form.id,
@@ -1601,7 +1599,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         eventDate: submission.eventDate || "",
         caption: submission.caption || "",
         description: "",
-        category: "",
         scheduledDate: submission.scheduledAt
           ? submission.scheduledAt.slice(0, 10)
           : "",
