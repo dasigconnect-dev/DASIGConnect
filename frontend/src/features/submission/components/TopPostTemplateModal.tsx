@@ -154,7 +154,6 @@ function TemplateDraft({
         caption,
         tags: suggestion.tags.length > 0 ? suggestion.tags : ["AI"],
         target: `Based on ${suggestion.topPosts.length} top-performing posts`,
-        category: "AI Suggested",
         institutionId,
         source: "ai_top_posts",
       });

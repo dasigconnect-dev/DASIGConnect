@@ -621,7 +621,7 @@ function activityForRole(
 
     return {
       title: s.eventTitle,
-      subtitle: s.category ?? "",
+      subtitle: "",
       institution: institutionName,
       submitted: submittedLabel,
       status: statusDisplay(s.status),

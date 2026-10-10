@@ -28,15 +28,14 @@ export interface UseAiMediaSuggestionsReturn {
 // the status endpoint when an external provider is slow.
 const PROCESSING_RETRY_DELAYS_MS = [750, 1_000, 1_500, 2_000, 3_000, 5_000, 8_000] as const;
 
-export function hasSufficientMediaContext(eventTitle: string, caption: string, category: string, tags: string[]) {
-  return [eventTitle, caption, category, ...tags].join(" ").trim().length >= 10;
+export function hasSufficientMediaContext(eventTitle: string, caption: string, tags: string[]) {
+  return [eventTitle, caption, ...tags].join(" ").trim().length >= 10;
 }
 
 export function useAiMediaSuggestions(
   submissionId: string | null,
   eventTitle: string,
   caption: string,
-  category: string,
   tags: string[],
   selectedImageAssetIds: string[] = [],
 ): UseAiMediaSuggestionsReturn {
@@ -46,7 +45,7 @@ export function useAiMediaSuggestions(
   const [processingCheckVersion, setProcessingCheckVersion] = useState(0);
   const [responseKey, setResponseKey] = useState("");
 
-  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, tags);
   const tagsKey = JSON.stringify(tags);
   const selectedImagesKey = JSON.stringify([...new Set(selectedImageAssetIds)].sort());
   const hasContext = hasTextContext || selectedImageAssetIds.length > 0;
@@ -54,7 +53,6 @@ export function useAiMediaSuggestions(
     submissionId,
     eventTitle.trim(),
     caption.trim(),
-    category.trim(),
     tagsKey,
     selectedImagesKey,
   ]);
@@ -103,7 +101,6 @@ export function useAiMediaSuggestions(
       const response = await suggestMedia(submissionId, {
         eventTitle: eventTitle.trim() || undefined,
         caption: caption.trim() || undefined,
-        category: category.trim() || undefined,
         tags: requestTags.length > 0 ? requestTags : undefined,
         selectedAssetIds: requestAssetIds.length > 0 ? requestAssetIds : undefined,
       }, request.controller.signal);
@@ -146,7 +143,7 @@ export function useAiMediaSuggestions(
     } finally {
       if (requestRef.current?.id === request.id) requestRef.current = null;
     }
-  }, [caption, category, eventTitle, hasContext, requestKey, selectedImagesKey, settleCurrentInteraction, submissionId, tagsKey]);
+  }, [caption, eventTitle, hasContext, requestKey, selectedImagesKey, settleCurrentInteraction, submissionId, tagsKey]);
 
   const fetch = useCallback(() => {
     visualRetryRef.current = { key: requestKey, attempts: 0 };

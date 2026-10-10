@@ -80,25 +80,43 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
             <div className="analytics-matrix-grid">
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Content Completeness</span>
-                <strong className="analytics-matrix-cell-val">100%</strong>
-                <span className="analytics-matrix-cell-sub">Target: 95.0%</span>
+                <strong className="analytics-matrix-cell-val">
+                  {formatPercent(summary.contentCompleteness?.value ?? 0)}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  Target: {summary.contentCompleteness?.target?.toFixed(1) ?? "95.0"}%
+                </span>
               </div>
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Watermark Valid</span>
-                <strong className="analytics-matrix-cell-val">100%</strong>
-                <span className="analytics-matrix-cell-sub">brand aligned</span>
+                <span className="analytics-matrix-cell-label">First-Time Approval</span>
+                <strong className="analytics-matrix-cell-val">
+                  {summary.contributorAnalytics 
+                    ? formatPercent(Math.max(0, 100 - summary.contributorAnalytics.rejectedOrNeedsRevisionRate))
+                    : "N/A"}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  {summary.contributorAnalytics 
+                    ? `${summary.contributorAnalytics.rejectedOrNeedsRevisionCount} revisions requested`
+                    : "historical data unavailable"}
+                </span>
               </div>
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Missing Metadata</span>
                 <strong className="analytics-matrix-cell-val">
                   {formatNumber(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0)}
                 </strong>
-                <span className="analytics-matrix-cell-sub">zero missing tags</span>
+                <span className="analytics-matrix-cell-sub">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "zero missing tags" : "across published posts"}
+                </span>
               </div>
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Publish Readiness</span>
-                <strong className="analytics-matrix-cell-val">Optimal</strong>
-                <span className="analytics-matrix-cell-sub">ready for scheduling</span>
+                <strong className="analytics-matrix-cell-val">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "Optimal" : "Needs Review"}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "ready for scheduling" : "missing data"}
+                </span>
               </div>
             </div>
           </div>

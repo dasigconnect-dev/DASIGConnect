@@ -64,7 +64,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.publishedPostsSparkline(any(), any(), any()))
                 .thenReturn(List.of(2.0, 3.0, 4.0));
         when(analyticsRepository.facebookEngagement(any(), any(), any()))
-                .thenReturn(new AnalyticsRepository.FacebookEngagementStats(0, 0, 0, 0, 0, 0));
+                .thenReturn(new AnalyticsRepository.FacebookEngagementStats(0, 0, 0, 0, 0, 0, null));
     }
 
     @Test

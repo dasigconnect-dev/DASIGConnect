@@ -201,7 +201,7 @@ public class SubmissionService {
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
-        submission.setCategory(dto.getCategory());
+
         submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
         submission.setMediaTags(joinTags(dto.getMediaTags()));
         submission.setTemplateId(dto.getTemplateId() == null || dto.getTemplateId().isBlank()
@@ -210,7 +210,7 @@ public class SubmissionService {
         submission.setFastTrack(dto.isFastTrack());
         submission.setLiveEventName(normalizeOptional(dto.getLiveEventName()));
         if (submission.isFastTrack()) {
-            submission.setCategory(null);
+
             submission.setDescription(null);
         }
         if (dto.getTags() != null && !dto.getTags().isEmpty()) {
@@ -343,9 +343,7 @@ public class SubmissionService {
         if (dto.getDescription() != null) {
             submission.setDescription(dto.getDescription());
         }
-        if (dto.getCategory() != null) {
-            submission.setCategory(dto.getCategory());
-        }
+
         if (dto.getTemplateId() != null) {
             submission.setTemplateId(dto.getTemplateId().isBlank() ? null : dto.getTemplateId());
         }
@@ -359,7 +357,7 @@ public class SubmissionService {
             submission.setFastTrack(dto.getFastTrack());
             if (dto.getFastTrack()) {
                 submission.setScheduledAt(null);
-                submission.setCategory(null);
+
                 submission.setDescription(null);
                 submission.setTags(null);
                 slotReservationService.release(submissionId);
@@ -374,7 +372,7 @@ public class SubmissionService {
             submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
         }
         if (submission.isFastTrack()) {
-            submission.setCategory(null);
+
             submission.setDescription(null);
             submission.setTags(null);
         }

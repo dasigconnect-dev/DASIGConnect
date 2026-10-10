@@ -35,7 +35,7 @@ export interface EditSubmissionPayload {
   eventDate?: string;
   caption?: string;
   description?: string;
-  category?: string;
+
   tags?: string[];
   scheduledAt?: string;
   /** Admin only: reason for bypassing a hard guard rail on the new slot (audited). */

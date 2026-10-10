@@ -10,7 +10,6 @@ interface Props {
   excludeIds: string[];
   eventTitle: string;
   caption: string;
-  category: string;
   tags: string[];
   onAdd: (items: SubmissionMediaItem[]) => void;
   onClose: () => void;
@@ -28,7 +27,6 @@ export default function ReviewAiSuggestionsModal({
   excludeIds,
   eventTitle,
   caption,
-  category,
   tags,
   onAdd,
   onClose,
@@ -46,7 +44,7 @@ export default function ReviewAiSuggestionsModal({
     };
   }, [onClose]);
 
-  const suggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, category, tags);
+  const suggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, tags);
   const alreadyAddedIds = useMemo(() => new Set(excludeIds), [excludeIds]);
 
   function handleAddItems(items: SubmissionMediaItem[]) {
@@ -85,7 +83,6 @@ export default function ReviewAiSuggestionsModal({
             alreadyAddedIds={alreadyAddedIds}
             eventTitle={eventTitle}
             caption={caption}
-            category={category}
             tags={tags}
             onAddItems={handleAddItems}
           />

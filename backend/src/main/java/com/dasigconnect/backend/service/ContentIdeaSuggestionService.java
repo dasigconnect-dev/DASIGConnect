@@ -48,17 +48,14 @@ public class ContentIdeaSuggestionService {
             // Signal 1: Historical posts from this institution
             List<String> historicalTitles = submissionRepository.findRecentAndHistoricalPostTitles(instId);
 
-            // Signal 2: Recent categories from partner institutions
-            Instant sixtyDaysAgo = Instant.now().minus(60, ChronoUnit.DAYS);
-            List<String> otherCategories = submissionRepository.findRecentCategoriesFromOtherInstitutions(instId, sixtyDaysAgo);
 
             // A6a: Insufficient data guard
-            if (historicalTitles.isEmpty() && otherCategories.isEmpty()) {
+            if (historicalTitles.isEmpty()) {
                 log.info("Insufficient historical or partner signals for institution {} — skipping AI suggestions.", institution.getName());
                 return List.of();
             }
 
-            String prompt = buildPrompt(institution.getName(), historicalTitles, otherCategories);
+            String prompt = buildPrompt(institution.getName(), historicalTitles);
             String system = "You are an AI assistant for DASIGConnect (DOST Region 7 social media platform). "
                     + "Your goal is to suggest 2-3 relevant post ideas for a university/institution whose schedule is empty.";
 
@@ -70,7 +67,7 @@ public class ContentIdeaSuggestionService {
         }
     }
 
-    private String buildPrompt(String instName, List<String> historical, List<String> otherCategories) {
+    private String buildPrompt(String instName, List<String> historical) {
         StringBuilder sb = new StringBuilder();
         sb.append("Institution '").append(instName).append("' has no social media posts scheduled for next week.\n\n");
 
@@ -82,13 +79,6 @@ public class ContentIdeaSuggestionService {
             sb.append("\n");
         }
 
-        if (!otherCategories.isEmpty()) {
-            sb.append("Popular categories recently posted by other partner institutions in DASIG:\n");
-            for (String cat : otherCategories) {
-                sb.append("- ").append(cat).append("\n");
-            }
-            sb.append("\n");
-        }
 
         sb.append("Please provide 2 to 3 concise, actionable, plain-language topic suggestions for '")
           .append(instName)
