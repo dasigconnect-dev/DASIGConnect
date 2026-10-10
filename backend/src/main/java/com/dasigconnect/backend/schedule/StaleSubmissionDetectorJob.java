@@ -8,15 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.event.PublishFailedEvent;
 import com.dasigconnect.backend.event.SubmissionMissedReviewEvent;
 import com.dasigconnect.backend.model.entity.Submission;
-import com.dasigconnect.backend.model.entity.SubmissionStatus;
-import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.service.PublishingStateService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
-import com.dasigconnect.backend.service.SlotReservationService;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
@@ -43,18 +40,15 @@ public class StaleSubmissionDetectorJob {
 
     private static final Logger log = LoggerFactory.getLogger(StaleSubmissionDetectorJob.class);
 
-    private final SubmissionRepository submissionRepository;
-    private final SlotReservationService slotReservationService;
+    private final PublishingStateService publishingStateService;
     private final ApplicationEventPublisher eventPublisher;
     private final ScheduledJobHealthService scheduledJobHealthService;
 
     public StaleSubmissionDetectorJob(
-            SubmissionRepository submissionRepository,
-            SlotReservationService slotReservationService,
+            PublishingStateService publishingStateService,
             ApplicationEventPublisher eventPublisher,
             ScheduledJobHealthService scheduledJobHealthService) {
-        this.submissionRepository = submissionRepository;
-        this.slotReservationService = slotReservationService;
+        this.publishingStateService = publishingStateService;
         this.eventPublisher = eventPublisher;
         this.scheduledJobHealthService = scheduledJobHealthService;
     }
@@ -69,7 +63,7 @@ public class StaleSubmissionDetectorJob {
         Exception failure = null;
 
         try {
-            List<Submission> missed = findAndMarkFailed(cutoff);
+            List<Submission> missed = publishingStateService.findAndMarkFailed(cutoff);
             if (!missed.isEmpty()) {
                 log.warn("StaleSubmissionDetectorJob: {} missed submission(s) transitioned to PUBLISH_FAILED.", missed.size());
                 for (Submission s : missed) {
@@ -82,7 +76,7 @@ public class StaleSubmissionDetectorJob {
         }
 
         try {
-            List<Submission> stuckFastTrack = findAndMarkStuckFastTrackFailed(cutoff);
+            List<Submission> stuckFastTrack = publishingStateService.findAndMarkStuckFastTrackFailed(cutoff);
             if (!stuckFastTrack.isEmpty()) {
                 log.warn("StaleSubmissionDetectorJob: {} stuck Fast-Track submission(s) transitioned to PUBLISH_FAILED.", stuckFastTrack.size());
                 for (Submission s : stuckFastTrack) {
@@ -97,7 +91,7 @@ public class StaleSubmissionDetectorJob {
         }
 
         try {
-            List<Submission> missedReview = findAndMarkMissedReview(cutoff);
+            List<Submission> missedReview = publishingStateService.findAndMarkMissedReview(cutoff);
             if (!missedReview.isEmpty()) {
                 log.warn("StaleSubmissionDetectorJob: {} unreviewed submission(s) transitioned to MISSED_REVIEW.", missedReview.size());
                 for (Submission s : missedReview) {
@@ -116,57 +110,5 @@ public class StaleSubmissionDetectorJob {
         } else {
             scheduledJobHealthService.recordFailure("StaleSubmissionDetectorJob", startedAt, failure);
         }
-    }
-
-    @Transactional
-    public List<Submission> findAndMarkFailed(Instant cutoff) {
-        List<Submission> missed = submissionRepository.findMissedScheduledSubmissions(cutoff);
-        missed.removeIf(s -> s.getTokenBlockedAt() != null);
-        for (Submission s : missed) {
-            boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
-                    || s.getStatus() == SubmissionStatus.direct_post_publishing;
-            s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
-        }
-        submissionRepository.saveAll(missed);
-        return missed;
-    }
-
-    /**
-     * A Fast-Track submission claimed by FastTrackPublishingListener but never
-     * resolved (app crash between the claim and markPublished/markFailed) has
-     * no scheduledAt for findAndMarkFailed's query to match -- this catches it
-     * via updatedAt (bumped by claimForPublishing's UPDATE) instead. A token
-     * expiry mid-publish is excluded the same way findAndMarkFailed excludes
-     * it, since that case reverts to scheduled/direct_post_scheduled (not
-     * left in publishing) and is handled separately by
-     * TokenPublishingEscalationJob regardless of scheduledAt.
-     */
-    @Transactional
-    public List<Submission> findAndMarkStuckFastTrackFailed(Instant cutoff) {
-        List<Submission> stuck = submissionRepository.findStuckFastTrackPublishing(cutoff);
-        stuck.removeIf(s -> s.getTokenBlockedAt() != null);
-        for (Submission s : stuck) {
-            s.setStatus(s.getStatus() == SubmissionStatus.direct_post_publishing
-                    ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
-        }
-        submissionRepository.saveAll(stuck);
-        return stuck;
-    }
-
-    /**
-     * UC-2.4 A6: PENDING / IN_REVIEW submissions whose scheduled publication time
-     * has passed are moved to MISSED_REVIEW and their slot reservation is released
-     * so the slot is free for reuse. Retry with New Schedule (A8) sends them back
-     * to PENDING_APPROVAL.
-     */
-    @Transactional
-    public List<Submission> findAndMarkMissedReview(Instant cutoff) {
-        List<Submission> missed = submissionRepository.findMissedReviewSubmissions(cutoff, Instant.now());
-        for (Submission s : missed) {
-            s.setStatus(SubmissionStatus.missed_review);
-            slotReservationService.release(s.getId());
-        }
-        submissionRepository.saveAll(missed);
-        return missed;
     }
 }

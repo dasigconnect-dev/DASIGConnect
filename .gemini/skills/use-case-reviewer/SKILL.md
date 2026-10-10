@@ -34,10 +34,11 @@ When the user asks you to review a use case description, execute the following s
 ### 4. Verification & Gap Analysis
 
 - Cross-reference the provided use case description, the codebase implementation, and the existing documentation.
-- Categorize your findings into three distinct buckets:
+- Categorize your findings into four distinct buckets:
   - ✅ **Implemented:** Aspects of the use case that are perfectly reflected in the codebase.
   - ❌ **Not Implemented:** Aspects described in the use case that are entirely missing from the codebase.
   - ⚠️ **Discrepancies:** Aspects that are implemented in the code, but behave differently from the use case description (e.g., different fields, different validation rules, alternative architectural choices).
+  - 🔍 **Undocumented Code:** Implementations (e.g., edge cases, error handling, strict constraints) that are actively enforced in the codebase for this feature, but are entirely unmentioned in the use case description.
 
 ### 5. Reporting and Syncing Documentation
 
@@ -63,7 +64,7 @@ When the user asks you to review a use case description, execute the following s
     [Postconditions]
     ```
   - **Separator:** Add a separator line `=========================================`
-  - **Bottom Version (Developer/Technical View):** This section is strictly for developers to take note of what changed, how the codebase currently reflects the requirements, and any technical details related to the use case development. It MUST include a `## Implementation Status` section detailing exactly what is ✅ Implemented, ❌ Not Implemented, and ⚠️ Discrepancies, along with any relevant technical notes. Both the top and bottom versions should be updated every time there's a change if necessary.
+  - **Bottom Version (Developer/Technical View):** This section is strictly for developers to take note of what changed, how the codebase currently reflects the requirements, and any technical details related to the use case development. It MUST include a `## Implementation Status` section detailing exactly what is ✅ Implemented, ❌ Not Implemented, ⚠️ Discrepancies, and 🔍 Undocumented Code, along with any relevant technical notes. Both the top and bottom versions should be updated every time there's a change if necessary.
 - **Crucial Action 2 (Sync SRS):** After updating the use case document, check for and update the `docs/md/srs.md` (Software Requirements Specification) file if applicable, ensuring that global feature lists, system constraints, and requirements accurately reflect the newly verified implementation status.
 
 ## Guiding Principles
