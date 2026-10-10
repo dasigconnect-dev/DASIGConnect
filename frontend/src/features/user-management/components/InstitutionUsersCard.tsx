@@ -77,13 +77,16 @@ export default function InstitutionUsersCard({
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
+  const processedTargetIdRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (targetUserId && users.length > 0) {
+    if (targetUserId && targetUserId !== processedTargetIdRef.current && users.length > 0) {
       const targetUser = users.find((u) => u.id === targetUserId)
       if (targetUser) {
         setSearch(targetUser.email)
         setRoleFilter('all')
         setStatusFilter('all')
+        processedTargetIdRef.current = targetUserId
       }
     }
   }, [targetUserId, users])

@@ -192,8 +192,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       const match = institutions.find(i => i.id === id)
       if (match) {
         setSelectedInstitutionId(match.id)
-        searchParams.delete('id')
-        setSearchParams(searchParams, { replace: true })
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('id')
+        setSearchParams(nextParams, { replace: true })
       }
     }
   }, [searchParams, institutions, setSearchParams])

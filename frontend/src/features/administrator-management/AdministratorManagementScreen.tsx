@@ -89,8 +89,9 @@ export default function AdminManagementScreen({
     const id = searchParams.get('id')
     if (id) {
       setTargetUserId(id)
-      searchParams.delete('id')
-      setSearchParams(searchParams, { replace: true })
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('id')
+      setSearchParams(nextParams, { replace: true })
     }
   }, [searchParams, setSearchParams])
 

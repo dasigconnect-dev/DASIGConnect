@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import {
   cancelPromotion,
   cancelInvitationByUser,
@@ -117,8 +117,9 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     const id = searchParams.get('id')
     if (id) {
       setTargetUserId(id)
-      searchParams.delete('id')
-      setSearchParams(searchParams, { replace: true })
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('id')
+      setSearchParams(nextParams, { replace: true })
     }
   }, [searchParams, setSearchParams])
 
