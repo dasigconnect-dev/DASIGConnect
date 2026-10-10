@@ -767,7 +767,10 @@ public class MediaAssetService {
                     .map(MediaAssetUsageDto::from)
                     .filter(usage -> usage.status().equals("pending")
                     || usage.status().equals("in_review")
-                    || usage.status().equals("scheduled"))
+                    || usage.status().equals("scheduled")
+                    || usage.status().equals("publishing")
+                    || usage.status().equals("direct_post_scheduled")
+                    || usage.status().equals("direct_post_publishing"))
                     .toList();
             throw new MediaAssetDeletionConflictException(
                     "Asset is referenced by active submissions and cannot be deleted.", conflicts);
@@ -1445,7 +1448,7 @@ public class MediaAssetService {
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isNetworkRole(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         if (!isPublishedToRepository(asset)) {

@@ -1168,7 +1168,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function deleteTierForAsset(asset: MediaAsset): DeleteTier {
     const usedIn = asset.usedIn ?? [];
-    if (usedIn.some((u) => u.submissionStatus === "scheduled" || u.submissionStatus === "in_review" || u.submissionStatus === "pending")) {
+    if (usedIn.some((u) => ["scheduled", "in_review", "pending", "publishing", "direct_post_scheduled", "direct_post_publishing"].includes(u.submissionStatus))) {
       return "blocked";
     }
     if (usedIn.some((u) => u.submissionStatus === "draft" || u.submissionStatus === "needs_revision")) {
