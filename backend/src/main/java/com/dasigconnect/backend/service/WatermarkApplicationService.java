@@ -297,6 +297,11 @@ public class WatermarkApplicationService {
             } else if (imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
                 // Absolute URL
                 watermark = ImageIO.read(new ByteArrayInputStream(download(imageUrl)));
+            } else if ("/dasig-logo.png".equals(imageUrl)) {
+                // Built-in fallback logo
+                try (var is = getClass().getResourceAsStream("/dasig-logo.png")) {
+                    if (is != null) watermark = ImageIO.read(is);
+                }
             } else if (imageUrl != null && INSTITUTION_LOGO_PATTERN.matcher(imageUrl).find()) {
                 // Institution logo endpoint
                 Matcher matcher = INSTITUTION_LOGO_PATTERN.matcher(imageUrl);
