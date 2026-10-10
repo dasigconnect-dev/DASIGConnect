@@ -54,7 +54,9 @@ When the user asks you to review a use case description, execute the following s
     Precondition(s)
     [Preconditions]
     Main Flow
-    [Main flow steps. This MUST reflect how the users actually interact with the system and how the use case naturally flows from a user's perspective, avoiding overly technical internal details.]
+    1. [First step]
+    2. [Second step]
+    [Main flow steps MUST reflect how the users actually interact with the system and how the use case naturally flows from a user's perspective, avoiding overly technical internal details. Always use a numbered list.]
     Alternative Flow(s)
     [Alternative flows]
     Postcondition(s)
