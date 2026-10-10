@@ -37,10 +37,10 @@ When the user asks you to review a use case description, execute the following s
 
 ### 5. Reporting and Syncing Documentation
 - Present a clear, structured summary of the gap analysis to the user.
-- **Crucial Action 1 (Sync Use Case Doc):** Automatically update or create the relevant `docs/md/<use-case-name>.md` file.
-  - **IMPORTANT FORMATTING RULE:** The resulting document MUST have the exact same structure, headings, and format as the use case description provided by the user.
-  - **IMPORTANT CONTENT RULE:** However, the *content* within that document must be rewritten to strictly reflect the **codebase reality**. If the user's text describes a feature that differs from the code, update the text to match what the code actually does.
-  - Add a section called `## Implementation Status` at the bottom detailing the exact implemented features, pending features, and noted discrepancies.
+- **Crucial Action 1 (Sync Use Case Doc):** Automatically update or create the relevant `docs/md/<use-case-name>.md` file using the **Dual-Version Format**.
+  - **Top Version (Business/Product View):** This section contains the use case text as provided by the user (the "actual document"). This represents the formal product requirements.
+  - **Separator:** Add a separator line `=========================================`
+  - **Bottom Version (Developer/Technical View):** This section is strictly for developers to take note of what changed, how the codebase currently reflects the requirements, and any technical details related to the use case development. It MUST include a `## Implementation Status` section detailing exactly what is ✅ Implemented, ❌ Not Implemented, and ⚠️ Discrepancies, along with any relevant technical notes. Both the top and bottom versions should be updated every time there's a change if necessary.
 - **Crucial Action 2 (Sync SRS):** After updating the use case document, check for and update the `docs/md/srs.md` (Software Requirements Specification) file if applicable, ensuring that global feature lists, system constraints, and requirements accurately reflect the newly verified implementation status.
 
 ## Guiding Principles
