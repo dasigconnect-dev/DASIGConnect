@@ -455,7 +455,9 @@ public class AuditLogService {
             case USER -> {
                 User u = lookups.users().get(resourceId);
                 if (u != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/admin-management");
+                    boolean isAdmin = u.getRole() != null && "ADMIN".equalsIgnoreCase(u.getRole().name());
+                    String basePath = isAdmin ? "/admin/admin-management" : "/admin/user-management";
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, basePath + "?id=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
@@ -463,14 +465,14 @@ public class AuditLogService {
                 MediaAsset m = lookups.mediaAssets().get(resourceId);
                 if (m != null) {
                     String label = m.getFileName() != null ? m.getFileName() : "Media Asset #" + resourceId.toString().substring(0, 8);
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), label, true, "/media-repository");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), label, true, "/media-repository?asset=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
             case INSTITUTION -> {
                 Institution inst = lookups.institutions().get(resourceId);
                 if (inst != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/institution-management");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/institution-management?id=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }

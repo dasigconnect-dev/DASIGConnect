@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import {
   cancelPromotion,
   cancelInvitationByUser,
@@ -96,6 +96,9 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
 
   const initializing = userManagementQuery.isLoading && managedUsers.length === 0 && pendingInvitations.length === 0
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [targetUserId, setTargetUserId] = useState<string | null>(null)
+
   useEffect(() => {
     if (!showInviteModal || typeof document === 'undefined') return
     const previousOverflow = document.body.style.overflow
@@ -109,6 +112,16 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [showInviteModal, sending])
+
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (id) {
+      setTargetUserId(id)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('id')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   if (user.role !== 'admin') {
     return <Navigate to="/dashboard" replace />
@@ -553,6 +566,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           showInstitutionColumn
           title="All Users"
           description="Moderator and contributor accounts across every institution."
+          targetUserId={targetUserId}
         />
       </main>
 

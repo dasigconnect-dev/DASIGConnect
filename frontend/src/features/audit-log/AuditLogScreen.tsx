@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadAuditLogCsv,
@@ -579,15 +580,14 @@ export default function AuditLogScreen({ user }: Props) {
                             <td>
                               {isEntityActive ? (
                                 entry.entity.jumpUrl ? (
-                                  <a
-                                    href={entry.entity.jumpUrl}
+                                  <Link to={entry.entity.jumpUrl}
                                     className="audit-entity-link"
                                     onClick={(e) => e.stopPropagation()}
                                     title="Jump to entity"
                                   >
                                     <i className="ti ti-link" style={{ fontSize: 12 }} />
                                     <span>{entry.entity.label}</span>
-                                  </a>
+                                  </Link>
                                 ) : (
                                   <span className="audit-entity-tag">
                                     {entry.entity.label}
@@ -660,3 +660,4 @@ export default function AuditLogScreen({ user }: Props) {
     </div>
   );
 }
+
