@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { UserProfileResponse } from '../../../api/authApi'
 import type { User } from '../../../types/auth.types'
 import { getUserDisplayName, getUserInitials, getPendingPromotion } from '../../../lib/userIdentity'
@@ -33,6 +33,7 @@ interface InstitutionUsersCardProps {
   onAvatarUpload?: (user: UserProfileResponse, file: File) => void
   showFilterPills?: boolean
   userColumnLabel?: string
+  targetUserId?: string | null
   /** Render the title/count/description + headerAction row above the filter bar. */
   showHeader?: boolean
   /** Hide all per-row actions — renders the list as a read-only directory. */
@@ -70,10 +71,22 @@ export default function InstitutionUsersCard({
   userColumnLabel = 'User',
   showHeader = true,
   readOnly = false,
+  targetUserId = null,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  useEffect(() => {
+    if (targetUserId && users.length > 0) {
+      const targetUser = users.find((u) => u.id === targetUserId)
+      if (targetUser) {
+        setSearch(targetUser.email)
+        setRoleFilter('all')
+        setStatusFilter('all')
+      }
+    }
+  }, [targetUserId, users])
 
   const statusCounts = useMemo(() => ({
     all: users.length,

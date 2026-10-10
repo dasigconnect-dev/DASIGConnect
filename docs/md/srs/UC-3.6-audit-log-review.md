@@ -48,6 +48,6 @@ The audit log is append-only at the database level: the audit table's row-level 
 - **None.** The outlined functionality is broadly present.
 
 ⚠️ **Discrepancies:**
-- **Jump Links (A2):** The use case claims deep per-entity jump links are available for Submission, User, Media Asset, and Institution. However, `AuditLogService.resolveEntity()` only provides an actual per-entity deep link for `Submission` (`/submissions?id=...`). `User` (`/admin/admin-management`), `Media Asset` (`/media-repository`), and `Institution` (`/institution-management`) simply link to their respective general management screens without passing the entity ID.
+- **None.** The implemented jump links accurately resolve deep per-entity URLs via query parameters, and the frontend consumes these to display the targeted entities.
 
 

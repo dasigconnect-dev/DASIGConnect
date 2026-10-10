@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   cancelInvitationByUser,
   changeUserRole,
@@ -80,6 +81,18 @@ export default function AdminManagementScreen({
     [admins, user.email],
   )
   const pendingTransfer = Boolean(currentAdminRecord?.superAdminTransferRequestedBy && currentAdminRecord.superAdminTransferExpiresAt)
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [targetUserId, setTargetUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (id) {
+      setTargetUserId(id)
+      searchParams.delete('id')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Only the Admin Owner can invite, remove, or transfer admin accounts. Peer
   // admins get a read-only view of the roster.
@@ -568,6 +581,7 @@ export default function AdminManagementScreen({
               showHeader={false}
               variant="directory"
               userColumnLabel="Admin"
+              targetUserId={targetUserId}
             />
           </>
         )}

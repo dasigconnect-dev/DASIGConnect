@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   cancelInvitation,
   createInstitution,
@@ -73,8 +73,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const invalidateInstitutionManagementData = useInvalidateInstitutionManagementData()
-  // Admins get full institution lifecycle control; moderators are limited to
   // inviting contributors and managing those pending invitations.
   const isAdmin = user.role === 'admin'
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -185,6 +185,18 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     })
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (id && institutions.length > 0) {
+      const match = institutions.find(i => i.id === id)
+      if (match) {
+        setSelectedInstitutionId(match.id)
+        searchParams.delete('id')
+        setSearchParams(searchParams, { replace: true })
+      }
+    }
+  }, [searchParams, institutions, setSearchParams])
 
   const selectedInstitutionOption = useMemo(
     () =>
