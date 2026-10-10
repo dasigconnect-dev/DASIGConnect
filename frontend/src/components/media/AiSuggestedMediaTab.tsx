@@ -10,7 +10,6 @@ interface AiSuggestedMediaTabProps {
   alreadyAddedIds: Set<string>;
   eventTitle: string;
   caption: string;
-  category: string;
   tags: string[];
   selectedImageCount?: number;
   readyImageCount?: number;
@@ -24,7 +23,6 @@ export default function AiSuggestedMediaTab({
   alreadyAddedIds,
   eventTitle,
   caption,
-  category,
   tags,
   selectedImageCount = 0,
   readyImageCount = 0,
@@ -34,7 +32,7 @@ export default function AiSuggestedMediaTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { state, results, fetch } = suggestions;
 
-  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, tags);
   const hasVisualContext = selectedImageCount > 0;
   const isPreparingVisualContext = selectedImageCount > readyImageCount;
   const hasContext = hasTextContext || hasVisualContext;
@@ -45,7 +43,6 @@ export default function AiSuggestedMediaTab({
     const short = caption.trim().slice(0, 60);
     contextParts.push(short.length < caption.trim().length ? `${short}…` : short);
   }
-  if (category.trim()) contextParts.push(category.trim());
   if (tags.length > 0) contextParts.push(tags.slice(0, 3).map((t) => `#${t}`).join(" "));
   if (hasVisualContext) {
     contextParts.push(`${selectedImageCount} selected image${selectedImageCount === 1 ? "" : "s"}`);

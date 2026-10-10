@@ -30,6 +30,7 @@ The actor is authenticated. At least one submission has been published to genera
 30: ## Implementation Status
 31: 
 32: ✅ **Implemented:**
+- **Posts-by-Institution Export:** The `posts-by-institution` export accurately groups metrics, returning `institution_name`, `status`, and `post_count`. (Note: `event_title` and `contributor_name` are appropriately excluded here as they belong in the `submissionReportRows` DTO and `facebook-engagement` reports).
 33: - **Role-based Access:** Analytics is correctly scoped. Contributors see their institution data. Admins and Moderators see network-wide data. Admins also see operational metrics (AI Performance, Operational Health, Validator Workload).
 34: - **Live vs. Cached Data:** Workflow metrics are computed live from database queries. Facebook engagement metrics are fetched from `submission_engagement_metrics` and updated asynchronously. The exact cache refresh timestamp is displayed in the UI.
 35: - **Filters:** Date range filter is fully implemented supporting presets and custom ranges. Institution multi-select filter is implemented for Administrators.
@@ -40,8 +41,7 @@ The actor is authenticated. At least one submission has been published to genera
 40: - **Stale Category Removal:** Submissions previously had a `category` field that was dropped from requirements; it has been successfully purged from the frontend, backend, and database schema.
 41: 
 42: ⚠️ **Discrepancies:**
-43: - **Posts-by-Institution Export Fields:** The original document draft implied that the `posts-by-institution` export includes user-controlled free-text fields like `event_title` and `contributor_name`. However, the implementation of `posts-by-institution` groups metrics by `institution_name` and `status`, only returning `institution_name`, `status`, and `post_count`. (The `event_title` and `contributor_name` do exist in the `submissionReportRows` DTO and `facebook-engagement` report, but not in the `posts-by-institution` export).
-44: - **Placeholder "Content Quality" for Non-Admins:** The "Content Quality & Compliance" panel for Contributors/Moderators currently renders hardcoded strings ("Watermark Valid 100%", "Publish Readiness: Optimal") instead of live computed data.
+43: 44: - **Placeholder "Content Quality" for Non-Admins:** The "Content Quality & Compliance" panel for Contributors/Moderators currently renders hardcoded strings ("Watermark Valid 100%", "Publish Readiness: Optimal") instead of live computed data.
 45: 
 46: 🔍 **Undocumented Code:**
 47: - **CSV Sanitization:** To prevent spreadsheet formula injection, any string cell starting with `=, +, -, @, \t, \r` is prefixed with an apostrophe in the CSV export.

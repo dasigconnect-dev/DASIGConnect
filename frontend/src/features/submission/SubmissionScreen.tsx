@@ -175,7 +175,6 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
     id: template.id,
     name: template.name,
     target: template.target,
-    category: template.category,
     tags: template.tags ?? [],
     caption: template.caption,
     custom: true,
@@ -3064,7 +3063,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 submissionId={form.id}
                 eventTitle={form.eventTitle}
                 caption={form.caption}
-                category=""
                 tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
                 attachedAssetIds={form.savedAssets.map((asset) => asset.id)}
                 disabled={!isEditableSubmission}

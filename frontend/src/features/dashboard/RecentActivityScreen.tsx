@@ -109,7 +109,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
         return {
           id: s.id,
           title: s.eventTitle,
-          subtitle: s.category ?? "",
+          subtitle: "",
           institution: institutionName,
           submitted: submittedLabel,
           status: statusDisplay(s.status),

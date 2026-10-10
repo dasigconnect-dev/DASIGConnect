@@ -143,7 +143,6 @@ export function toPayload(form: FormState, scheduledAt?: string): SubmissionPayl
     caption: form.caption.trim(),
     description: "",
     scheduledAt,
-    category: "",
     templateId: form.selectedTemplateId ?? "",
     fastTrack: form.fastTrack,
     liveEventName: form.fastTrack ? form.liveEventName.trim() : "",
