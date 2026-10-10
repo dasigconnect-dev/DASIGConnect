@@ -14,9 +14,10 @@ Generate a structured System Design Document for a specific Use Case (e.g., UC-1
 ## Instructions
 
 1. **Read the Source Use Case Document**: Read the Use Case markdown file (e.g., `docs/md/UC-1.1-administrator-account-management.md`) to understand the functional requirements, flow, and business logic.
-2. **Explore the Codebase**: Search the frontend and backend codebase to map the requirements to the actual React components, Spring Boot components (Controllers, Services, Repositories), and database schema / entities.
-3. **Generate the SDD**: Write a new markdown file named `uc<#>-<name>.md` (e.g., `uc1.1-admin-management.md`) and save it to the `docs/md/sdd/` directory. (Create the directory if it does not exist).
-4. **Follow the Exact Structure**: You MUST format the output exactly as demonstrated in the template below.
+2. **Review Existing SDD (If Applicable)**: If an existing SDD is provided by the user or already exists in `docs/md/sdd/`, read it first. Review and validate its contents against the current codebase. 
+3. **Explore the Codebase**: Search the frontend and backend codebase to map the requirements to the actual React components, Spring Boot components (Controllers, Services, Repositories), and database schema / entities.
+4. **Generate or Update the SDD**: Write (or update) a markdown file named `uc<#>-<name>.md` (e.g., `uc1.1-admin-management.md`) and save it to the `docs/md/sdd/` directory. (Create the directory if it does not exist).
+5. **Follow the Exact Structure**: You MUST format the output exactly as demonstrated in the template below, regardless of whether you are creating a new SDD from scratch or updating an existing one.
 
 ## Format / Template
 
