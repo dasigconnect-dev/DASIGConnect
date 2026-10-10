@@ -50,6 +50,9 @@ class GuardRailServiceTest {
         lenient().when(slotReservationRepository.findActiveInWindow(any(), any())).thenReturn(List.of());
         lenient().when(guardRailSettingsService.postingWindowStartHour()).thenReturn(0);
         lenient().when(guardRailSettingsService.postingWindowEndHour()).thenReturn(24);
+        lenient().when(guardRailSettingsService.conflictBufferMinutes()).thenReturn(30);
+        lenient().when(guardRailSettingsService.minimumLeadTimeHours()).thenReturn(2);
+        lenient().when(guardRailSettingsService.maximumLeadTimeDays()).thenReturn(30);
     }
 
     // ── GR-H1 ────────────────────────────────────────────────────────────────

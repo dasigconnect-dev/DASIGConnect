@@ -739,13 +739,12 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .settings-page-overview-grid .settings-card {
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
 .settings-page-overview-grid .settings-card-header {
@@ -756,7 +755,6 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  justify-content: space-between;
 }
 
 @media (max-width: 900px) {

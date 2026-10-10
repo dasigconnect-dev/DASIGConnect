@@ -34,14 +34,10 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 public class GuardRailService {
 
     // Thresholds — match SRS Section 3.x guard rail definitions
-    private static final Duration GR_H1_WINDOW = Duration.ofMinutes(30);
-    private static final Duration GR_H2_MIN_FUTURE = Duration.ofHours(2);
-    private static final Duration GR_H3_MAX_FUTURE = Duration.ofDays(30);
     private static final long GR_S1_MAX_PENDING = 3L;
     private static final long GR_S2_MAX_PER_DAY = 6L;
 
     // Search window for suggesting alternative slots on GR-H1 violations
-    private static final Duration SUGGESTION_STEP = Duration.ofMinutes(31);
     private static final int SUGGESTION_COUNT = 3;
     private static final Duration SUGGESTION_SEARCH = Duration.ofHours(2);
 
@@ -82,32 +78,35 @@ public class GuardRailService {
         List<GuardRailViolation> softWarnings = new ArrayList<>();
 
         // ── Hard Rules ────────────────────────────────────────────────────────
-        // GR-H1: No two posts within ±30 minutes (network-wide)
-        Instant windowStart = requestedSlot.minus(GR_H1_WINDOW);
-        Instant windowEnd = requestedSlot.plus(GR_H1_WINDOW);
+        // GR-H1: No two posts within buffer (network-wide)
+        Duration conflictBuffer = Duration.ofMinutes(guardRailSettingsService.conflictBufferMinutes());
+        Instant windowStart = requestedSlot.minus(conflictBuffer);
+        Instant windowEnd = requestedSlot.plus(conflictBuffer);
         boolean hasConflict = slotReservationRepository.existsActiveWithin30Minutes(
                 windowStart, windowEnd, excludeSubmissionId);
         if (hasConflict) {
             hardBlocks.add(new GuardRailViolation(
                     "GR-H1",
-                    "A post is already scheduled within 30 minutes of this slot. "
+                    "A post is already scheduled within " + conflictBuffer.toMinutes() + " minutes of this slot. "
                     + "Please choose one of the suggested times.",
                     suggestAlternativeSlots(requestedSlot, now)
             ));
         }
 
-        // GR-H2: Scheduled time must be ≥2 hours in the future
-        if (requestedSlot.isBefore(now.plus(GR_H2_MIN_FUTURE))) {
+        // GR-H2: Scheduled time must be >= min lead time
+        Duration minLeadTime = Duration.ofHours(guardRailSettingsService.minimumLeadTimeHours());
+        if (requestedSlot.isBefore(now.plus(minLeadTime))) {
             hardBlocks.add(new GuardRailViolation(
                     "GR-H2",
-                    "Scheduled time must be at least 2 hours from now."
+                    "Scheduled time must be at least " + minLeadTime.toHours() + " hours from now."
             ));
         }
-        // GR-H3: Scheduled time must be ≤30 days in the future
-        if (requestedSlot.isAfter(now.plus(GR_H3_MAX_FUTURE))) {
+        // GR-H3: Scheduled time must be <= max lead time
+        Duration maxLeadTime = Duration.ofDays(guardRailSettingsService.maximumLeadTimeDays());
+        if (requestedSlot.isAfter(now.plus(maxLeadTime))) {
             hardBlocks.add(new GuardRailViolation(
                     "GR-H3",
-                    "Scheduled time cannot be more than 30 days in the future."
+                    "Scheduled time cannot be more than " + maxLeadTime.toDays() + " days in the future."
             ));
         }
         // GR-H4: Posting window
@@ -161,7 +160,12 @@ public class GuardRailService {
      */
     private List<Instant> suggestAlternativeSlots(Instant conflictedSlot, Instant now) {
         List<Instant> suggestions = new ArrayList<>();
-        Instant minAllowed = now.plus(GR_H2_MIN_FUTURE);
+        Duration minLeadTime = Duration.ofHours(guardRailSettingsService.minimumLeadTimeHours());
+        Duration maxLeadTime = Duration.ofDays(guardRailSettingsService.maximumLeadTimeDays());
+        Duration conflictBuffer = Duration.ofMinutes(guardRailSettingsService.conflictBufferMinutes());
+        Duration suggestionStep = conflictBuffer.plusMinutes(1);
+        
+        Instant minAllowed = now.plus(minLeadTime);
 
         // Gather existing reservations within ±2 hours to avoid during suggestion
         List<SlotReservation> nearby = slotReservationRepository.findActiveInWindow(
@@ -169,29 +173,29 @@ public class GuardRailService {
                 conflictedSlot.plus(SUGGESTION_SEARCH)
         );
 
-        Instant candidate = conflictedSlot.plus(SUGGESTION_STEP);
+        Instant candidate = conflictedSlot.plus(suggestionStep);
         int attempts = 0;
 
         while (suggestions.size() < SUGGESTION_COUNT && attempts < 20) {
             attempts++;
             // Skip if in the past or too soon
             if (candidate.isBefore(minAllowed)) {
-                candidate = candidate.plus(SUGGESTION_STEP);
+                candidate = candidate.plus(suggestionStep);
                 continue;
             }
             // Skip if too far in the future (GR-H3)
-            if (candidate.isAfter(now.plus(GR_H3_MAX_FUTURE))) {
+            if (candidate.isAfter(now.plus(maxLeadTime))) {
                 break;
             }
             // Check against nearby reserved slots
             Instant finalCandidate = candidate;
             boolean blocked = nearby.stream().anyMatch(r
-                    -> Duration.between(r.getScheduledAt(), finalCandidate).abs().compareTo(GR_H1_WINDOW) <= 0
+                    -> Duration.between(r.getScheduledAt(), finalCandidate).abs().compareTo(conflictBuffer) <= 0
             );
             if (!blocked) {
                 suggestions.add(candidate);
             }
-            candidate = candidate.plus(SUGGESTION_STEP);
+            candidate = candidate.plus(suggestionStep);
         }
 
         return suggestions;
