@@ -16,6 +16,9 @@ public record PageSettingsDto(
         boolean guardrailsEnforced,
         int postingWindowStartHour,
         int postingWindowEndHour,
+        int conflictBufferMinutes,
+        int minimumLeadTimeHours,
+        int maximumLeadTimeDays,
         Instant updatedAt) {
     public static PageSettingsDto from(PageSettings value) {
         return new PageSettingsDto(
@@ -23,6 +26,9 @@ public record PageSettingsDto(
                 value.isGuardrailsEnforced(),
                 value.getPostingWindowStartHour(),
                 value.getPostingWindowEndHour(),
+                value.getConflictBufferMinutes(),
+                value.getMinimumLeadTimeHours(),
+                value.getMaximumLeadTimeDays(),
                 value.getUpdatedAt());
     }
 }

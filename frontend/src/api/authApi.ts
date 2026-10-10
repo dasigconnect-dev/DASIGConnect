@@ -178,6 +178,9 @@ export interface PageSettingsResponse {
   guardrailsEnforced: boolean;
   postingWindowStartHour: number;
   postingWindowEndHour: number;
+  conflictBufferMinutes: number;
+  minimumLeadTimeHours: number;
+  maximumLeadTimeDays: number;
   updatedAt: string | null;
 }
 
@@ -193,7 +196,14 @@ export function getPageSettings(institutionId?: string | null, signal?: AbortSig
 // (/settings/watermark); the Facebook Page ID/token used for publishing is
 // managed in System Health -> Tokens, not here.
 export function updatePageSettings(
-  data: { guardrailsEnforced?: boolean; postingWindowStartHour?: number; postingWindowEndHour?: number },
+  data: { 
+    guardrailsEnforced?: boolean; 
+    postingWindowStartHour?: number; 
+    postingWindowEndHour?: number;
+    conflictBufferMinutes?: number;
+    minimumLeadTimeHours?: number;
+    maximumLeadTimeDays?: number;
+  },
   institutionId?: string | null,
 ) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });

@@ -49,5 +49,25 @@ public class GuardRailSettingsService {
                 .map(PageSettings::getPostingWindowEndHour)
                 .orElse(20);
     }
+    @Transactional(readOnly = true)
+    public int conflictBufferMinutes() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getConflictBufferMinutes)
+                .orElse(30);
+    }
+
+    @Transactional(readOnly = true)
+    public int minimumLeadTimeHours() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getMinimumLeadTimeHours)
+                .orElse(2);
+    }
+
+    @Transactional(readOnly = true)
+    public int maximumLeadTimeDays() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getMaximumLeadTimeDays)
+                .orElse(30);
+    }
 }
 

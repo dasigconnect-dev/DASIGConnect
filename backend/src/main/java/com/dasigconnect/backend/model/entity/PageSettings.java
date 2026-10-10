@@ -36,6 +36,16 @@ public class PageSettings {
     private int postingWindowStartHour = 8;
     @Column(name = "posting_window_end_hour", nullable = false)
     private int postingWindowEndHour = 20;
+    
+    @Column(name = "conflict_buffer_minutes", nullable = false)
+    private int conflictBufferMinutes = 30;
+    
+    @Column(name = "minimum_lead_time_hours", nullable = false)
+    private int minimumLeadTimeHours = 2;
+    
+    @Column(name = "maximum_lead_time_days", nullable = false)
+    private int maximumLeadTimeDays = 30;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
@@ -59,6 +69,15 @@ public class PageSettings {
     public void setPostingWindowStartHour(int value) { postingWindowStartHour = value; }
     public int getPostingWindowEndHour() { return postingWindowEndHour; }
     public void setPostingWindowEndHour(int value) { postingWindowEndHour = value; }
+    
+    public int getConflictBufferMinutes() { return conflictBufferMinutes; }
+    public void setConflictBufferMinutes(int value) { conflictBufferMinutes = value; }
+    
+    public int getMinimumLeadTimeHours() { return minimumLeadTimeHours; }
+    public void setMinimumLeadTimeHours(int value) { minimumLeadTimeHours = value; }
+    
+    public int getMaximumLeadTimeDays() { return maximumLeadTimeDays; }
+    public void setMaximumLeadTimeDays(int value) { maximumLeadTimeDays = value; }
     public void setUpdatedBy(User value) { updatedBy = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

@@ -137,6 +137,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
   const [postingWindowStartHour, setPostingWindowStartHour] = useState(8);
   const [postingWindowEndHour, setPostingWindowEndHour] = useState(20);
+  const [conflictBufferMinutes, setConflictBufferMinutes] = useState(30);
+  const [minimumLeadTimeHours, setMinimumLeadTimeHours] = useState(2);
+  const [maximumLeadTimeDays, setMaximumLeadTimeDays] = useState(30);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -306,6 +309,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
       setPostingWindowStartHour(pageSettingsQuery.data.data.postingWindowStartHour ?? 8);
       setPostingWindowEndHour(pageSettingsQuery.data.data.postingWindowEndHour ?? 20);
+      setConflictBufferMinutes(pageSettingsQuery.data.data.conflictBufferMinutes ?? 30);
+      setMinimumLeadTimeHours(pageSettingsQuery.data.data.minimumLeadTimeHours ?? 2);
+      setMaximumLeadTimeDays(pageSettingsQuery.data.data.maximumLeadTimeDays ?? 30);
       pageSettingsHydratedRef.current = true;
     }
 
@@ -409,6 +415,15 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       if (postingWindowStartHour >= postingWindowEndHour) {
         return toast.error("Start hour must be strictly before the end hour.");
       }
+      if (!Number.isInteger(conflictBufferMinutes) || conflictBufferMinutes < 0) {
+        return toast.error("Conflict buffer must be a positive number of minutes.");
+      }
+      if (!Number.isInteger(minimumLeadTimeHours) || minimumLeadTimeHours < 0) {
+        return toast.error("Minimum lead time must be a positive number of hours.");
+      }
+      if (!Number.isInteger(maximumLeadTimeDays) || maximumLeadTimeDays <= 0) {
+        return toast.error("Maximum lead time must be a positive number of days.");
+      }
     }
 
     setSaving("guardrails");
@@ -417,10 +432,16 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         guardrailsEnforced,
         postingWindowStartHour,
         postingWindowEndHour,
+        conflictBufferMinutes,
+        minimumLeadTimeHours,
+        maximumLeadTimeDays,
       }, pageInstitutionId);
       setGuardrailsEnforced(data.guardrailsEnforced ?? true);
       setPostingWindowStartHour(data.postingWindowStartHour ?? 8);
       setPostingWindowEndHour(data.postingWindowEndHour ?? 20);
+      setConflictBufferMinutes(data.conflictBufferMinutes ?? 30);
+      setMinimumLeadTimeHours(data.minimumLeadTimeHours ?? 2);
+      setMaximumLeadTimeDays(data.maximumLeadTimeDays ?? 30);
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -1148,6 +1169,54 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                             className="settings-input"
                             value={postingWindowEndHour}
                             onChange={(e) => setPostingWindowEndHour(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px", marginTop: "16px", marginBottom: "12px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-conflict-buffer" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Minimum spacing between posts (minutes)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-conflict-buffer"
+                            type="number"
+                            min="0"
+                            className="settings-input"
+                            value={conflictBufferMinutes}
+                            onChange={(e) => setConflictBufferMinutes(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-min-lead-time" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Minimum advance notice for scheduling (hours)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-min-lead-time"
+                            type="number"
+                            min="0"
+                            className="settings-input"
+                            value={minimumLeadTimeHours}
+                            onChange={(e) => setMinimumLeadTimeHours(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-max-lead-time" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Maximum advance notice for scheduling (days)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-max-lead-time"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={maximumLeadTimeDays}
+                            onChange={(e) => setMaximumLeadTimeDays(Number(e.target.value))}
                             disabled={!guardrailsEnforced}
                           />
                         </div>

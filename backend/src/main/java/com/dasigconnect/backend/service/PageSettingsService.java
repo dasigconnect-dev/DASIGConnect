@@ -32,7 +32,15 @@ public class PageSettingsService {
     public PageSettingsDto get(UUID institutionId, JwtUserDetails actor) {
         authorize(institutionId, actor);
         return find(institutionId).map(PageSettingsDto::from)
-                .orElse(new PageSettingsDto(institutionId, guardRailSettings.enforced(), guardRailSettings.postingWindowStartHour(), guardRailSettings.postingWindowEndHour(), null));
+                .orElse(new PageSettingsDto(
+                        institutionId, 
+                        guardRailSettings.enforced(), 
+                        guardRailSettings.postingWindowStartHour(), 
+                        guardRailSettings.postingWindowEndHour(), 
+                        guardRailSettings.conflictBufferMinutes(),
+                        guardRailSettings.minimumLeadTimeHours(),
+                        guardRailSettings.maximumLeadTimeDays(),
+                        null));
     }
 
     @Transactional
@@ -54,6 +62,15 @@ public class PageSettingsService {
             }
             if (request.postingWindowEndHour() != null) {
                 settings.setPostingWindowEndHour(request.postingWindowEndHour());
+            }
+            if (request.conflictBufferMinutes() != null) {
+                settings.setConflictBufferMinutes(request.conflictBufferMinutes());
+            }
+            if (request.minimumLeadTimeHours() != null) {
+                settings.setMinimumLeadTimeHours(request.minimumLeadTimeHours());
+            }
+            if (request.maximumLeadTimeDays() != null) {
+                settings.setMaximumLeadTimeDays(request.maximumLeadTimeDays());
             }
         }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));

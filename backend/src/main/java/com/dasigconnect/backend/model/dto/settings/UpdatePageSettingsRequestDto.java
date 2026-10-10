@@ -16,6 +16,9 @@ public record UpdatePageSettingsRequestDto(
          */
         Boolean guardrailsEnforced,
         Integer postingWindowStartHour,
-        Integer postingWindowEndHour) {
+        Integer postingWindowEndHour,
+        Integer conflictBufferMinutes,
+        Integer minimumLeadTimeHours,
+        Integer maximumLeadTimeDays) {
 
 }
