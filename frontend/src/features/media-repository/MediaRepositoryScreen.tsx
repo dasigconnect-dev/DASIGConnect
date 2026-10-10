@@ -671,7 +671,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "contributor") {
+    if (user.role === "contributor" || user.role === "moderator") {
       return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
     }
     return false;

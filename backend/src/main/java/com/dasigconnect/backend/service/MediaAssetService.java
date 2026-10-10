@@ -1461,14 +1461,16 @@ public class MediaAssetService {
         if (isAdmin(user)) {
             return asset;
         }
-        if (isContributor(user)) {
-            boolean sameInstitution = asset.getInstitution().getId().equals(user.institutionId());
+        
+        boolean isModerator = user.role() != null && "moderator".equalsIgnoreCase(user.role());
+        if (isContributor(user) || isModerator) {
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
-            if (sameInstitution && owner) {
+            if (owner) {
                 return asset;
             }
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Contributors can only delete assets they uploaded.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete assets you uploaded.");
         }
+        
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete media assets.");
     }
 
