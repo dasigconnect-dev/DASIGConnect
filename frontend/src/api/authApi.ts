@@ -181,6 +181,8 @@ export interface PageSettingsResponse {
   conflictBufferMinutes: number;
   minimumLeadTimeHours: number;
   maximumLeadTimeDays: number;
+  perInstitutionActiveQuota: number;
+  dailyVolumeCap: number;
   updatedAt: string | null;
 }
 
@@ -203,6 +205,8 @@ export function updatePageSettings(
     conflictBufferMinutes?: number;
     minimumLeadTimeHours?: number;
     maximumLeadTimeDays?: number;
+    perInstitutionActiveQuota?: number;
+    dailyVolumeCap?: number;
   },
   institutionId?: string | null,
 ) {

@@ -53,6 +53,8 @@ class GuardRailServiceTest {
         lenient().when(guardRailSettingsService.conflictBufferMinutes()).thenReturn(30);
         lenient().when(guardRailSettingsService.minimumLeadTimeHours()).thenReturn(2);
         lenient().when(guardRailSettingsService.maximumLeadTimeDays()).thenReturn(30);
+        lenient().when(guardRailSettingsService.perInstitutionActiveQuota()).thenReturn(3);
+        lenient().when(guardRailSettingsService.dailyVolumeCap()).thenReturn(6);
     }
 
     // ── GR-H1 ────────────────────────────────────────────────────────────────

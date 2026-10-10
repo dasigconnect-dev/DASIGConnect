@@ -19,6 +19,8 @@ public record UpdatePageSettingsRequestDto(
         Integer postingWindowEndHour,
         Integer conflictBufferMinutes,
         Integer minimumLeadTimeHours,
-        Integer maximumLeadTimeDays) {
+        Integer maximumLeadTimeDays,
+        Integer perInstitutionActiveQuota,
+        Integer dailyVolumeCap) {
 
 }

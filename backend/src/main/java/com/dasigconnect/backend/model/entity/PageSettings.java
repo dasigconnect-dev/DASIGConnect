@@ -46,6 +46,12 @@ public class PageSettings {
     @Column(name = "maximum_lead_time_days", nullable = false)
     private int maximumLeadTimeDays = 30;
 
+    @Column(name = "per_institution_active_quota", nullable = false)
+    private int perInstitutionActiveQuota = 3;
+
+    @Column(name = "daily_volume_cap", nullable = false)
+    private int dailyVolumeCap = 6;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
@@ -78,6 +84,13 @@ public class PageSettings {
     
     public int getMaximumLeadTimeDays() { return maximumLeadTimeDays; }
     public void setMaximumLeadTimeDays(int value) { maximumLeadTimeDays = value; }
+    
+    public int getPerInstitutionActiveQuota() { return perInstitutionActiveQuota; }
+    public void setPerInstitutionActiveQuota(int value) { perInstitutionActiveQuota = value; }
+    
+    public int getDailyVolumeCap() { return dailyVolumeCap; }
+    public void setDailyVolumeCap(int value) { dailyVolumeCap = value; }
+    
     public void setUpdatedBy(User value) { updatedBy = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

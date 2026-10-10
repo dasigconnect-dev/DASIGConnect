@@ -40,6 +40,8 @@ public class PageSettingsService {
                         guardRailSettings.conflictBufferMinutes(),
                         guardRailSettings.minimumLeadTimeHours(),
                         guardRailSettings.maximumLeadTimeDays(),
+                        guardRailSettings.perInstitutionActiveQuota(),
+                        guardRailSettings.dailyVolumeCap(),
                         null));
     }
 
@@ -71,6 +73,12 @@ public class PageSettingsService {
             }
             if (request.maximumLeadTimeDays() != null) {
                 settings.setMaximumLeadTimeDays(request.maximumLeadTimeDays());
+            }
+            if (request.perInstitutionActiveQuota() != null) {
+                settings.setPerInstitutionActiveQuota(request.perInstitutionActiveQuota());
+            }
+            if (request.dailyVolumeCap() != null) {
+                settings.setDailyVolumeCap(request.dailyVolumeCap());
             }
         }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));

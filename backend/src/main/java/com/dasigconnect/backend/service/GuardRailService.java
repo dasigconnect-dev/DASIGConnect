@@ -33,10 +33,6 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 @Transactional(readOnly = true)
 public class GuardRailService {
 
-    // Thresholds — match SRS Section 3.x guard rail definitions
-    private static final long GR_S1_MAX_PENDING = 3L;
-    private static final long GR_S2_MAX_PER_DAY = 6L;
-
     // Search window for suggesting alternative slots on GR-H1 violations
     private static final int SUGGESTION_COUNT = 3;
     private static final Duration SUGGESTION_SEARCH = Duration.ofHours(2);
@@ -125,9 +121,10 @@ public class GuardRailService {
         }
 
         // ── Soft Rules ────────────────────────────────────────────────────────
-        // GR-S1: ≤3 scheduled-but-unpublished posts per institution
+        // GR-S1: ≤X scheduled-but-unpublished posts per institution
         long unpublishedCount = submissionRepository.countUnpublishedByInstitution(institutionId);
-        if (unpublishedCount >= GR_S1_MAX_PENDING) {
+        long quota = guardRailSettingsService.perInstitutionActiveQuota();
+        if (unpublishedCount >= quota) {
             softWarnings.add(new GuardRailViolation(
                     "GR-S1",
                     "Your institution already has " + unpublishedCount
@@ -136,11 +133,12 @@ public class GuardRailService {
             ));
         }
 
-        // GR-S2: ≤6 posts per calendar day network-wide
+        // GR-S2: ≤Y posts per calendar day network-wide
         Instant dayStart = requestedSlot.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         Instant dayEnd = dayStart.plus(Duration.ofDays(1));
         long dailyCount = slotReservationRepository.countActiveOnDay(dayStart, dayEnd, excludeSubmissionId);
-        if (dailyCount >= GR_S2_MAX_PER_DAY) {
+        long maxPerDay = guardRailSettingsService.dailyVolumeCap();
+        if (dailyCount >= maxPerDay) {
             softWarnings.add(new GuardRailViolation(
                     "GR-S2",
                     dailyCount + " posts are already scheduled on this day across the network. "

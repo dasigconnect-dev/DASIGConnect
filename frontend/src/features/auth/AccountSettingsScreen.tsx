@@ -140,6 +140,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [conflictBufferMinutes, setConflictBufferMinutes] = useState(30);
   const [minimumLeadTimeHours, setMinimumLeadTimeHours] = useState(2);
   const [maximumLeadTimeDays, setMaximumLeadTimeDays] = useState(30);
+  const [perInstitutionActiveQuota, setPerInstitutionActiveQuota] = useState(3);
+  const [dailyVolumeCap, setDailyVolumeCap] = useState(6);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -312,6 +314,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setConflictBufferMinutes(pageSettingsQuery.data.data.conflictBufferMinutes ?? 30);
       setMinimumLeadTimeHours(pageSettingsQuery.data.data.minimumLeadTimeHours ?? 2);
       setMaximumLeadTimeDays(pageSettingsQuery.data.data.maximumLeadTimeDays ?? 30);
+      setPerInstitutionActiveQuota(pageSettingsQuery.data.data.perInstitutionActiveQuota ?? 3);
+      setDailyVolumeCap(pageSettingsQuery.data.data.dailyVolumeCap ?? 6);
       pageSettingsHydratedRef.current = true;
     }
 
@@ -424,6 +428,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       if (!Number.isInteger(maximumLeadTimeDays) || maximumLeadTimeDays <= 0) {
         return toast.error("Maximum lead time must be a positive number of days.");
       }
+      if (!Number.isInteger(perInstitutionActiveQuota) || perInstitutionActiveQuota <= 0) {
+        return toast.error("Per-institution active quota must be a positive number.");
+      }
+      if (!Number.isInteger(dailyVolumeCap) || dailyVolumeCap <= 0) {
+        return toast.error("Daily volume cap must be a positive number.");
+      }
     }
 
     setSaving("guardrails");
@@ -435,6 +445,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         conflictBufferMinutes,
         minimumLeadTimeHours,
         maximumLeadTimeDays,
+        perInstitutionActiveQuota,
+        dailyVolumeCap,
       }, pageInstitutionId);
       setGuardrailsEnforced(data.guardrailsEnforced ?? true);
       setPostingWindowStartHour(data.postingWindowStartHour ?? 8);
@@ -442,6 +454,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setConflictBufferMinutes(data.conflictBufferMinutes ?? 30);
       setMinimumLeadTimeHours(data.minimumLeadTimeHours ?? 2);
       setMaximumLeadTimeDays(data.maximumLeadTimeDays ?? 30);
+      setPerInstitutionActiveQuota(data.perInstitutionActiveQuota ?? 3);
+      setDailyVolumeCap(data.dailyVolumeCap ?? 6);
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -1217,6 +1231,37 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                             className="settings-input"
                             value={maximumLeadTimeDays}
                             onChange={(e) => setMaximumLeadTimeDays(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-quota" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Per-institution active post quota</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-quota"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={perInstitutionActiveQuota}
+                            onChange={(e) => setPerInstitutionActiveQuota(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-daily-cap" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Daily volume cap (network-wide)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-daily-cap"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={dailyVolumeCap}
+                            onChange={(e) => setDailyVolumeCap(Number(e.target.value))}
                             disabled={!guardrailsEnforced}
                           />
                         </div>

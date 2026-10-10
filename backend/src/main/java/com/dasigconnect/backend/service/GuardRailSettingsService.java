@@ -69,5 +69,19 @@ public class GuardRailSettingsService {
                 .map(PageSettings::getMaximumLeadTimeDays)
                 .orElse(30);
     }
+    
+    @Transactional(readOnly = true)
+    public int perInstitutionActiveQuota() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPerInstitutionActiveQuota)
+                .orElse(3);
+    }
+    
+    @Transactional(readOnly = true)
+    public int dailyVolumeCap() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getDailyVolumeCap)
+                .orElse(6);
+    }
 }
 

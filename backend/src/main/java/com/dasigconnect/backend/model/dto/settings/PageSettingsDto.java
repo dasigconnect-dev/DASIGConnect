@@ -19,6 +19,8 @@ public record PageSettingsDto(
         int conflictBufferMinutes,
         int minimumLeadTimeHours,
         int maximumLeadTimeDays,
+        int perInstitutionActiveQuota,
+        int dailyVolumeCap,
         Instant updatedAt) {
     public static PageSettingsDto from(PageSettings value) {
         return new PageSettingsDto(
@@ -29,6 +31,8 @@ public record PageSettingsDto(
                 value.getConflictBufferMinutes(),
                 value.getMinimumLeadTimeHours(),
                 value.getMaximumLeadTimeDays(),
+                value.getPerInstitutionActiveQuota(),
+                value.getDailyVolumeCap(),
                 value.getUpdatedAt());
     }
 }
