@@ -13,22 +13,6 @@ Administrator, Moderator
 The actor is authenticated with an active session. The Validation Queue is defined as the union of pending, in_review, and needs_revision submissions network-wide.
 
 ## Main Flow
-1. The actor navigates to the **Validation Queue** from the main navigation menu.
-2. The screen displays a list of submission cards and a row of eight tabs across the top to filter the view: **All, Pending, In Review, Needs Revision, Scheduled, Published, Rejected, and Failed**.
-3. The queue displays submissions from across the entire network (no per-institution scoping for Moderators or Administrators). The actor may use the search bar or sort controls to locate a specific post.
-4. The actor clicks on a submission card from the list to open it for review.
-5. Behind the scenes, the system acquires a **15-minute review lock** scoped to the actor and transitions the submission from pending to **in_review**.
-6. The screen splits into a detailed review interface:
-   - **Facebook Post Preview:** A realistic visual preview of how the post will appear on Facebook, showing the attached media, caption, tags, and scheduled time.
-   - **Submission Details Panel:** A collapsible sidebar displaying metadata such as the contributor's name, event details, publishing mode (e.g., Scheduled vs. Live Event), and a button to view the full Review History (audit log).
-7. The actor reviews the content for completeness, accuracy, and appropriateness. If minor adjustments are needed, the actor can optionally edit the media, caption, or schedule directly within the review interface before making a final decision (A9, A10).
-8. The actor selects one of three terminal action buttons:
-   - **Approve:** Transitions the submission to scheduled, or publishes it immediately if it is a Live Event Fast-Track submission.
-   - **Request Revision:** Opens a dialog prompting for mandatory remarks (10-1000 characters). Transitions the submission to needs_revision and releases its reserved slot.
-   - **Reject:** Opens a dialog prompting for a reason code and notes. Transitions the submission to rejected and releases its reserved slot.
-9. The system processes the decision, securely logs the action (and any edits made) to the audit log, notifies the original contributor, releases the review lock, and returns the actor to the queue list.
-
-## Technical Flow
 1. The actor navigates to the Validation Queue, structured into eight tabs: All, Pending, In Review, Needs Revision, Scheduled, Published, Rejected, and Failed.
 2. The system displays submissions network-wide — Moderators and Administrators see the identical queue, with no per-institution scoping for either role.
 3. The actor opens a submission and clicks Review. The system transitions it from pending to in_review and acquires a review lock scoped to that reviewer, with a 15-minute duration that renews while the panel remains open.
