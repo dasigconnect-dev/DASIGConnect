@@ -61,6 +61,7 @@ Spring Data JPA Repository
 ```
 
 ### Guidelines for filling out sections:
+
 - **X.X.1 User Interface Design**: Describe the layout, interactions, states (e.g., active, pending), and validations based on what the frontend actually implements.
 - **X.X.2 Front-end Component(s)**: List the primary React components handling this use case. Specify the REST API endpoints they call and their type (e.g., "React functional component").
 - **X.X.3 Back-end Component(s)**: List the primary Spring Boot classes (Controllers, Services, Repositories). Summarize their responsibilities and rules enforced.
