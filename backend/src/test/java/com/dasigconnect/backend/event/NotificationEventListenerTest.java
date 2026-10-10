@@ -82,7 +82,7 @@ class NotificationEventListenerTest {
     }
 
     @Test
-    void onSubmissionPending_T01_dispatchesInAppAndMessengerToAdmin() {
+    void onSubmissionPending_T01_dispatchesInAppAndMessengerToModeratorAndAdmin() {
         Submission s = new Submission();
         s.setId(UUID.randomUUID());
         s.setEventTitle("AI Expo");
@@ -94,6 +94,10 @@ class NotificationEventListenerTest {
         verify(notificationService).createNotification(
                 eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("AI Expo"));
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("AI Expo"));
     }
 
     @Test
@@ -208,7 +212,7 @@ class NotificationEventListenerTest {
     }
 
     @Test
-    void onFastTrackSubmission_T11_dispatchesInAppEmailAndMessengerToAdmin() {
+    void onFastTrackSubmission_T11_dispatchesInAppEmailAndMessengerToModeratorAndAdmin() {
         Submission s = new Submission();
         s.setId(UUID.randomUUID());
         s.setEventTitle("Breaking Science News");
@@ -222,6 +226,12 @@ class NotificationEventListenerTest {
         verify(emailDeliveryService).send(
                 eq(admin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("Breaking Science News"));
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), any());
+        verify(emailDeliveryService).send(
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("Breaking Science News"));
     }
 
     @Test
