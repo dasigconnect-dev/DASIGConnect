@@ -32,9 +32,9 @@ function WatermarkImageItem({ el }: { el: WatermarkElement }) {
     );
   }
 
-  const src = el.imageUrl && el.imageUrl.trim() !== "" && el.imageUrl !== "/dasig-logo.png"
+  const src = el.imageUrl && el.imageUrl.trim() !== "" 
     ? el.imageUrl
-    : "/favicon.svg";
+    : "/dasig-logo.png";
 
   return (
     <img
