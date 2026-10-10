@@ -415,7 +415,7 @@ public class ValidationService {
      * still select a terminal action afterwards. Each edit records its own
      * before/after diff in the audit log (A10), so repeated edits within a review
      * session are all traceable.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked.
      */
     public void edit(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
@@ -898,3 +898,4 @@ public class ValidationService {
         }
     }
 }
+

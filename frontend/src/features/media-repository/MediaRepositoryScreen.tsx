@@ -671,7 +671,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "contributor") {
+    if (user.role === "contributor" || user.role === "moderator") {
       return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
     }
     return false;
@@ -1168,7 +1168,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function deleteTierForAsset(asset: MediaAsset): DeleteTier {
     const usedIn = asset.usedIn ?? [];
-    if (usedIn.some((u) => u.submissionStatus === "scheduled" || u.submissionStatus === "in_review" || u.submissionStatus === "pending")) {
+    if (usedIn.some((u) => ["scheduled", "in_review", "pending", "publishing", "direct_post_scheduled", "direct_post_publishing"].includes(u.submissionStatus))) {
       return "blocked";
     }
     if (usedIn.some((u) => u.submissionStatus === "draft" || u.submissionStatus === "needs_revision")) {
@@ -1243,25 +1243,34 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setDeleting(true);
     try {
       const ids = deleteAssets.length > 0 ? deleteAssets.map((asset) => asset.id) : [deleteAsset.id];
+      let actuallyDeletedIds = ids;
       if (ids.length > 1) {
-        await bulkDeleteMediaAssets(ids, true);
+        const response = await bulkDeleteMediaAssets(ids, true);
+        actuallyDeletedIds = response.data.deletedIds;
       } else {
         await deleteMediaAsset(deleteAsset.id, deleteTier === "warning");
       }
-      setAssets((prev) => prev.filter((a) => !ids.includes(a.id)));
-      ids.forEach((id) => {
+      setAssets((prev) => prev.filter((a) => !actuallyDeletedIds.includes(a.id)));
+      actuallyDeletedIds.forEach((id) => {
         if (checkedIds.has(id)) toggleCheck(id);
       });
-      if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
+      if (selectedAsset && actuallyDeletedIds.includes(selectedAsset.id)) closePanel();
       setDeleteOpen(false);
       void invalidateMediaMetadata();
-      toast.success(
-        ids.length > 1
-          ? `${ids.length} assets deleted from the media library.`
-          : deleteTier === "warning"
-            ? "Asset deleted. Broken reference flagged in draft."
-            : "Asset deleted. Terminal submission records updated.",
-      );
+
+      if (actuallyDeletedIds.length === 0 && ids.length > 0) {
+        toast.error("Assets could not be deleted because they are referenced by active submissions.");
+      } else if (actuallyDeletedIds.length < ids.length) {
+        toast.success(`${actuallyDeletedIds.length} assets deleted. ${ids.length - actuallyDeletedIds.length} skipped due to active references.`);
+      } else {
+        toast.success(
+          actuallyDeletedIds.length > 1
+            ? `${actuallyDeletedIds.length} assets deleted from the media library.`
+            : deleteTier === "warning"
+              ? "Asset deleted. Broken reference flagged in draft."
+              : "Asset deleted. Terminal submission records updated.",
+        );
+      }
     } catch {
       toast.error("Failed to delete asset. It may be referenced by an active submission or outside your delete scope.");
     } finally {

@@ -530,30 +530,42 @@ public class MediaAssetService {
                 .map(id -> loadAssetForDelete(id, user))
                 .toList();
 
-        for (UUID assetId : assetIds) {
-            validateDeleteReferences(assetId, dto.isForce());
+        List<MediaAsset> deletable = new ArrayList<>();
+        List<UUID> deletedIds = new ArrayList<>();
+        for (MediaAsset asset : assets) {
+            try {
+                validateDeleteReferences(asset.getId(), dto.isForce());
+                deletable.add(asset);
+                deletedIds.add(asset.getId());
+            } catch (MediaAssetDeletionConflictException ex) {
+                // Skip blocked assets automatically in bulk operations
+            }
+        }
+
+        if (deletable.isEmpty()) {
+            return new MediaAssetBulkDeleteResponseDto(List.of());
         }
 
         Instant deletedAt = Instant.now();
-        for (MediaAsset asset : assets) {
+        for (MediaAsset asset : deletable) {
             asset.setDeletedAt(deletedAt);
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
-        mediaAssetRepository.saveAll(assets);
+        mediaAssetRepository.saveAll(deletable);
         mediaSearchCache.invalidateAll();
 
         // One summary row instead of N per-asset rows: the operation's intent (a
         // bulk delete of `count` assets) is legible at a glance in the audit view,
         // and the id list is retained for traceability (capped so metadata stays small).
-        List<String> auditedIds = assetIds.stream().limit(50).map(UUID::toString).toList();
+        List<String> auditedIds = deletedIds.stream().limit(50).map(UUID::toString).toList();
         recordAssetAudit(user, "MEDIA_BULK_DELETED", null, Map.of(
-                "count", assetIds.size(),
+                "count", deletedIds.size(),
                 "assetIds", auditedIds,
-                "truncated", assetIds.size() > auditedIds.size(),
+                "truncated", deletedIds.size() > auditedIds.size(),
                 "force", dto.isForce()));
-        return new MediaAssetBulkDeleteResponseDto(assetIds);
+        return new MediaAssetBulkDeleteResponseDto(deletedIds);
     }
 
     @Transactional(readOnly = true)
@@ -755,7 +767,10 @@ public class MediaAssetService {
                     .map(MediaAssetUsageDto::from)
                     .filter(usage -> usage.status().equals("pending")
                     || usage.status().equals("in_review")
-                    || usage.status().equals("scheduled"))
+                    || usage.status().equals("scheduled")
+                    || usage.status().equals("publishing")
+                    || usage.status().equals("direct_post_scheduled")
+                    || usage.status().equals("direct_post_publishing"))
                     .toList();
             throw new MediaAssetDeletionConflictException(
                     "Asset is referenced by active submissions and cannot be deleted.", conflicts);
@@ -1433,7 +1448,7 @@ public class MediaAssetService {
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isNetworkRole(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         if (!isPublishedToRepository(asset)) {
@@ -1449,14 +1464,16 @@ public class MediaAssetService {
         if (isAdmin(user)) {
             return asset;
         }
-        if (isContributor(user)) {
-            boolean sameInstitution = asset.getInstitution().getId().equals(user.institutionId());
+        
+        boolean isModerator = user.role() != null && "moderator".equalsIgnoreCase(user.role());
+        if (isContributor(user) || isModerator) {
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
-            if (sameInstitution && owner) {
+            if (owner) {
                 return asset;
             }
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Contributors can only delete assets they uploaded.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete assets you uploaded.");
         }
+        
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete media assets.");
     }
 
