@@ -28,6 +28,19 @@ The actor is authenticated with an active session. The Validation Queue is defin
    - **Reject:** Opens a dialog prompting for a reason code and notes. Transitions the submission to rejected and releases its reserved slot.
 9. The system processes the decision, securely logs the action (and any edits made) to the audit log, notifies the original contributor, releases the review lock, and returns the actor to the queue list.
 
+## Technical Flow
+1. The actor navigates to the Validation Queue, structured into eight tabs: All, Pending, In Review, Needs Revision, Scheduled, Published, Rejected, and Failed.
+2. The system displays submissions network-wide — Moderators and Administrators see the identical queue, with no per-institution scoping for either role.
+3. The actor opens a submission and clicks Review. The system transitions it from pending to in_review and acquires a review lock scoped to that reviewer, with a 15-minute duration that renews while the panel remains open.
+4. The Submission Detail panel displays the submitted media, AI tags, submitter information, event details, scheduled publication date/time, and caption.
+5. The actor reviews the content for completeness, accuracy, and appropriateness.
+6. The actor may optionally edit allowed submission fields before taking a terminal action (A9, A10).
+7. The actor selects one of three terminal actions: Approve, Request Revision, or Reject.
+8. **Approve** transitions the submission to scheduled, or publishes it immediately for Live Event Fast-Track submissions.
+9. **Request Revision** transitions the submission to needs_revision and releases the slot reservation.
+10. **Reject** transitions the submission to rejected and releases the slot reservation.
+11. The system records the actor's identity, action, timestamp, and any remarks, edits, or rejection notes in an immutable log. Edits that add media are recorded as a distinct action from other field edits.
+
 ## Alternative Flow(s)
 **A1 — No Submissions in Queue:** The system displays an empty state for that view.
 **A2 — Request Revision Without Valid Remarks:** Remarks must be between 10 and 1,000 characters; the system rejects anything outside that range.
