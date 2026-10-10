@@ -68,11 +68,11 @@ public class NotificationEventListener {
         String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart + ".";
         String link = "/submissions/" + s.getId();
 
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.submission_pending, msg, link);
+        for (User reviewer : reviewers()) {
+            notificationService.createNotification(reviewer, NotificationEventType.submission_pending, msg, link);
             String messengerMsg = "New submission to review: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
     }
 
@@ -416,15 +416,15 @@ public class NotificationEventListener {
                 + s.getEventTitle() + "' for a live event and it needs immediate review.";
         String link = "/submissions/" + s.getId();
 
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.fast_track_submission, msg, link);
-            emailDeliveryService.send(moderator,
+        for (User reviewer : reviewers()) {
+            notificationService.createNotification(reviewer, NotificationEventType.fast_track_submission, msg, link);
+            emailDeliveryService.send(reviewer,
                     NotificationEventType.fast_track_submission.name(),
                     "Urgent: fast-track submission needs review",
                     msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
             String messengerMsg = "Urgent fast-track submission: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
     }
 
@@ -535,6 +535,16 @@ public class NotificationEventListener {
      */
     private List<User> allModerators() {
         return userRepository.findByRole(UserRole.moderator);
+    }
+
+    private List<User> reviewers() {
+        List<User> targets = new java.util.ArrayList<>(admins());
+        for (User m : allModerators()) {
+            if (!targets.contains(m)) {
+                targets.add(m);
+            }
+        }
+        return targets;
     }
 
     private List<User> institutionContributors(java.util.UUID institutionId) {
