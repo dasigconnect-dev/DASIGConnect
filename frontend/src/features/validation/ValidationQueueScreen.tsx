@@ -1854,6 +1854,11 @@ export default function ValidationQueueScreen({
                             <i className="ti ti-broadcast"></i>
                             <span>{item.publishedAt ? `Live · ${formatDateTime(item.publishedAt)}` : "Live Event"}</span>
                           </span>
+                        ) : item.priorityFlag ? (
+                          <span className="val-deadline val-priority" style={{ color: "var(--dsg-destructive)", fontWeight: "600", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                            <i className="ti ti-alert-circle"></i>
+                            <span>Priority (&lt;30m)</span>
+                          </span>
                         ) : (
                           <span className="val-deadline">
                             <i className="ti ti-clock"></i>

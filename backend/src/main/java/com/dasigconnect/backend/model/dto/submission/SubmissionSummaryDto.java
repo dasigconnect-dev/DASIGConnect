@@ -39,6 +39,7 @@ public class SubmissionSummaryDto {
      * needs {@code previewMediaAsset} + {@code mediaCount}, not the full list.
      */
     private List<SubmissionMediaPreviewDto> mediaAssets;
+    private boolean priorityFlag;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
         return from(s, mediaCount, null);
@@ -66,6 +67,7 @@ public class SubmissionSummaryDto {
 
         dto.templateId = s.getTemplateId();
         dto.fastTrack = s.isFastTrack();
+        dto.priorityFlag = s.getScheduledAt() != null && s.getScheduledAt().isBefore(Instant.now().plusSeconds(1800));
         dto.liveEventName = s.getLiveEventName();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
@@ -104,6 +106,7 @@ public class SubmissionSummaryDto {
 
         dto.templateId = snapshot.getTemplateId();
         dto.fastTrack = snapshot.isFastTrack();
+        dto.priorityFlag = snapshot.getScheduledAt() != null && snapshot.getScheduledAt().isBefore(Instant.now().plusSeconds(1800));
         dto.liveEventName = snapshot.getLiveEventName();
         dto.tags = snapshot.getTags();
         dto.albumName = snapshot.getAlbumName();
@@ -168,7 +171,9 @@ public class SubmissionSummaryDto {
         return previewMediaAsset;
     }
 
-
+    public boolean isPriorityFlag() {
+        return priorityFlag;
+    }
 
     public String getTemplateId() {
         return templateId;

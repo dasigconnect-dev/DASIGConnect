@@ -30,6 +30,7 @@ class NotificationEventListenerTest {
     private UserRepository userRepository;
     private EmailDeliveryService emailDeliveryService;
     private MessengerDeliveryService messengerDeliveryService;
+    private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     private NotificationEventListener listener;
 
     private Institution institution;
@@ -43,12 +44,14 @@ class NotificationEventListenerTest {
         userRepository = Mockito.mock(UserRepository.class);
         emailDeliveryService = Mockito.mock(EmailDeliveryService.class);
         messengerDeliveryService = Mockito.mock(MessengerDeliveryService.class);
+        auditLogRepository = Mockito.mock(com.dasigconnect.backend.repository.AuditLogRepository.class);
 
         listener = new NotificationEventListener(
                 notificationService,
                 userRepository,
                 emailDeliveryService,
                 messengerDeliveryService,
+                auditLogRepository,
                 "http://localhost:5173");
 
         institution = new Institution();
@@ -286,3 +289,6 @@ class NotificationEventListenerTest {
         verify(notificationService, Mockito.never()).createNotification(eq(admin), any(), any(), any());
     }
 }
+
+
+

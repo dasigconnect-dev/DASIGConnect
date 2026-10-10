@@ -125,9 +125,11 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         )
         ORDER BY
             CASE WHEN s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision THEN 1 ELSE 0 END ASC,
-            s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
+            s.fastTrack DESC,
+            CASE WHEN s.scheduledAt IS NOT NULL AND s.scheduledAt < :priorityCutoff THEN 1 ELSE 0 END DESC,
+            s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
-    List<Submission> findValidationQueue();
+    List<Submission> findValidationQueue(@Param("priorityCutoff") java.time.Instant priorityCutoff);
     // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
     // NEEDS_REVISION is intentionally excluded here: it now lives in findValidationQueue() above
     // (rendered from its frozen snapshot) so it stays visible in the active queue rather than only

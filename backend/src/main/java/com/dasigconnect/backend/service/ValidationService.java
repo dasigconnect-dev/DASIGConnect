@@ -129,7 +129,8 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        return buildQueueSummaries(submissionRepository.findValidationQueue());
+        java.time.Instant priorityCutoff = java.time.Instant.now().plus(30, java.time.temporal.ChronoUnit.MINUTES);
+        return buildQueueSummaries(submissionRepository.findValidationQueue(priorityCutoff));
     }
 
     private SubmissionSummaryDto toQueueSummary(

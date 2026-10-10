@@ -44,6 +44,7 @@ public class NotificationEventListener {
     private final UserRepository userRepository;
     private final EmailDeliveryService emailDeliveryService;
     private final MessengerDeliveryService messengerDeliveryService;
+    private final com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     private final String frontendBaseUrl;
 
     public NotificationEventListener(
@@ -51,11 +52,13 @@ public class NotificationEventListener {
             UserRepository userRepository,
             EmailDeliveryService emailDeliveryService,
             MessengerDeliveryService messengerDeliveryService,
+            com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository,
             @Value("${app.frontend.base-url:http://localhost:5173}") String frontendBaseUrl) {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.emailDeliveryService = emailDeliveryService;
         this.messengerDeliveryService = messengerDeliveryService;
+        this.auditLogRepository = auditLogRepository;
         this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
     }
 
@@ -239,16 +242,36 @@ public class NotificationEventListener {
             }
         }
 
-        for (User admin : targetAdmins) {
-            notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
-            emailDeliveryService.send(admin,
-                    NotificationEventType.submission_publish_failed.name(),
-                    "DASIGConnect — Publishing failed",
-                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
-            // Messenger alert (A4 / A5)
-            String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
-                    + "\". Manual action required: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
+                long recentFailures = auditLogRepository.countByActionAndCreatedAtAfter(
+                "PUBLISH_FAILED", java.time.Instant.now().minus(1, java.time.temporal.ChronoUnit.HOURS));
+        boolean consolidate = recentFailures > 5;
+        boolean isFirstConsolidated = recentFailures == 6;
+
+        if (consolidate) {
+            if (isFirstConsolidated) {
+                String consolidatedMsg = "High-Volume Failure Alert: More than 5 publishing failures in the last hour. "
+                        + "Individual alerts are now suppressed. Please check the Failed tab.";
+                for (User admin : targetAdmins) {
+                    notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, consolidatedMsg, "/queue?tab=failed");
+                    emailDeliveryService.send(admin,
+                            NotificationEventType.submission_publish_failed.name(),
+                            "DASIGConnect - High-Volume Failures",
+                            consolidatedMsg + "\n\nRecover here: " + frontendBaseUrl + "/queue?tab=failed");
+                    messengerDeliveryService.sendToUser(admin.getId(), "URGENT: " + consolidatedMsg);
+                }
+            }
+        } else {
+            for (User admin : targetAdmins) {
+                notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
+                emailDeliveryService.send(admin,
+                        NotificationEventType.submission_publish_failed.name(),
+                        "DASIGConnect - Publishing failed",
+                        adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
+                // Messenger alert (A4 / A5)
+                String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
+                        + "\". Manual action required: " + frontendBaseUrl + link;
+                messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
+            }
         }
 
         String contributorMsg = "'" + s.getEventTitle()
@@ -583,3 +606,6 @@ public class NotificationEventListener {
         return n == 1 ? "1 day" : n + " days";
     }
 }
+
+
+
