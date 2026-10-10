@@ -12,10 +12,10 @@ The system records every media lifecycle event — upload, edit, album reassignm
 An Administrator may view the media audit log from the admin console to review asset history network-wide.
 
 **Alternative Flow(s):**
-A1 — Asset Deletion, Blocked: If the asset is referenced in a submission in PENDING_APPROVAL or SCHEDULED state, the system blocks deletion and displays the conflicting submission with a jump link.
+A1 — Asset Deletion, Blocked: If the asset is referenced in a submission in PENDING_APPROVAL, UNDER_REVIEW, SCHEDULED, PUBLISHING, DIRECT_POST_SCHEDULED, or DIRECT_POST_PUBLISHING state, the system blocks deletion and displays the conflicting submission with a jump link.
 A2 — Asset Deletion, Warning: If the asset is referenced only in DRAFT or NEEDS_REVISION submissions, the system prompts for confirmation, warning that the reference will break; the affected draft surfaces a broken-reference warning the next time the Contributor attempts to submit it (UC-1.9).
 A3 — Asset Deletion, Free: If the asset is referenced only in terminal-state submissions or has no references, the system prompts for confirmation and, upon approval, marks the asset deleted; Used In entries in terminal submissions update to "[Asset Deleted]."
-A4 — Duplicate Asset Detected: Upon upload (UC-2.1), if the system detects a likely duplicate of an existing asset based on an exact content hash match, it flags the new upload and prompts the actor to confirm intent to "Upload Anyway", "Cancel", or "Use Existing" (which opens the matching asset in the repository). Visual similarity is not used to detect duplicates upon upload.
+A4 — Duplicate Asset Detected: Upon upload (UC-2.1), if the system detects an exact duplicate of an existing asset based on a content hash match within the target institution, it flags the new upload and prompts the actor to confirm intent to "Upload Anyway", "Cancel", or "Use Existing" (which safely opens the matching asset in the repository without cross-institution data leaks). Visual similarity is not used to detect duplicates.
 
 **Postcondition(s):**
 The asset's full lifecycle — reuse, album changes, and deletion status — is accurately reflected in its Used In block and the media audit log, retained for audit purposes even after deletion.
@@ -48,7 +48,7 @@ The asset's full lifecycle — reuse, album changes, and deletion status — is 
 ## Alternative Flows
 
 ### A1 - Active Submission Deletion Block
-If an asset is referenced by a `pending`, `in_review`, or `scheduled` submission, deletion is rejected with HTTP `409 CONFLICT`. The response includes the conflicting submission ID, title, status, and deep link so the client can identify the blocking record.
+If an asset is referenced by a `pending`, `in_review`, `scheduled`, `publishing`, `direct_post_scheduled`, or `direct_post_publishing` submission, deletion is rejected with HTTP `409 CONFLICT`. The response includes the conflicting submission ID, title, status, and deep link so the client can identify the blocking record.
 The current frontend also pre-computes the deletion tier from the asset's Used In records and displays a blocked-deletion confirmation state.
 
 ### A2 - Draft Reference Warning
