@@ -57,8 +57,7 @@ public class ReviewLockService {
     /**
      * Acquires a review lock for a submission.
      *
-     * A5: self-review (validator == contributor) is allowed, not blocked — the
-     * resulting ValidationLog entries are flagged via ValidationService/isSelfReview.
+     * A5: self-review is unconditionally blocked. — the
      * If the caller already holds the lock, its TTL is renewed and the lock is
      * returned (idempotent keep-alive — the review panel pings this while open so a
      * long edit session does not lose the lock to ReviewLockCleanupJob).
@@ -283,3 +282,5 @@ public class ReviewLockService {
                         "Authenticated user not found."));
     }
 }
+
+
