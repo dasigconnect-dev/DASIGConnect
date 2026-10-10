@@ -267,11 +267,11 @@ class ValidationServiceTest {
     @Test
     void getQueue_callsNetworkWideQueryRegardlessOfCallerInstitution() {
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
-        when(submissionRepository.findValidationQueue()).thenReturn(List.of());
+        when(submissionRepository.findValidationQueue(any(java.time.Instant.class))).thenReturn(List.of());
 
         validationService.getQueue(admin);
 
-        verify(submissionRepository).findValidationQueue();
+        verify(submissionRepository).findValidationQueue(any(java.time.Instant.class));
     }
 
     @Test
@@ -927,3 +927,4 @@ class ValidationServiceTest {
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
     }
 }
+

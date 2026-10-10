@@ -65,6 +65,7 @@ export interface SubmissionSummary {
 
   templateId?: string | null;
   fastTrack?: boolean;
+  priorityFlag?: boolean;
   liveEventName?: string | null;
   tags?: string[];
   albumName?: string | null;
