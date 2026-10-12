@@ -178,6 +178,71 @@
   justify-content: center;
 }
 
+/* ---- Transfer Banner (Admin Ownership Transfer) ---- */
+.um-transfer-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #EFF6FF;
+  border: 1px solid rgba(24, 119, 242, 0.25);
+  border-radius: var(--r, 10px);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  animation: um-section-in var(--um-base) var(--um-ease) both;
+}
+
+.um-transfer-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.um-transfer-banner-content i {
+  color: var(--d-blue, #1877F2);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.um-transfer-banner-content div {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #1E40AF;
+}
+
+.um-transfer-banner-content strong {
+  color: #1E3A8A;
+}
+
+.um-transfer-confirm-btn {
+  flex: 0 0 auto;
+  width: auto !important;
+  min-width: 150px;
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff !important;
+  background: var(--d-blue, #1877F2);
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.um-transfer-confirm-btn:hover {
+  background: #166fe5;
+}
+
+.um-transfer-confirm-btn:active {
+  transform: translateY(1px);
+}
+
 /* ---- Tab navigation ---- */
 .um-tabs {
   display: flex;
@@ -1253,6 +1318,41 @@
   vertical-align: middle;
 }
 
+.um-owner-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.um-transfer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.um-transfer-pill i {
+  font-size: 11px;
+}
+
 .um-data-card.is-directory .um-table th:first-child,
 .um-data-card.is-directory .um-table td:first-child {
   width: 38%;
@@ -1933,6 +2033,14 @@ button.um-user-avatar:focus-visible {
     margin-left: 0;
     width: 100%;
     justify-content: center;
+  }
+  .um-transfer-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .um-transfer-confirm-btn {
+    width: 100% !important;
   }
 }
 

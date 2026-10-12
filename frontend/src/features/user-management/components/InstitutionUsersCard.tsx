@@ -368,6 +368,12 @@ export default function InstitutionUsersCard({
                           : null,
                       ].filter((item): item is NonNullable<typeof item> => item !== null)
 
+                  const hasTransferPending = Boolean(
+                    managedUser.superAdminTransferRequestedBy &&
+                    (!managedUser.superAdminTransferExpiresAt ||
+                      new Date(managedUser.superAdminTransferExpiresAt).getTime() > Date.now())
+                  )
+
                   return (
                     <tr
                       key={managedUser.id}
@@ -386,6 +392,15 @@ export default function InstitutionUsersCard({
                               {displayName}
                               {currentUser?.email.toLowerCase() === managedUser.email.toLowerCase() && (
                                 <span className="um-you-pill">You</span>
+                              )}
+                              {managedUser.adminOwner && (
+                                <span className="um-owner-pill" title="Network Admin Owner">Owner</span>
+                              )}
+                              {hasTransferPending && (
+                                <span className="um-transfer-pill" title="Awaiting acceptance of Admin Owner transfer">
+                                  <i className="ti ti-shield-up" aria-hidden="true"></i>
+                                  Transfer Pending
+                                </span>
                               )}
                               {managedUser.purgedAt && (
                                 <span className="um-erased-pill">Erased</span>

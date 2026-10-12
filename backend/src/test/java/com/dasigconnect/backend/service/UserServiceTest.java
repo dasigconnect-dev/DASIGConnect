@@ -490,6 +490,8 @@ class UserServiceTest {
         org.mockito.Mockito.lenient().when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
         org.mockito.Mockito.lenient().when(userRepository.save(incoming)).thenReturn(incoming);
         org.mockito.Mockito.lenient().when(userRepository.save(outgoing)).thenReturn(outgoing);
+        org.mockito.Mockito.lenient().when(userRepository.saveAndFlush(incoming)).thenReturn(incoming);
+        org.mockito.Mockito.lenient().when(userRepository.saveAndFlush(outgoing)).thenReturn(outgoing);
 
         UserDto result = userService.confirmAdminTransfer(
                 principal(incoming.getId(), "admin", null));

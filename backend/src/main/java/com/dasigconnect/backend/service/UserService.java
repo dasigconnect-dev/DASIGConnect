@@ -922,7 +922,7 @@ public class UserService {
         Instant expiresAt = Instant.now().plus(SUPER_ADMIN_TRANSFER_TTL);
         target.setSuperAdminTransferRequestedBy(requesterAccount.getId());
         target.setSuperAdminTransferExpiresAt(expiresAt);
-        userRepository.save(target);
+        User savedTarget = userRepository.save(target);
 
         auditLogService.record(
                 requesterAccount,
@@ -930,6 +930,11 @@ public class UserService {
                 null, null,
                 target.getId(),
                 java.util.Map.of("targetEmail", target.getEmail(), "expiresAt", expiresAt.toString()));
+
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminTransferRequestedEvent(
+                savedTarget,
+                requesterAccount.getEmail(),
+                expiresAt));
 
         return new AdminTransferResponseDto(
                 target.getId(),
@@ -970,18 +975,19 @@ public class UserService {
                     "Requesting account is no longer the active Admin");
         }
 
+        // Relinquish owner status on outgoing owner first and flush to avoid violating
+        // the single active admin owner unique partial index in PostgreSQL (idx_users_single_active_admin_owner).
+        outgoing.setAdminOwner(false);
+        outgoing.setRole(UserRole.admin);
+        outgoing.setSuperAdminTransferRequestedBy(null);
+        outgoing.setSuperAdminTransferExpiresAt(null);
+        User savedOutgoing = userRepository.saveAndFlush(outgoing);
+
         incoming.setRole(UserRole.admin);
         incoming.setAdminOwner(true);
         incoming.setSuperAdminTransferRequestedBy(null);
         incoming.setSuperAdminTransferExpiresAt(null);
-        outgoing.setAdminOwner(false);
-        // Both remain administrators; no demotion to moderator.
-        outgoing.setRole(UserRole.admin);
-        outgoing.setSuperAdminTransferRequestedBy(null);
-        outgoing.setSuperAdminTransferExpiresAt(null);
-
-        userRepository.save(outgoing);
-        User savedIncoming = userRepository.save(incoming);
+        User savedIncoming = userRepository.saveAndFlush(incoming);
         jwtService.invalidateUserTokens(outgoing.getId());
 
         auditLogService.record(
@@ -990,6 +996,10 @@ public class UserService {
                 null, null,
                 incoming.getId(),
                 java.util.Map.of("previousAdminOwnerId", outgoing.getId().toString()));
+
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminTransferConfirmedEvent(
+                savedIncoming,
+                savedOutgoing));
 
         return UserDto.from(savedIncoming);
     }

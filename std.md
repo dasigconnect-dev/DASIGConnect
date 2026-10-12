@@ -1053,14 +1053,15 @@ The following execution logs record the verification runs conducted on **2026-10
 
 ### **Log for Test 2 (`Case-2` — UC-1.1 A7, A8 Admin Promotion & Admin Owner Transfer)**
 
-- **Date / Time:** `2026-10-11 09:10:44 PHT (UTC+8)`
-- **Automated Test Reference:** `UserServiceTest` (`proposeAdminPromotion_*`, `confirmAdminPromotion_*`, `requestAdminTransfer_*`, `confirmAdminTransfer_*`)
+- **Date / Time:** `2026-10-12 19:45:00 PHT (UTC+8)`
+- **Automated Test Reference:** `UserServiceTest` (`changeRole_promote*`, `confirmPromotion_*`, `requestAdminTransfer_*`, `confirmAdminTransfer_*`)
 - **Execution Trace:**
-  - `POST /api/v1/users/{modId}/propose-admin-promotion` → `200 OK`, slot reserved, `ADMIN_PROMOTION_REQUESTED` logged.
-  - `POST /api/v1/users/promotions/{proposalId}/confirm` → `200 OK`, role updated to `admin`, `institution_id=NULL`, `ADMIN_PROMOTION_CONFIRMED` logged.
-  - Admin Owner transfer to Moderator (`confirmAdminTransfer`) → `200 OK`, Moderator promoted to `Admin Owner`, outgoing Owner demoted to `Moderator`, `ADMIN_TRANSFER_CONFIRMED` logged.
-  - Admin Owner transfer to existing Administrator → Initiation logs `ADMIN_TRANSFER_REQUESTED`, but confirmation endpoint rejects existing Admin caller due to role-gating check (documented in `UC-1.1 A8` and logged as **Incident `INC-01`**).
-- **Outcome:** **PARTIAL PASS (Known Open Defect `INC-01` on Admin-to-Admin Owner transfer confirmation)**
+  - `POST /api/v1/users/change-role` (`newRole=admin`) → `200 OK`, slot reserved against 3-Admin cap, `ADMIN_PROMOTION_REQUESTED` logged, duplicate proposal rejected with `409 Conflict`.
+  - `POST /api/v1/users/promotion/confirm` → `200 OK`, role elevated to `admin` (`isAdminOwner = false`), active session invalidated, `ADMIN_PROMOTION_CONFIRMED` logged.
+  - Admin Owner transfer targeting Moderator (`mod.one@dasig.org`) → Rejected with `HTTP 400 Bad Request` (`"Admin ownership can only be transferred to an active administrator"`), enforcing that ownership transfers are strictly restricted to active Administrators.
+  - Admin Owner transfer to active Administrator (`admin.peer@dasig.org`) → Initiation logs `ADMIN_TRANSFER_REQUESTED` with 24-hour expiry and dispatches in-app notification.
+  - `POST /api/v1/users/admin-transfer/confirm` by target Administrator → `200 OK`, target promoted to Admin Owner (`isAdminOwner = true`), outgoing Owner retains Administrator status (`isAdminOwner = false`) without demotion, outgoing tokens invalidated, `ADMIN_TRANSFER_CONFIRMED` logged.
+- **Outcome:** **PASS**
 
 ### **Log for Test 3 (`Case-3` — UC-1.2 Institution Lifecycle & Protected Institution)**
 
