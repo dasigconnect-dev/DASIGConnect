@@ -1,4 +1,4 @@
-﻿### Use Case ID
+### Use Case ID
 UC-1.10
 
 ### Use Case Name
@@ -40,7 +40,7 @@ The actor holds a valid, authenticated, ACTIVE session. Administrator privileges
 
 **A9 — Resend Pending Moderator Invitation:** An active Administrator resends an invitation for an account in PENDING_EMAIL_UNDELIVERED, EXPIRED, or CANCELLED state. The system generates a fresh 72-hour token, invalidates prior open tokens, and resets the account to PENDING. 
 
-**A10 — Moderator as Promotion or Transfer Target:** A Moderator may be the target of an Administrator promotion proposal or an Admin Owner Transfer (UC-1.1). 
+**A10 — Moderator as Promotion Target:** A Moderator may be the target of an Administrator promotion proposal (UC-1.1 A7). Admin Owner Transfer (UC-1.1 A8) requires an existing active Administrator target and does not apply directly to Moderators. 
 
 **A11 — Change Role:** Any active Administrator may move an active account directly between Contributor and Moderator using the Change Role modal.
 * **Contributor → Moderator (Promotion):** The Admin proposes promoting an active Contributor to Moderator. This requires the Contributor's confirmation. Upon confirmation, the system changes the role to Moderator, automatically clears the account's institution assignment, invalidates active sessions requiring a re-login, and records USER_ROLE_CHANGED.

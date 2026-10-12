@@ -635,7 +635,8 @@ function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: Use
   return Boolean(
     currentUser &&
       currentUser.role === 'admin' &&
-      (targetRole === 'moderator' || targetRole === 'admin') &&
+      currentUser.adminOwner &&
+      targetRole === 'admin' &&
       managedUser.accountState.toLowerCase() === 'active' &&
       currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
   )
