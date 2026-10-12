@@ -543,6 +543,43 @@ public class NotificationEventListener {
         });
     }
 
+    // ── Administrator ownership transfer (UC-1.1 A8) — requested ────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminTransferRequested(AdminTransferRequestedEvent event) {
+        User user = event.target();
+        if (user == null) {
+            return;
+        }
+        String msg = "Admin Owner"
+                + (event.requestedByEmail() != null ? " (" + event.requestedByEmail() + ")" : "")
+                + " has requested to transfer Network Admin Ownership to your account. Confirm before the request expires.";
+        String link = "/admin/admin-management";
+        notificationService.createNotification(user, NotificationEventType.admin_transfer_requested, msg, link);
+        emailDeliveryService.send(user,
+                NotificationEventType.admin_transfer_requested.name(),
+                "DASIGConnect — Admin Ownership Transfer Request",
+                msg + "\n\nSign in to review and confirm: " + frontendBaseUrl + link);
+    }
+
+    // ── Administrator ownership transfer (UC-1.1 A8) — confirmed ────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminTransferConfirmed(AdminTransferConfirmedEvent event) {
+        if (event.newAdminOwner() != null) {
+            String msg = "Admin ownership transfer confirmed. You are now the Admin Owner of DASIGConnect.";
+            notificationService.createNotification(event.newAdminOwner(),
+                    NotificationEventType.admin_transfer_confirmed, msg, "/admin/admin-management");
+        }
+        if (event.previousAdminOwner() != null) {
+            String msg = "Admin ownership successfully transferred to "
+                    + (event.newAdminOwner() != null ? event.newAdminOwner().getEmail() : "the target administrator")
+                    + ". You remain an active Administrator.";
+            notificationService.createNotification(event.previousAdminOwner(),
+                    NotificationEventType.admin_transfer_confirmed, msg, "/admin/admin-management");
+        }
+    }
+
     private static String roleLabel(UserRole role) {
         if (role == null) {
             return "unknown";
