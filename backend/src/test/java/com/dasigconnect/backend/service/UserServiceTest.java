@@ -446,7 +446,7 @@ class UserServiceTest {
 
     @Test
     void requestAdminTransfer_setsPendingConfirmation() {
-        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.admin, null);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
         superAdmin.setAdminOwner(true);
         org.mockito.Mockito.lenient().when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
@@ -464,25 +464,19 @@ class UserServiceTest {
     }
 
     @Test
-    void confirmAdminTransfer_promotesIncomingAndDemotesOutgoing() {
-        User outgoing = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
-        outgoing.setAdminOwner(true);
-        User incoming = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
-        incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
-        incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
-        org.mockito.Mockito.lenient().when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
-        org.mockito.Mockito.lenient().when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
-        org.mockito.Mockito.lenient().when(userRepository.save(incoming)).thenReturn(incoming);
-        org.mockito.Mockito.lenient().when(userRepository.save(outgoing)).thenReturn(outgoing);
+    void requestAdminTransfer_toModerator_rejected() {
+        User targetMod = user(UUID.randomUUID(), "mod@dasigconnect.com", UserRole.moderator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
+        superAdmin.setAdminOwner(true);
+        org.mockito.Mockito.lenient().when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        org.mockito.Mockito.lenient().when(userRepository.findById(targetMod.getId())).thenReturn(Optional.of(targetMod));
 
-        UserDto result = userService.confirmAdminTransfer(
-                principal(incoming.getId(), "moderator", null));
-
-        assertThat(result.isAdminOwner()).isTrue();
-        assertThat(outgoing.isAdminOwner()).isFalse();
-        assertThat(incoming.getSuperAdminTransferRequestedBy()).isNull();
-        verify(jwtService).invalidateUserTokens(outgoing.getId());
-        verify(auditLogService).record(any(), any(), any(), any(), any(), any());
+        assertThatThrownBy(() -> userService.requestAdminTransfer(
+                targetMod.getId(),
+                principal(superAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
