@@ -111,6 +111,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done locally: duplicate Facebook publish root cause confirmed by Supabase query showing duplicate `publication_attempts.result = 'success'` rows for two submissions. Fix added atomic publish claiming before Graph API calls.
 - Done locally: focused publish-claim tests passed: `.\mvnw.cmd test "-Dtest=PublishingQueryServiceTest,PublishingSchedulerJobTest"` (4 tests, 0 failures).
 - Done locally: full backend suite passed after AI media and publish-claim changes: `.\mvnw.cmd test` (273 tests, 0 failures, 0 errors).
+- Done: Member 2 QA pass (2026-10-16) — INC-11 fixed: stale `UserServiceTest` moderator-promotion test aligned with the propose/confirm flow from PR #374 (commit `96148d1c`). Added 7 new test classes / 33 tests for previously untested services (commit `e2ad438e`). Backend suite 895 tests / 1 failing → 930 tests / 0 failing. Evidence, Defect Log (INC-11 fixed, INC-12 open doc conflict UC-1.3 A8 vs UC-1.10 A11), and logs in `docs/03-testing/` (start at `00_README_Folder03_Index.md`).
 
 ### Pending - Backend
 
