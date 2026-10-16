@@ -7,8 +7,10 @@ frontend/.env.production
 # Maven / build
 target/
 
-# Local tool settings
-.claude/settings.local.json
+# Local tool settings & AI configs
+.claude/
+.agent/
+.gemini/
 
 # Generated document extraction outputs
 docs/pdf/*_text.txt
