@@ -13,3 +13,14 @@ target/
 # Generated document extraction outputs
 docs/pdf/*_text.txt
 
+# Dependencies & build
+node_modules/
+backend/target/
+frontend/dist/
+
+# OS & temporary files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
