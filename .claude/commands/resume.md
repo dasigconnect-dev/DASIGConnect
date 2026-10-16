@@ -1,17 +1,11 @@
-You are picking up a previous work session. Orient yourself quickly and brief the user.
+You are resuming work on DASIGConnect. Use repository state and pull-request history as the source of truth.
 
-Do the following steps in order:
+Run:
 
-1. Check for a `HANDOFF.md` in the project root — read it fully if it exists.
-2. Read project memory for any relevant context.
-3. Run `git log --oneline -5` to see recent commits.
-4. Run `git status` to see the current working tree state.
+1. `git branch --show-current`
+2. `git status --short`
+3. `git log --oneline -8`
+4. Inspect the current branch's pull request, if one exists.
+5. Read `README.md`, `docs/README.md`, and only the feature documentation relevant to the requested task.
 
-Then give the user a brief (under 10 lines) spoken recap:
-- What was done last session (from HANDOFF.md or memory)
-- Current git state (clean / uncommitted changes / etc.)
-- The single most important next step
-
-End with: "Ready to continue — want to pick up with [next step], or is there something else first?"
-
-Do not start implementing anything until the user responds.
+Then provide a brief recap containing the current branch, latest completed work, working-tree state, and the next concrete step. Do not recreate or depend on `HANDOFF.md` or `TASKS.md`.

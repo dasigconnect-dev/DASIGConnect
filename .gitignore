@@ -27,3 +27,9 @@ Thumbs.db
 # Submission folders (Google Drive deliverables)
 01_Software_and_Deployment/
 
+# Local generated artifacts and document/test workspaces
+output/
+outputs/
+tmp/
+work/
+

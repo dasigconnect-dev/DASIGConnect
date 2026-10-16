@@ -23,7 +23,7 @@ You can trigger this by asking me to "run the change workflow" or "finalize thes
 ### 3. Update Documentation (If Necessary)
 - Review the changes to determine if any project documentation needs updating.
 - Check and update the relevant files in the `docs/` folder:
-  - **Use Cases:** Update `docs/md/srs/` use cases to match the actual implementation.
+  - **Requirements:** Record requirement-impacting changes in the pull request and update the formal SRS deliverable through the team's document workflow.
   - **SRS (Software Requirements Specification):** Update global feature lists or system constraints.
   - **SDD (Software Design Document):** Update architectural decisions, database schemas, or component diagrams.
   - **README.md:** Update if the setup instructions, environment variables, or core commands have changed.
