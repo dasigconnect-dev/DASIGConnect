@@ -7,7 +7,7 @@
 # Unlike Render's render.yaml, Railway has no supported way to commit a
 # non-secret env var list alongside `sync: false` secrets in this file — all
 # environment variables (DB, JWT, mail, R2, Facebook, AI keys) are set in the
-# Railway dashboard → Variables. See DEPLOY.md for the full list.
+# Railway dashboard → Variables. See backend/.env.example for the full list.
 
 [build]
 builder = "DOCKERFILE"

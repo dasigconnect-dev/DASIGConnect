@@ -173,10 +173,8 @@ DASIGConnect/
 │   │   └── main.tsx
 │   ├── vite.config.ts
 │   └── package.json
-├── docs/                       # Project documentation
-│   ├── pdf/                    # Proposal, SDD, SRS
-│   └── md/                     # Living, code-verified UC-*.md docs + other notes
-└── CLAUDE.md                   # AI agent workspace guide
+└── docs/                       # Project documentation
+    └── pdf/                    # Proposal, SDD, SRS
 ```
 
 ---
