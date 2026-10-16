@@ -509,7 +509,7 @@ class UserServiceTest {
     // ── changeRole (promotion / demotion) ────────────────────────────────
 
     @Test
-    void changeRole_promoteContributorToModerator_clearsInstitutionAndInvalidatesTokens() {
+    void changeRole_proposeModeratorPromotion_setsPendingWithoutChangingRoleYet() {
         User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
@@ -519,11 +519,50 @@ class UserServiceTest {
         UserDto result = userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null));
 
+        assertThat(result.getRole()).isEqualTo("contributor");
+        assertThat(result.isModeratorPromotionPending()).isTrue();
+        assertThat(target.getModeratorPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+        assertThat(target.getModeratorPromotionExpiresAt()).isAfter(java.time.Instant.now());
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
+        verify(eventPublisher).publishEvent(
+                org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.ModeratorPromotionRequestedEvent.class));
+    }
+
+    @Test
+    void confirmModeratorPromotion_clearsInstitutionAndInvalidatesTokens() {
+        User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
+        UUID requesterId = UUID.randomUUID();
+        target.setModeratorPromotionRequestedBy(requesterId);
+        target.setModeratorPromotionExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(24)));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.confirmModeratorPromotion(principal(target.getId(), "contributor", institutionId));
+
         assertThat(result.getRole()).isEqualTo("moderator");
         assertThat(target.getInstitution()).isNull();
+        assertThat(target.getModeratorPromotionRequestedBy()).isNull();
+        assertThat(target.getModeratorPromotionExpiresAt()).isNull();
         verify(jwtService).invalidateUserTokens(target.getId());
         verify(eventPublisher).publishEvent(
                 org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.UserRoleChangedEvent.class));
+    }
+
+    @Test
+    void declineModeratorPromotion_clearsPromotionFieldsWithoutChangingRole() {
+        User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
+        UUID requesterId = UUID.randomUUID();
+        target.setModeratorPromotionRequestedBy(requesterId);
+        target.setModeratorPromotionExpiresAt(java.time.Instant.now().plus(java.time.Duration.ofHours(24)));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.declineModeratorPromotion(principal(target.getId(), "contributor", institutionId));
+
+        assertThat(result.getRole()).isEqualTo("contributor");
+        assertThat(target.getModeratorPromotionRequestedBy()).isNull();
+        assertThat(target.getModeratorPromotionExpiresAt()).isNull();
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
     }
 
     @Test
