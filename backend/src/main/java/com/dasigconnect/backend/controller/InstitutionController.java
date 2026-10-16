@@ -153,6 +153,15 @@ public class InstitutionController {
         return ResponseEntity.ok(ApiResponse.success(institutionService.updateInstitution(institutionId, request)));
     }
 
+    @PatchMapping("/{institutionId}/ai-media-hybrid-ranking")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<InstitutionDto>> setAiMediaHybridRankingEnabled(
+            @PathVariable UUID institutionId,
+            @RequestParam boolean enabled) {
+        return ResponseEntity.ok(ApiResponse.success(
+                institutionService.setAiMediaHybridRankingEnabled(institutionId, enabled)));
+    }
+
     /**
      * PATCH /api/v1/institutions/{institutionId}/deactivate
      *

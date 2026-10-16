@@ -15,8 +15,8 @@ interface MediaAssetsPickerProps {
   submissionId: string | null;
   eventTitle: string;
   caption: string;
-  category: string;
   tags: string[];
+  attachedAssetIds?: string[];
   disabled?: boolean;
   onItemClick?: (item: SubmissionMediaItem) => void;
   getItemCaption?: (item: SubmissionMediaItem) => string;
@@ -29,9 +29,10 @@ interface MediaAssetsPickerProps {
   /** Show the library across every institution for network-wide roles. */
   networkView?: boolean;
   /**
-   * Hide the Upload / My Library / AI Suggestions tab bar and its panels. The
-   * selected-media strip and the auto AI-suggestions block are still rendered —
-   * the host supplies its own add-media controls. Defaults to showing the tabs.
+   * Hide the Upload / My Library / AI Suggestions tab bar and its panels, so
+   * only the selected-media strip renders — the host supplies its own
+   * add-media controls (the review editor opens Library and AI suggestions as
+   * dialogs). Defaults to showing the tabs.
    */
   sourceTabs?: boolean;
   /**
@@ -48,8 +49,8 @@ export default function MediaAssetsPicker({
   submissionId,
   eventTitle,
   caption,
-  category,
   tags,
+  attachedAssetIds,
   disabled,
   onItemClick,
   getItemCaption,
@@ -59,8 +60,36 @@ export default function MediaAssetsPicker({
   institutions,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
+  // Keep a tab mounted once it has been opened (hidden via the panel's
+  // `hidden` attribute) instead of unmounting it on every switch. Otherwise
+  // My Library refetched its first page + folders each time it was revisited
+  // and lost its search, filters, loaded pages, and selection.
+  const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<PickerTab>>(
+    () => new Set([activeTab]),
+  );
+  if (!visitedTabs.has(activeTab)) {
+    setVisitedTabs(new Set(visitedTabs).add(activeTab));
+  }
 
-  const aiSuggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, category, tags);
+  const selectedImageCount = items.filter((item) => item.mediaType === "image").length;
+  const attachedAssetIdSet = new Set(
+    attachedAssetIds ?? items.flatMap((item) => item.assetId ? [item.assetId] : []),
+  );
+  const selectedImageAssetIds = items
+    .filter(
+      (item) => item.mediaType === "image" && item.assetId && attachedAssetIdSet.has(item.assetId),
+    )
+    .map((item) => item.assetId!);
+  // No source tabs means no AI tab to show results in - don't fetch. This is
+  // used by the moderator review editor, which must keep its established media
+  // permissions and controls.
+  const aiSuggestions = useAiMediaSuggestions(
+    sourceTabs ? submissionId : null,
+    eventTitle,
+    caption,
+    tags,
+    selectedImageAssetIds,
+  );
 
   const alreadyAddedIds = new Set(items.filter((i) => i.assetId).map((i) => i.assetId!));
 
@@ -108,22 +137,6 @@ export default function MediaAssetsPicker({
         getItemCaption={getItemCaption}
       />
 
-      {!sourceTabs && aiSuggestions.state === "ready" && (
-        <div className="mp-auto-suggestions" aria-label="Suggested media ranked by relevance">
-          <AiSuggestedMediaTab
-            suggestions={aiSuggestions}
-            submissionId={submissionId}
-            alreadyAddedIds={alreadyAddedIds}
-            eventTitle={eventTitle}
-            caption={caption}
-            category={category}
-            tags={tags}
-            onAddItems={handleAddItems}
-            disabled={disabled}
-          />
-        </div>
-      )}
-
       {!sourceTabs ? null : (
       <>
       <div className="mp-tabs" role="tablist" aria-label="Media source">
@@ -156,7 +169,7 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-upload"
           hidden={activeTab !== "upload"}
         >
-          {activeTab === "upload" && (
+          {visitedTabs.has("upload") && (
             <UploadMediaTab onFilesAdded={handleAddItems} disabled={disabled} />
           )}
         </div>
@@ -167,7 +180,7 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-library"
           hidden={activeTab !== "library"}
         >
-          {activeTab === "library" && (
+          {visitedTabs.has("library") && (
             <MediaLibraryTab
               alreadyAddedIds={alreadyAddedIds}
               onAddItems={handleAddItems}
@@ -186,15 +199,16 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-ai"
           hidden={activeTab !== "ai"}
         >
-          {activeTab === "ai" && (
+          {visitedTabs.has("ai") && (
             <AiSuggestedMediaTab
               suggestions={aiSuggestions}
               submissionId={submissionId}
               alreadyAddedIds={alreadyAddedIds}
               eventTitle={eventTitle}
               caption={caption}
-              category={category}
               tags={tags}
+              selectedImageCount={selectedImageCount}
+              readyImageCount={selectedImageAssetIds.length}
               onAddItems={handleAddItems}
               disabled={disabled}
             />

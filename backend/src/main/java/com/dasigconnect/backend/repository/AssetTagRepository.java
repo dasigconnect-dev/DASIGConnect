@@ -26,14 +26,6 @@ public interface AssetTagRepository extends JpaRepository<AssetTag, UUID> {
     void deleteByMediaAssetIdAndSource(UUID mediaAssetId, String source);
 
     @Query("""
-            SELECT t.mediaAsset.id, t.label
-            FROM AssetTag t
-            WHERE t.mediaAsset.id IN :mediaAssetIds
-            ORDER BY t.createdAt ASC
-            """)
-    List<Object[]> findLabelsByMediaAssetIds(@Param("mediaAssetIds") List<UUID> mediaAssetIds);
-
-    @Query("""
             SELECT t.mediaAsset.id, t.label, t.source
             FROM AssetTag t
             WHERE t.mediaAsset.id IN :mediaAssetIds

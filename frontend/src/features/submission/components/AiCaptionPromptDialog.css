@@ -2,13 +2,18 @@
 .ai-prompt-overlay {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
   z-index: 99999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  padding: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: rgba(15, 23, 42, 0.65);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -33,8 +38,12 @@
 
 .ai-prompt-dialog {
   width: min(660px, 94vw);
-  max-height: 90vh;
+  max-height: min(90vh, calc(100dvh - 40px));
+  max-height: min(90vh, calc(100vh - 40px));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
   border: 1px solid var(--sub-border, #dde3ee);
   border-radius: 16px;
   background: #ffffff;
@@ -542,22 +551,33 @@
 
 @media (max-width: 540px) {
   .ai-prompt-overlay {
-    align-items: flex-end;
+    align-items: center;
+    justify-content: center;
     padding: 12px;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(16px, env(safe-area-inset-bottom, 0px));
   }
 
   .ai-prompt-dialog {
     width: 100%;
-    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100vh - 28px);
     padding: 18px 16px;
+    margin: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .ai-prompt-tone-group {
     grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .ai-prompt-actions {
     flex-direction: column-reverse;
     align-items: stretch;
+    gap: 8px;
+    margin-top: 14px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
   }
 }

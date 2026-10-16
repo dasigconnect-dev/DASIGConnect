@@ -54,14 +54,6 @@ public class MediaAssetController {
         this.mediaAssetService = mediaAssetService;
     }
 
-    /** UC-2.2 A2: records one audit entry per browser session that a Moderator/Admin browsed Network View. */
-    @PostMapping("/network-view/log")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
-    public ResponseEntity<Void> logNetworkViewAccess(@AuthenticationPrincipal JwtUserDetails user) {
-        mediaAssetService.logNetworkViewAccess(user);
-        return ResponseEntity.noContent().build();
-    }
-
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<MediaAssetListResponseDto>> list(
@@ -84,9 +76,11 @@ public class MediaAssetController {
     public ResponseEntity<ApiResponse<MediaAssetListResponseDto>> semanticSearch(
             @RequestParam String query,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "25") int pageSize,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(
-                mediaAssetService.semanticSearch(query, institutionId, user)));
+                mediaAssetService.semanticSearch(query, institutionId, page, pageSize, user)));
     }
 
     @GetMapping("/{id}")

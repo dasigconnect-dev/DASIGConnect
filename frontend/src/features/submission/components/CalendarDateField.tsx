@@ -7,12 +7,14 @@ export function CalendarDateField({
   placeholder,
   readOnly,
   minValue,
+  id,
   onChange,
 }: {
   value: string;
   placeholder: string;
   readOnly?: boolean;
   minValue?: string;
+  id?: string;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -69,6 +71,7 @@ export function CalendarDateField({
       ref={rootRef}
     >
       <button
+        id={id}
         className={`sub-date-trigger ${open ? "open" : ""}`}
         type="button"
         disabled={readOnly}

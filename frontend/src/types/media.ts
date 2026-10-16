@@ -8,6 +8,8 @@ export interface SubmissionMediaItem {
   previewUrl: string;
   mediaType: "image" | "video";
   fileName: string;
+  /** Media Library album the asset is filed under — only known for saved assets. */
+  albumName?: string | null;
   aiCategory?: string;
   similarityScore?: number;
 }

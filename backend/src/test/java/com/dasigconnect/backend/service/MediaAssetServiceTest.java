@@ -68,7 +68,7 @@ class MediaAssetServiceTest {
     @Mock
     private MediaStorageService mediaStorage;
     @Mock
-    private AIClassificationService aiClassificationService;
+    private MediaProcessingQueueService mediaProcessingQueueService;
     @Mock
     private com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     @Mock
@@ -77,6 +77,8 @@ class MediaAssetServiceTest {
     private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     @Mock
     private com.dasigconnect.backend.repository.UserRepository userRepository;
+    @Mock
+    private MediaSearchCacheService mediaSearchCache;
 
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -97,17 +99,18 @@ class MediaAssetServiceTest {
                 mediaAssetEmbeddingRepository,
                 institutionRepository,
                 mediaStorage,
-                aiClassificationService,
+                mediaProcessingQueueService,
                 voyageAIClient,
                 auditLogService,
                 auditLogRepository,
                 userRepository,
-                objectMapper);
+                objectMapper,
+                mediaSearchCache);
         ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
     @Test
-    void upload_imageAsset_staysProcessingAndTriggersClassification() {
+    void upload_imageAsset_staysProcessingAndEnqueuesClassification() {
         UUID institutionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID albumId = UUID.randomUUID();
@@ -139,7 +142,7 @@ class MediaAssetServiceTest {
         ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
         verify(mediaAssetRepository).save(savedAsset.capture());
         assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, savedAsset.getValue().getStatus());
-        verify(aiClassificationService).classifyAndEmbed(any(), eq("https://example.com/a.jpg"));
+        verify(mediaProcessingQueueService).enqueueAfterCommit(any());
     }
 
     @Test
@@ -175,7 +178,7 @@ class MediaAssetServiceTest {
         ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
         verify(mediaAssetRepository).save(savedAsset.capture());
         assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, savedAsset.getValue().getStatus());
-        verify(aiClassificationService, never()).classifyAndEmbed(any(), any());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 
     @Test
@@ -257,16 +260,24 @@ class MediaAssetServiceTest {
     @Test
     void list_showsStandaloneAssetNeverAttachedToAnySubmission() {
         UUID institutionId = UUID.randomUUID();
+        UUID sharedInstitutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
         stubRepositoryPage(List.of(asset), 1, 1, 20);
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.of(institution(sharedInstitutionId)));
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Collection<UUID>> scopeCaptor = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(mediaAssetRepository).findRepositoryPage(
+                eq(false), scopeCaptor.capture(), isNull(), eq(""), anyCollection(), isNull(), any(Pageable.class));
+        assertEquals(Set.of(institutionId, sharedInstitutionId), Set.copyOf(scopeCaptor.getValue()));
     }
 
     @Test
@@ -352,6 +363,123 @@ class MediaAssetServiceTest {
                 anyCollection(), nullable(UUID.class), any(Pageable.class));
     }
 
+    @Test
+    void semanticSearch_preservesInstitutionAndDraftVisibilityAndAppendsKeywordMatches() {
+        UUID institutionId = UUID.randomUUID();
+        UUID semanticId = UUID.randomUUID();
+        UUID keywordId = UUID.randomUUID();
+        MediaAsset semanticMatch = asset(semanticId, institutionId, UUID.randomUUID());
+        semanticMatch.setAiCategory("Innovation");
+        MediaAsset keywordMatch = asset(keywordId, institutionId, UUID.randomUUID());
+        keywordMatch.setAiCategory("Technology");
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(voyageAIClient.embedQuery("robotics event")).thenReturn("[0.1,0.2]");
+        when(mediaAssetRepository.findTopSimilarInInstitutions(
+                eq(Set.of(institutionId)), eq("[0.1,0.2]"), eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), any(Integer.class)))
+                .thenReturn(List.<Object[]>of(new Object[]{semanticId.toString(), 0.91}));
+        when(mediaAssetRepository.findActiveByIds(List.of(semanticId)))
+                .thenReturn(List.of(semanticMatch));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics event"), any(Pageable.class)))
+                .thenReturn(List.of(keywordMatch));
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                " robotics event ",
+                null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(Set.of(semanticId, keywordId),
+                result.getItems().stream().map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
+        verify(mediaAssetRepository).findTopSimilarInInstitutions(
+                Set.of(institutionId), "[0.1,0.2]", "voyage-4-lite",
+                MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION, 200);
+    }
+
+    @Test
+    void semanticSearch_voyageFailureFallsBackToBoundedKeywordSearch() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAsset categoryMatch = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        categoryMatch.setAiCategory("Robotics");
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(voyageAIClient.embedQuery("robotics")).thenThrow(new RuntimeException("provider unavailable"));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics"),
+                any(Pageable.class)))
+                .thenReturn(List.of(categoryMatch));
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                "robotics",
+                null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(List.of(categoryMatch.getId()),
+                result.getItems().stream().map(item -> item.getId()).toList());
+        verify(mediaAssetRepository, never()).findTopSimilarInInstitutions(
+                anyCollection(), anyString(), anyString(), anyString(), any(Integer.class));
+        verify(mediaAssetRepository).findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("robotics"),
+                any(Pageable.class));
+    }
+
+    @Test
+    void semanticSearch_placesExactKeywordMatchBeforeConceptualMatchAndPaginates() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAsset exact = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        exact.setDisplayTitle("Hackathon");
+        MediaAsset conceptual = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(voyageAIClient.embedQuery("hackathon")).thenReturn("[0.1,0.2]");
+        when(mediaAssetRepository.findTopSimilarInInstitutions(
+                eq(Set.of(institutionId)), eq("[0.1,0.2]"), eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(200)))
+                .thenReturn(List.<Object[]>of(new Object[]{conceptual.getId().toString(), 0.95}));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("hackathon"), any(Pageable.class)))
+                .thenReturn(List.of(exact));
+        when(mediaAssetRepository.findExactKeywordMatchIds(
+                eq(false), eq(Set.of(institutionId)), eq("hackathon"), any(Pageable.class)))
+                .thenReturn(List.of(exact.getId()));
+        when(mediaAssetRepository.findActiveByIds(List.of(conceptual.getId())))
+                .thenReturn(List.of(conceptual));
+
+        MediaAssetListResponseDto firstPage = mediaAssetService.semanticSearch(
+                "hackathon", null, 1, 1,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(2, firstPage.getTotalCount());
+        assertEquals(List.of(exact.getId()),
+                firstPage.getItems().stream().map(item -> item.getId()).toList());
+    }
+
+    @Test
+    void semanticSearch_returnsScopeSafeCachedPageWithoutCallingVoyage() {
+        UUID institutionId = UUID.randomUUID();
+        JwtUserDetails actor = user(UUID.randomUUID(), "contributor", institutionId);
+        MediaAssetListResponseDto cached = new MediaAssetListResponseDto(List.of(), 0, 1, 25);
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(mediaSearchCache.get(anyString())).thenReturn(cached);
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                "hackathon", null, 1, 25, actor);
+
+        assertEquals(cached, result);
+        verify(voyageAIClient, never()).embedQuery(anyString());
+        verify(mediaAssetRepository, never()).findKeywordMatches(
+                anyBoolean(), anyCollection(), anyString(), any(Pageable.class));
+    }
+
     private void stubRepositoryPage(
             List<MediaAsset> items,
             long totalCount,
@@ -366,22 +494,6 @@ class MediaAssetServiceTest {
                 nullable(UUID.class),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(items, PageRequest.of(page - 1, pageSize), totalCount));
-    }
-
-    @Test
-    void logNetworkViewAccess_moderator_recordsAuditEntry() {
-        UUID userId = UUID.randomUUID();
-        mediaAssetService.logNetworkViewAccess(user(userId, "moderator", null));
-
-        verify(auditLogService).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), isNull(), isNull(), isNull(), any());
-    }
-
-    @Test
-    void logNetworkViewAccess_contributor_isNoOp() {
-        UUID institutionId = UUID.randomUUID();
-        mediaAssetService.logNetworkViewAccess(user(UUID.randomUUID(), "contributor", institutionId));
-
-        verify(auditLogService, never()).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), any(), any(), any(), any());
     }
 
     @Test
@@ -446,7 +558,6 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, ownInstitution, null)));
         when(mediaAlbumRepository.findById(destinationParentId))
                 .thenReturn(Optional.of(album(destinationParentId, otherInstitution, null)));
-        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.moveAlbum(albumId, destinationParentId, null,
@@ -557,6 +668,8 @@ class MediaAssetServiceTest {
         mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -578,6 +691,8 @@ class MediaAssetServiceTest {
         assertEquals("Opening Ceremony Highlights", asset.getDisplayTitle());
         assertEquals("asset.jpg", asset.getFileName());
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_RENAMED"), isNull(), isNull(), eq(assetId), any());
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -597,6 +712,26 @@ class MediaAssetServiceTest {
         mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         assertNull(asset.getDisplayTitle());
+    }
+
+    @Test
+    void renameAsset_unchangedTitle_doesNotRegenerateSemanticEmbedding() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setDisplayTitle("Opening Ceremony");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(asset)).thenReturn(asset);
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto();
+        dto.setTitle("Opening Ceremony");
+
+        mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
+
+        verify(mediaAssetRepository, never()).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService, never()).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -667,6 +802,9 @@ class MediaAssetServiceTest {
         mediaAssetService.removeTag(assetId, first.getId(), user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(assetTagRepository).delete(first);
+        verify(assetTagRepository).flush();
+        verify(mediaAssetRepository).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
     }
 
     @Test
@@ -771,7 +909,7 @@ class MediaAssetServiceTest {
     }
 
     @Test
-    void restore_admin_setsStatusReadyAndClearsDeletedAt() {
+    void restore_admin_marksProcessingAndRequeuesDeletedEmbeddings() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
         asset.setDeletedAt(Instant.now());
@@ -783,8 +921,31 @@ class MediaAssetServiceTest {
         assertEquals(assetId, result.getId());
         assertNull(asset.getDeletedAt());
         assertNull(asset.getDeletedByUserId());
-        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, asset.getStatus());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, asset.getStatus());
         verify(mediaAssetRepository).save(asset);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(assetId);
+    }
+
+    @Test
+    void bulkRestore_admin_requeuesEveryRestoredAsset() {
+        UUID firstId = UUID.randomUUID();
+        UUID secondId = UUID.randomUUID();
+        MediaAsset first = asset(firstId, UUID.randomUUID(), UUID.randomUUID());
+        MediaAsset second = asset(secondId, UUID.randomUUID(), UUID.randomUUID());
+        first.setDeletedAt(Instant.now());
+        second.setDeletedAt(Instant.now());
+        when(mediaAssetRepository.findTrashedById(firstId)).thenReturn(Optional.of(first));
+        when(mediaAssetRepository.findTrashedById(secondId)).thenReturn(Optional.of(second));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        List<UUID> restored = mediaAssetService.bulkRestore(
+                List.of(firstId, secondId), user(UUID.randomUUID(), "admin", null));
+
+        assertEquals(List.of(firstId, secondId), restored);
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, first.getStatus());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, second.getStatus());
+        verify(mediaProcessingQueueService).enqueueAfterCommit(firstId);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(secondId);
     }
 
     @Test

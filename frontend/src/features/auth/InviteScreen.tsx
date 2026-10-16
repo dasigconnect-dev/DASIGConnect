@@ -1,9 +1,5 @@
 import type { FormEvent } from 'react'
 import { useMemo, useState } from 'react'
-import Screen from '../../components/layout/Screen'
-import LeftPanel from '../../components/layout/LeftPanel'
-import RightPanel from '../../components/layout/RightPanel'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
 import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 type InviteState = 'form' | 'expired' | 'already' | 'success'
@@ -23,7 +19,7 @@ interface InviteRules {
 }
 
 interface InviteScreenProps {
-  active: boolean
+  active?: boolean
   state: InviteState
   email: string
   roleLabel: string
@@ -48,7 +44,6 @@ interface InviteScreenProps {
 }
 
 export default function InviteScreen({
-  active,
   state,
   email,
   roleLabel,
@@ -86,58 +81,12 @@ export default function InviteScreen({
   }
 
   return (
-    <Screen id="invite" active={active}>
-      <div className="split">
-        <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Complete your <em>DASIG</em> profile.
-            </div>
-            <div className="l-desc">
-              This invitation activates your account and completes your
-              profile so DASIGConnect can show proper human names across your
-              institution workspace.
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-features">
-              <div className="l-feat">
-                <div className="l-feat-icon">
-                  <i className="ti ti-lock-check"></i>
-                </div>
-                <div className="l-feat-text">
-                  <div className="l-feat-title">Profile + Security</div>
-                  <div className="l-feat-sub">
-                    Add your first and last name, then set a password with
-                    uppercase, number, and special character protection.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </LeftPanel>
-        <RightPanel>
-          {showInAppBrowserNotice && (
+    <>
+      {showInAppBrowserNotice && (
             <div className="alert alert-warn" style={{ marginBottom: 14 }}>
               <i className="ti ti-alert-triangle"></i>
               <div>
-                <strong style={{ display: 'block', marginBottom: 3, color: '#FCD34D' }}>
+                <strong style={{ display: 'block', marginBottom: 3 }}>
                   You're viewing this inside an app's built-in browser.
                 </strong>
                 Some apps (Messenger, Instagram, etc.) reuse this popup across
@@ -162,7 +111,7 @@ export default function InviteScreen({
               <i className="ti ti-clock-x"></i>
               <div>
                 <strong
-                  style={{ display: 'block', marginBottom: 3, color: '#FCA5A5' }}
+                  style={{ display: 'block', marginBottom: 3 }}
                 >
                   Invitation link has expired.
                 </strong>
@@ -192,7 +141,7 @@ export default function InviteScreen({
               <i className="ti ti-alert-triangle"></i>
               <div>
                 <strong
-                  style={{ display: 'block', marginBottom: 3, color: '#FCD34D' }}
+                  style={{ display: 'block', marginBottom: 3 }}
                 >
                   Account already activated.
                 </strong>
@@ -492,8 +441,6 @@ export default function InviteScreen({
               </button>
             </div>
           </div>
-        </RightPanel>
-      </div>
-    </Screen>
+    </>
   )
 }

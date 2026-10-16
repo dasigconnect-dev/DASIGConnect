@@ -6,16 +6,15 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.dasigconnect.backend.event.TokenPublishingSuspendedEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
+import com.dasigconnect.backend.service.PublishingStateService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 /**
@@ -34,19 +33,19 @@ public class TokenPublishingEscalationJob {
     private final SubmissionRepository submissionRepository;
     private final PublishingQueryService publishingQueryService;
     private final FacebookPublisherService facebookPublisherService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final PublishingStateService publishingStateService;
     private final ScheduledJobHealthService scheduledJobHealthService;
 
     public TokenPublishingEscalationJob(
             SubmissionRepository submissionRepository,
             PublishingQueryService publishingQueryService,
             FacebookPublisherService facebookPublisherService,
-            ApplicationEventPublisher eventPublisher,
+            PublishingStateService publishingStateService,
             ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.publishingQueryService = publishingQueryService;
         this.facebookPublisherService = facebookPublisherService;
-        this.eventPublisher = eventPublisher;
+        this.publishingStateService = publishingStateService;
         this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
@@ -82,9 +81,9 @@ public class TokenPublishingEscalationJob {
 
             Duration blockedFor = Duration.between(blockedAt, now);
             if (blockedFor.compareTo(FAIL_AFTER) >= 0) {
-                failAfterFortyEightHours(submission);
+                publishingStateService.failAfterFortyEightHours(submission);
             } else if (blockedFor.compareTo(ESCALATE_AFTER) >= 0) {
-                escalateAfterTwentyFourHours(submission);
+                publishingStateService.escalateAfterTwentyFourHours(submission);
             }
         }
     }
@@ -104,45 +103,5 @@ public class TokenPublishingEscalationJob {
                         submission.getId(), ex.getMessage(), ex);
             }
         }
-    }
-
-    private void escalateAfterTwentyFourHours(Submission submission) {
-        if (submission.getTokenEscalated24hAt() != null) {
-            return;
-        }
-        submission.setTokenEscalated24hAt(Instant.now());
-        submissionRepository.save(submission);
-        facebookPublisherService.recordAttempt(
-                submission,
-                1,
-                "failed",
-                FacebookPublisherService.TOKEN_EXPIRED_24H_PREFIX
-                        + ": Facebook token still not reauthorized after 24 hours.",
-                null);
-        eventPublisher.publishEvent(new TokenPublishingSuspendedEvent(
-                submission,
-                TokenPublishingSuspendedEvent.Stage.ESCALATION_24H,
-                "Facebook token still not reauthorized after 24 hours."));
-    }
-
-    private void failAfterFortyEightHours(Submission submission) {
-        if (submission.getTokenFinalFailedAt() == null) {
-            submission.setTokenFinalFailedAt(Instant.now());
-            submissionRepository.save(submission);
-            facebookPublisherService.recordAttempt(
-                    submission,
-                    1,
-                    "failed",
-                    FacebookPublisherService.TOKEN_EXPIRED_48H_PREFIX
-                            + ": Facebook token still not reauthorized after 48 hours.",
-                    null);
-            eventPublisher.publishEvent(new TokenPublishingSuspendedEvent(
-                    submission,
-                    TokenPublishingSuspendedEvent.Stage.FINAL_FAILURE,
-                    "Facebook token still not reauthorized after 48 hours."));
-        }
-        facebookPublisherService.markFailed(
-                submission,
-                "Facebook Page Access Token was not reauthorized within 48 hours.");
     }
 }

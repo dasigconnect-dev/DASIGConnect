@@ -30,4 +30,19 @@ public interface SubmissionEngagementMetricRepository extends JpaRepository<Subm
         ORDER BY s.publishedAt ASC
         """)
     List<UUID> findPublishedSubmissionIdsMissingEngagement(Pageable pageable);
+
+    /**
+     * Published submissions with synced engagement and a caption, newest first.
+     * Fallback data source for the AI template generator when the Facebook Page
+     * history can't be read. Row: caption, publishedAt, reactions, comments, shares.
+     */
+    @Query("""
+        SELECT s.caption, s.publishedAt, sem.reactions, sem.commentsCount, sem.shares
+        FROM SubmissionEngagementMetric sem JOIN sem.submission s
+        WHERE s.status IN ('published', 'published_manual', 'admin_direct_post')
+          AND sem.fetchedAt IS NOT NULL
+          AND s.caption IS NOT NULL AND s.caption <> ''
+        ORDER BY s.publishedAt DESC
+        """)
+    List<Object[]> findPublishedCaptionsWithEngagement(Pageable pageable);
 }

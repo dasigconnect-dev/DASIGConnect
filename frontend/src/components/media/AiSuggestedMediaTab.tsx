@@ -10,8 +10,9 @@ interface AiSuggestedMediaTabProps {
   alreadyAddedIds: Set<string>;
   eventTitle: string;
   caption: string;
-  category: string;
   tags: string[];
+  selectedImageCount?: number;
+  readyImageCount?: number;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
 }
@@ -22,15 +23,19 @@ export default function AiSuggestedMediaTab({
   alreadyAddedIds,
   eventTitle,
   caption,
-  category,
   tags,
+  selectedImageCount = 0,
+  readyImageCount = 0,
   onAddItems,
   disabled,
 }: AiSuggestedMediaTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { state, results, fetch } = suggestions;
 
-  const hasContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const hasTextContext = hasSufficientMediaContext(eventTitle, caption, tags);
+  const hasVisualContext = selectedImageCount > 0;
+  const isPreparingVisualContext = selectedImageCount > readyImageCount;
+  const hasContext = hasTextContext || hasVisualContext;
 
   const contextParts: string[] = [];
   if (eventTitle.trim()) contextParts.push(eventTitle.trim());
@@ -38,8 +43,10 @@ export default function AiSuggestedMediaTab({
     const short = caption.trim().slice(0, 60);
     contextParts.push(short.length < caption.trim().length ? `${short}…` : short);
   }
-  if (category.trim()) contextParts.push(category.trim());
   if (tags.length > 0) contextParts.push(tags.slice(0, 3).map((t) => `#${t}`).join(" "));
+  if (hasVisualContext) {
+    contextParts.push(`${selectedImageCount} selected image${selectedImageCount === 1 ? "" : "s"}`);
+  }
 
   const gridAssets: GridAsset[] = results.map((r) => ({
     id: r.id,
@@ -47,6 +54,7 @@ export default function AiSuggestedMediaTab({
     fileName: r.fileName,
     fileType: r.fileType,
     aiCategory: r.aiCategory ?? null,
+    assetType: r.assetType ?? null,
     similarityScore: r.similarityScore,
     matchReasons: r.matchReasons ?? [],
   }));
@@ -75,6 +83,8 @@ export default function AiSuggestedMediaTab({
       similarityScore: r.similarityScore,
     }));
     onAddItems(items);
+    // AI Feature Adoption: one "accepted" per add, against one "shown" per result set.
+    suggestions.accept();
     setSelectedIds(new Set());
   }
 
@@ -90,21 +100,35 @@ export default function AiSuggestedMediaTab({
       {!hasContext && (
         <div className="ast-no-context" role="status">
           <i className="ti ti-info-circle" aria-hidden />
-          <span>Add an event title, caption, or tags first so AI can find relevant media.</span>
+          <span>Upload or select an image for visual suggestions. Post details are optional context.</span>
         </div>
       )}
 
-      {hasContext && !submissionId && (
+      {hasContext && !submissionId && hasVisualContext && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Saving and preparing selected media...</span>
+        </div>
+      )}
+
+      {hasContext && !submissionId && !hasVisualContext && (
         <div className="ast-idle" role="status">
           <i className="ti ti-device-floppy" style={{ fontSize: 28, color: "var(--mp-muted)" }} aria-hidden />
           <p className="ast-idle-hint">Save your draft first to enable AI media suggestions.</p>
         </div>
       )}
 
-      {hasContext && submissionId && state === "idle" && (
+      {hasContext && submissionId && isPreparingVisualContext && state === "idle" && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Saving and preparing selected media...</span>
+        </div>
+      )}
+
+      {hasContext && submissionId && !isPreparingVisualContext && state === "idle" && (
         <div className="ast-idle">
           <p className="ast-idle-hint">
-            AI will scan your media library and surface assets most relevant to your post context.
+            AI will scan your media library and surface assets relevant to your selected images and post context.
           </p>
           <button
             type="button"
@@ -125,6 +149,13 @@ export default function AiSuggestedMediaTab({
         </div>
       )}
 
+      {state === "processing" && (
+        <div className="ast-loading" role="status" aria-live="polite">
+          <span className="ast-spinner" aria-hidden />
+          <span>Preparing media suggestions...</span>
+        </div>
+      )}
+
       {state === "error" && (
         <div className="ast-error" role="alert">
           <i className="ti ti-alert-circle" aria-hidden />
@@ -135,10 +166,30 @@ export default function AiSuggestedMediaTab({
         </div>
       )}
 
+      {state === "embedding_error" && (
+        <div className="ast-error" role="alert">
+          <i className="ti ti-alert-circle" aria-hidden />
+          <span>Selected media could not be prepared for suggestions. Try again.</span>
+          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {state === "no_candidates" && (
+        <div className="ast-empty" role="status">
+          <i className="ti ti-photo-off" aria-hidden />
+          <span>No searchable media is available in this institution yet.</span>
+          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+            Try again
+          </button>
+        </div>
+      )}
+
       {state === "empty" && (
         <div className="ast-empty" role="status">
           <i className="ti ti-photo-off" aria-hidden />
-          <span>No closely matching assets found in your library. Try refining your caption or title.</span>
+          <span>No closely matching assets found in your library. Try another image or refine your post details.</span>
           <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
             Try again
           </button>
@@ -147,20 +198,55 @@ export default function AiSuggestedMediaTab({
 
       {state === "ready" && (
         <>
-          <div className="ast-results-header">
-            <span className="ast-results-label">
-              Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
-            </span>
-            <button
-              type="button"
-              className="ast-regenerate-btn"
-              onClick={fetch}
-              disabled={disabled}
-              title="Regenerate suggestions"
-            >
-              <i className="ti ti-refresh" aria-hidden />
-              Regenerate
-            </button>
+          {/* The header doubles as the selection toolbar, above the grid
+              rather than a bar after it. */}
+          <div
+            className={`ast-results-header${pendingSelected.length > 0 ? " has-selection" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            {pendingSelected.length > 0 ? (
+              <>
+                <span className="ast-action-count">{pendingSelected.length} selected</span>
+                <button
+                  type="button"
+                  className="ast-action-clear"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="ast-action-add"
+                  onClick={handleAdd}
+                  disabled={disabled}
+                >
+                  <i className="ti ti-plus" aria-hidden />
+                  Add Selected ({pendingSelected.length})
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="ast-results-copy">
+                  <span className="ast-results-label">
+                    Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
+                  </span>
+                  <span className="ast-results-method">
+                    Gemini identifies format and content; Voyage compares visual and semantic similarity.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="ast-regenerate-btn"
+                  onClick={fetch}
+                  disabled={disabled}
+                  title="Regenerate suggestions"
+                >
+                  <i className="ti ti-refresh" aria-hidden />
+                  Regenerate
+                </button>
+              </>
+            )}
           </div>
 
           <MediaAssetGrid
@@ -170,28 +256,6 @@ export default function AiSuggestedMediaTab({
             onToggle={toggleSelect}
           />
         </>
-      )}
-
-      {pendingSelected.length > 0 && (
-        <div className="ast-action-bar" role="status" aria-live="polite">
-          <span className="ast-action-count">{pendingSelected.length} selected</span>
-          <button
-            type="button"
-            className="ast-action-clear"
-            onClick={() => setSelectedIds(new Set())}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            className="ast-action-add"
-            onClick={handleAdd}
-            disabled={disabled}
-          >
-            <i className="ti ti-plus" aria-hidden />
-            Add Selected ({pendingSelected.length})
-          </button>
-        </div>
       )}
     </div>
   );

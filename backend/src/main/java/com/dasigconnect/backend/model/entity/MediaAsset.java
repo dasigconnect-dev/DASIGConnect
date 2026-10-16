@@ -12,6 +12,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "media_assets")
@@ -101,6 +103,35 @@ public class MediaAsset {
     @Column(name = "ai_classification_model", length = 100)
     private String aiClassificationModel;
 
+    @Column(name = "ai_processing_version", length = 50)
+    private String aiProcessingVersion;
+
+    @Column(name = "observed_scenes")
+    private String[] observedScenes;
+    @Column(name = "observed_activities")
+    private String[] observedActivities;
+    @Column(name = "people_count_range", length = 30)
+    private String peopleCountRange;
+    @Column(name = "equipment_signals")
+    private String[] equipmentSignals;
+    @Column(name = "recognition_signals")
+    private String[] recognitionSignals;
+    @Column(name = "ocr_text")
+    private String[] ocrText;
+    @Column(name = "visible_dates")
+    private String[] visibleDates;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "event_hypotheses", columnDefinition = "jsonb")
+    private String eventHypotheses = "[]";
+    @Column(name = "temporal_classification", length = 30)
+    private String temporalClassification;
+    @Column(name = "possible_expiration", length = 80)
+    private String possibleExpiration;
+    @Column(name = "visual_quality_signals")
+    private String[] visualQualitySignals;
+    @Column(name = "composition_signals")
+    private String[] compositionSignals;
+
     // embedding VECTOR(1024) — managed via native queries; Hibernate does not map pgvector type natively
     // Use MediaAssetRepository.updateEmbedding() for writes and cosine search for reads
     @Column(name = "embedding_generated_at")
@@ -108,6 +139,9 @@ public class MediaAsset {
 
     @Column(name = "embedding_model", length = 100)
     private String embeddingModel;
+
+    @Column(name = "semantic_revision", nullable = false)
+    private long semanticRevision;
 
     @Column(name = "reclassified_at")
     private Instant reclassifiedAt;
@@ -339,6 +373,39 @@ public class MediaAsset {
         this.aiClassificationModel = aiClassificationModel;
     }
 
+    public String getAiProcessingVersion() {
+        return aiProcessingVersion;
+    }
+
+    public void setAiProcessingVersion(String aiProcessingVersion) {
+        this.aiProcessingVersion = aiProcessingVersion;
+    }
+
+    public String[] getObservedScenes() { return observedScenes; }
+    public void setObservedScenes(String[] value) { this.observedScenes = value; }
+    public String[] getObservedActivities() { return observedActivities; }
+    public void setObservedActivities(String[] value) { this.observedActivities = value; }
+    public String getPeopleCountRange() { return peopleCountRange; }
+    public void setPeopleCountRange(String value) { this.peopleCountRange = value; }
+    public String[] getEquipmentSignals() { return equipmentSignals; }
+    public void setEquipmentSignals(String[] value) { this.equipmentSignals = value; }
+    public String[] getRecognitionSignals() { return recognitionSignals; }
+    public void setRecognitionSignals(String[] value) { this.recognitionSignals = value; }
+    public String[] getOcrText() { return ocrText; }
+    public void setOcrText(String[] value) { this.ocrText = value; }
+    public String[] getVisibleDates() { return visibleDates; }
+    public void setVisibleDates(String[] value) { this.visibleDates = value; }
+    public String getEventHypotheses() { return eventHypotheses; }
+    public void setEventHypotheses(String value) { this.eventHypotheses = value; }
+    public String getTemporalClassification() { return temporalClassification; }
+    public void setTemporalClassification(String value) { this.temporalClassification = value; }
+    public String getPossibleExpiration() { return possibleExpiration; }
+    public void setPossibleExpiration(String value) { this.possibleExpiration = value; }
+    public String[] getVisualQualitySignals() { return visualQualitySignals; }
+    public void setVisualQualitySignals(String[] value) { this.visualQualitySignals = value; }
+    public String[] getCompositionSignals() { return compositionSignals; }
+    public void setCompositionSignals(String[] value) { this.compositionSignals = value; }
+
     public Instant getEmbeddingGeneratedAt() {
         return embeddingGeneratedAt;
     }
@@ -354,6 +421,9 @@ public class MediaAsset {
     public void setEmbeddingModel(String embeddingModel) {
         this.embeddingModel = embeddingModel;
     }
+
+    public long getSemanticRevision() { return semanticRevision; }
+    public void setSemanticRevision(long semanticRevision) { this.semanticRevision = semanticRevision; }
 
     public Instant getReclassifiedAt() {
         return reclassifiedAt;

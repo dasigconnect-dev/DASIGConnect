@@ -258,14 +258,14 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       id: 'review-queue',
       icon: 'ti ti-clipboard-check',
       label: 'Review Queue',
-      path: '/validation/queue',
+      path: '/queue',
       visible: isModerator,
     },
     {
       id: 'institution-management',
       icon: 'ti ti-building',
       label: 'Institution Management',
-      path: '/admin/institution-management',
+      path: '/institution-management',
       visible: isModerator,
     },
     {
@@ -307,7 +307,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       id: 'scheduler',
       icon: 'ti ti-calendar-event',
       label: 'Calendar',
-      path: '/scheduler/calendar',
+      path: '/calendar',
       visible: true,
     },
     {

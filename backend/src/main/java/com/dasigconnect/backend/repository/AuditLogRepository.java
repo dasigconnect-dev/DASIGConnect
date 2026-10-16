@@ -21,6 +21,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     /** True if an audit row with this action already targets the resource — used to keep removal idempotent. */
     boolean existsByActionAndResourceId(String action, UUID resourceId);
 
+    long countByActionAndCreatedAtAfter(String action, Instant cutoff);
+
     /**
      * Retention prune: hard-deletes high-volume operational rows past the cutoff.
      * Security / account / erasure / institution / override / export events are

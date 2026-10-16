@@ -11,7 +11,8 @@ public record AnalyticsSummaryDto(
         Instant lastUpdated,
         String scopeRole,
         boolean adminView,
-        UUID selectedInstitutionId,
+        /** Admin's institution filter (empty = all institutions); always empty for other roles. */
+        List<UUID> selectedInstitutionIds,
         List<InstitutionFilterOptionDto> institutionFilterOptions,
         KpiMetricDto averagePostingDelay,
         KpiMetricDto contentCompleteness,

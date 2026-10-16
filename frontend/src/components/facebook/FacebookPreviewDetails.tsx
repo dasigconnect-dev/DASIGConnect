@@ -1,14 +1,11 @@
 import type { FacebookPreviewDetailsData } from "../../types/facebook";
-
 interface FacebookPreviewDetailsProps {
   details: FacebookPreviewDetailsData;
 }
-
 export default function FacebookPreviewDetails({
   details,
 }: FacebookPreviewDetailsProps) {
   const isReady = details.missingItems.length === 0;
-
   return (
     <section className="fb-preview-details" aria-labelledby="fb-preview-details-title">
       <div className="fb-preview-details-head">
@@ -18,7 +15,6 @@ export default function FacebookPreviewDetails({
         </div>
         <span className="fb-preview-status">{details.statusLabel}</span>
       </div>
-
       <div className={`fb-preview-readiness ${isReady ? "ready" : "needs-work"}`} role="status">
         <div className="fb-preview-readiness-ring" aria-hidden="true">
           <span>{details.readinessScore}</span>
@@ -32,7 +28,6 @@ export default function FacebookPreviewDetails({
           </p>
         </div>
       </div>
-
       {!isReady && (
         <div className="fb-preview-validation-summary">
           <span>Required before review</span>
@@ -43,7 +38,6 @@ export default function FacebookPreviewDetails({
           </ul>
         </div>
       )}
-
       <div className="fb-preview-detail-grid">
         <Detail label="Preferred schedule" value={details.schedule} emphasis />
         <Detail
@@ -59,7 +53,6 @@ export default function FacebookPreviewDetails({
           emphasis
         />
         <Detail label="Files attached" value={`${details.fileCount} file(s)`} />
-        <Detail label="Event category" value={details.category} />
         <Detail label="Institution scope" value={details.institution} quiet />
         <Detail
           label={details.aiCaptionAssist.label}
@@ -68,7 +61,6 @@ export default function FacebookPreviewDetails({
           quiet
         />
       </div>
-
       <div className="fb-preview-supporting">
         <div className="fb-preview-detail-block">
           <span>Tags</span>
@@ -82,7 +74,6 @@ export default function FacebookPreviewDetails({
             <p>No tags selected.</p>
           )}
         </div>
-
         <div className="fb-preview-detail-block">
           <span>Moderator notes</span>
           <p>{details.moderatorNotes || "No moderator notes added."}</p>
@@ -91,7 +82,6 @@ export default function FacebookPreviewDetails({
     </section>
   );
 }
-
 function Detail({
   label,
   value,

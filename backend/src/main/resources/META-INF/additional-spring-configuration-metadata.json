@@ -165,6 +165,17 @@
       "description": "Voyage AI API key for embedding generation (voyage-4-lite, 1024 dimensions)."
     },
     {
+      "name": "app.ai.media-evaluation.dataset",
+      "type": "java.lang.String",
+      "description": "Local path to the human-labeled Phase 6 media suggestion evaluation dataset. Used only by the media-ai-evaluation profile."
+    },
+    {
+      "name": "app.ai.media-evaluation.output",
+      "type": "java.lang.String",
+      "description": "Local path for the Phase 6 media suggestion evaluation JSON report.",
+      "defaultValue": "media-ai-evaluation-report.json"
+    },
+    {
       "name": "spring.flyway.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Flyway database migration on startup.",

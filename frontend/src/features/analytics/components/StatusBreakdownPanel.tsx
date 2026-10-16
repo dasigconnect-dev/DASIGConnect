@@ -17,9 +17,9 @@ function getStatusNavUrl(status: string, role: string): string | null {
     return s === "draft" ? "/submissions/new?tab=drafts" : "/submissions/new?tab=submitted";
   }
   if (role === "moderator" || role === "admin") {
-    if (s === "approved" || s === "published") return "/scheduler/calendar";
-    if (s === "publish_failed") return "/validation/queue?tab=failed";
-    return "/validation/queue";
+    if (s === "approved" || s === "published") return "/calendar";
+    if (s === "publish_failed") return "/queue?tab=failed";
+    return "/queue";
   }
   return null;
 }

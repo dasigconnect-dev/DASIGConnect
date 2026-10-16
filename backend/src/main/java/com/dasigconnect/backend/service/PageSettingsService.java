@@ -32,7 +32,17 @@ public class PageSettingsService {
     public PageSettingsDto get(UUID institutionId, JwtUserDetails actor) {
         authorize(institutionId, actor);
         return find(institutionId).map(PageSettingsDto::from)
-                .orElse(new PageSettingsDto(institutionId, guardRailSettings.enforced(), null));
+                .orElse(new PageSettingsDto(
+                        institutionId, 
+                        guardRailSettings.enforced(), 
+                        guardRailSettings.postingWindowStartHour(), 
+                        guardRailSettings.postingWindowEndHour(), 
+                        guardRailSettings.conflictBufferMinutes(),
+                        guardRailSettings.minimumLeadTimeHours(),
+                        guardRailSettings.maximumLeadTimeDays(),
+                        guardRailSettings.perInstitutionActiveQuota(),
+                        guardRailSettings.dailyVolumeCap(),
+                        null));
     }
 
     @Transactional
@@ -45,8 +55,31 @@ public class PageSettingsService {
         }
         // The guard-rail switch is network-wide — only honoured on the
         // no-institution row; ignored on per-institution Page Settings.
-        if (institutionId == null && request.guardrailsEnforced() != null) {
-            settings.setGuardrailsEnforced(request.guardrailsEnforced());
+        if (institutionId == null) {
+            if (request.guardrailsEnforced() != null) {
+                settings.setGuardrailsEnforced(request.guardrailsEnforced());
+            }
+            if (request.postingWindowStartHour() != null) {
+                settings.setPostingWindowStartHour(request.postingWindowStartHour());
+            }
+            if (request.postingWindowEndHour() != null) {
+                settings.setPostingWindowEndHour(request.postingWindowEndHour());
+            }
+            if (request.conflictBufferMinutes() != null) {
+                settings.setConflictBufferMinutes(request.conflictBufferMinutes());
+            }
+            if (request.minimumLeadTimeHours() != null) {
+                settings.setMinimumLeadTimeHours(request.minimumLeadTimeHours());
+            }
+            if (request.maximumLeadTimeDays() != null) {
+                settings.setMaximumLeadTimeDays(request.maximumLeadTimeDays());
+            }
+            if (request.perInstitutionActiveQuota() != null) {
+                settings.setPerInstitutionActiveQuota(request.perInstitutionActiveQuota());
+            }
+            if (request.dailyVolumeCap() != null) {
+                settings.setDailyVolumeCap(request.dailyVolumeCap());
+            }
         }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));
         return PageSettingsDto.from(repository.save(settings));
@@ -61,3 +94,4 @@ public class PageSettingsService {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Page Settings access denied");
     }
 }
+

@@ -6,6 +6,7 @@ export interface GridAsset {
   fileName: string;
   fileType: string;
   aiCategory?: string | null;
+  assetType?: string | null;
   similarityScore?: number;
   matchReasons?: string[];
   /** Shown as a badge when browsing across more than one institution. */
@@ -55,6 +56,7 @@ export default function MediaAssetGrid({
             fileName={asset.fileName}
             fileType={asset.fileType}
             aiCategory={asset.aiCategory}
+            assetType={asset.assetType}
             similarityScore={asset.similarityScore}
             matchReasons={asset.matchReasons}
             institutionName={asset.institutionName}

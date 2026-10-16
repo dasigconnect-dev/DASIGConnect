@@ -11,7 +11,6 @@ export interface FormState {
   eventDate: string;
   caption: string;
   description: string;
-  category: string;
   scheduledDate: string;
   scheduledTime: string;
   tags: string[];
@@ -26,7 +25,7 @@ export interface FormState {
   removedAssetIds: string[];
 }
 
-export type QueueFilter = "drafts" | "action-needed" | "submitted" | "published" | "failed" | "all";
+export type QueueFilter = "drafts" | "action-needed" | "rejected" | "submitted" | "published" | "failed" | "all";
 export type ModalState =
   | "submit"
   | "success"

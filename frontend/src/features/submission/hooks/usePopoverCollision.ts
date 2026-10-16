@@ -46,7 +46,17 @@ export function usePopoverCollision(open: boolean, minRequiredHeight = 370) {
         const naturalHeight = popover?.scrollHeight || minRequiredHeight;
         const vh = window.innerHeight;
 
-        const spaceBelow = vh - rootRect.bottom - triggerGap - viewportGap;
+        // Detect sticky/fixed bottom bar if present (e.g. review queue or submission bottom action bar)
+        const bottomBar = document.querySelector(".val-action-bar, .sub-submit-bar, #val-edit-actions, #val-review-actions") as HTMLElement | null;
+        let bottomBarOffset = 0;
+        if (bottomBar) {
+          const barRect = bottomBar.getBoundingClientRect();
+          if (barRect.top < vh) {
+            bottomBarOffset = Math.max(0, vh - barRect.top);
+          }
+        }
+
+        const spaceBelow = vh - rootRect.bottom - triggerGap - viewportGap - bottomBarOffset;
         const spaceAbove = rootRect.top - triggerGap - viewportGap - topNavbarOffset;
 
         // Intelligent placement:
@@ -65,7 +75,7 @@ export function usePopoverCollision(open: boolean, minRequiredHeight = 370) {
         setPlacement(shouldDropUp ? "drop-up" : "drop-down");
 
         const targetMaxHeight = Math.max(minRequiredHeight, naturalHeight);
-        const screenBoundedHeight = Math.max(300, vh - topNavbarOffset - viewportGap * 2);
+        const screenBoundedHeight = Math.max(260, vh - topNavbarOffset - bottomBarOffset - viewportGap * 2);
         setMaxHeight(Math.min(targetMaxHeight, screenBoundedHeight));
 
         // Auto-scroll on mobile/touch viewports so opened popover is 100% visible
@@ -74,7 +84,7 @@ export function usePopoverCollision(open: boolean, minRequiredHeight = 370) {
 
           if (!shouldDropUp) {
             const popoverBottom = rootRect.bottom + triggerGap + naturalHeight;
-            const overflow = popoverBottom - (vh - viewportGap);
+            const overflow = popoverBottom - (vh - viewportGap - bottomBarOffset);
             if (overflow > 0) {
               if (scrollParent === window) {
                 window.scrollBy({ top: overflow + 16, behavior: "smooth" });

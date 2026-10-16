@@ -2,7 +2,6 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -72,8 +71,13 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class MediaAssetService {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
+    private static final int UNIFIED_SEARCH_CANDIDATE_CAP = 200;
+    private static final double RRF_K = 60.0;
 
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionRepository submissionRepository;
@@ -83,12 +87,13 @@ public class MediaAssetService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final InstitutionRepository institutionRepository;
     private final MediaStorageService mediaStorage;
-    private final AIClassificationService aiClassificationService;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     private final AuditLogService auditLogService;
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final MediaSearchCacheService mediaSearchCache;
 
     @Value("${app.media-assets.deleted-retention-days:30}")
     private int retentionDays = 30;
@@ -105,12 +110,13 @@ public class MediaAssetService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             InstitutionRepository institutionRepository,
             MediaStorageService mediaStorage,
-            AIClassificationService aiClassificationService,
+            MediaProcessingQueueService mediaProcessingQueueService,
             com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
             AuditLogService auditLogService,
             AuditLogRepository auditLogRepository,
             UserRepository userRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MediaSearchCacheService mediaSearchCache) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -119,19 +125,19 @@ public class MediaAssetService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.institutionRepository = institutionRepository;
         this.mediaStorage = mediaStorage;
-        this.aiClassificationService = aiClassificationService;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
         this.voyageAIClient = voyageAIClient;
         this.auditLogService = auditLogService;
         this.auditLogRepository = auditLogRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.mediaSearchCache = mediaSearchCache;
     }
 
     /**
      * The shared default institution ("DASIG Central Visayas"). Its media
-     * library is visible to every institution, and any contributor may add
-     * folders/files to it — but deletion stays scoped to the owning
-     * institution.
+     * library is visible to every institution, and contributors may add
+     * folders/files to it — but other ordinary institutions stay isolated.
      */
     private UUID sharedInstitutionId() {
         return institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()
@@ -140,8 +146,9 @@ public class MediaAssetService {
     }
 
     /**
-     * Institution ids a non-admin user may browse: their own plus the shared
-     * default.
+     * Institution ids a contributor may browse: their own institution plus the
+     * shared default institution. Admins and moderators use the network-wide
+     * branches instead.
      */
     private java.util.Set<UUID> visibleInstitutionIds(JwtUserDetails user) {
         java.util.Set<UUID> ids = new java.util.LinkedHashSet<>();
@@ -153,20 +160,6 @@ public class MediaAssetService {
             ids.add(shared);
         }
         return ids;
-    }
-
-    /**
-     * UC-2.2 A2: the Network View banner tells a Moderator/Admin their session
-     * is being logged. Nothing ever actually wrote that log entry — this does,
-     * once per browser session (the frontend guards the repeat calls). Silently
-     * a no-op for a non-network role, so a stray or replayed call can't forge
-     * an audit entry for someone else's session.
-     */
-    public void logNetworkViewAccess(JwtUserDetails user) {
-        if (!isNetworkRole(user)) {
-            return;
-        }
-        recordAssetAudit(user, "MEDIA_NETWORK_VIEW_ACCESSED", null, Map.of());
     }
 
     @Transactional(readOnly = true)
@@ -225,94 +218,119 @@ public class MediaAssetService {
     }
 
     /**
-     * Meaning-based asset search: embeds the query with Voyage AI and ranks the
-     * viewer's visible assets by pgvector cosine similarity, then appends plain
-     * keyword matches (covers assets without an embedding and Voyage outages).
+     * Unified search: combines exact/keyword order with current Voyage semantic
+     * vectors using reciprocal-rank fusion. Exact matches stay first, while the
+     * keyword path remains available when Voyage is unavailable.
+     *
+     * <p>Both the semantic and keyword paths are scoped/filtered/capped in SQL —
+     * this used to load every visible asset in scope into memory on every
+     * Enter-press (network-wide, for a moderator/admin, meaning the whole
+     * table) before filtering down to 60 in Java. That full-table load was a
+     * major Supabase DB egress source; see {@link MediaAssetRepository#findKeywordMatches}.
      */
     @Transactional(readOnly = true)
-    public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
+    public MediaAssetListResponseDto semanticSearch(
+            String query, UUID institutionId, int page, int pageSize, JwtUserDetails user) {
         String trimmed = query == null ? "" : query.trim();
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
         if (trimmed.length() < 2) {
-            return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
+            return new MediaAssetListResponseDto(List.of(), 0, safePage, safePageSize);
         }
         boolean moderator = isNetworkRole(user);
 
-        List<MediaAsset> scope;
-        java.util.Set<UUID> institutionScope = null; // null => network-wide (admin)
+        boolean networkWide;
+        java.util.Set<UUID> institutionScope;
         if (moderator && institutionId != null) {
+            networkWide = false;
             institutionScope = java.util.Set.of(institutionId);
-            scope = mediaAssetRepository.findActiveByInstitution(institutionId);
         } else if (moderator) {
-            scope = mediaAssetRepository.findAllActive();
+            networkWide = true;
+            institutionScope = java.util.Set.of(EMPTY_SCOPE_ID);
         } else {
+            networkWide = false;
             institutionScope = visibleInstitutionIds(user);
-            scope = institutionScope.isEmpty() ? List.of()
-                    : mediaAssetRepository.findActiveByInstitutionIds(institutionScope);
-        }
-
-        List<UUID> scopeIds = scope.stream().map(MediaAsset::getId).toList();
-        Set<UUID> attached = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(scopeIds);
-        Set<UUID> beyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(scopeIds);
-        java.util.Map<UUID, MediaAsset> byId = new java.util.HashMap<>();
-        for (MediaAsset a : scope) {
-            if (isPublishedToRepository(a, attached, beyondDraft)) {
-                byId.put(a.getId(), a);
+            if (institutionScope.isEmpty()) {
+                return new MediaAssetListResponseDto(List.of(), 0, safePage, safePageSize);
             }
         }
 
-        java.util.LinkedHashMap<UUID, MediaAsset> ordered = new java.util.LinkedHashMap<>();
-        if (!byId.isEmpty()) {
-            try {
-                String queryVector = voyageAIClient.embedQuery(trimmed);
-                List<Object[]> hits = institutionScope == null
-                        ? mediaAssetRepository.findTopSimilarAllInstitutions(queryVector)
-                        : mediaAssetRepository.findTopSimilarInInstitutions(institutionScope, queryVector);
-                for (Object[] row : hits) {
-                    MediaAsset a = byId.get(UUID.fromString((String) row[0]));
-                    if (a != null) {
-                        ordered.putIfAbsent(a.getId(), a);
-                    }
-                }
-            } catch (RuntimeException e) {
-                log.warn("Semantic media search fell back to keyword matching: {}", e.getMessage());
-            }
+        String normalizedQuery = trimmed.toLowerCase();
+        String scopeKey = institutionScope.stream().sorted().map(UUID::toString).collect(Collectors.joining(","));
+        String cacheKey = String.join("|",
+                user.userId().toString(), user.role(), String.valueOf(user.institutionId()),
+                String.valueOf(institutionId), String.valueOf(networkWide), scopeKey,
+                normalizedQuery, voyageAIClient.modelName(),
+                MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                String.valueOf(safePage), String.valueOf(safePageSize));
+        MediaAssetListResponseDto cached = mediaSearchCache.get(cacheKey);
+        if (cached != null) return cached;
 
-            String lower = trimmed.toLowerCase();
-            Map<UUID, List<String>> manualTagsByAsset = loadAllTagLabels(new ArrayList<>(byId.keySet()));
-            byId.values().stream()
-                    .filter(a -> !ordered.containsKey(a.getId()))
-                    .filter(a -> matchesKeyword(a, lower, manualTagsByAsset.getOrDefault(a.getId(), List.of())))
-                    .sorted(resolveSort("newest"))
-                    .forEach(a -> ordered.put(a.getId(), a));
+        List<Object[]> semanticHits = List.of();
+        try {
+            String queryVector = voyageAIClient.embedQuery(trimmed);
+            semanticHits = networkWide
+                    ? mediaAssetRepository.findTopSimilarAllInstitutions(
+                            queryVector, voyageAIClient.modelName(),
+                            MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                            UNIFIED_SEARCH_CANDIDATE_CAP)
+                    : mediaAssetRepository.findTopSimilarInInstitutions(
+                            institutionScope, queryVector, voyageAIClient.modelName(),
+                            MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                            UNIFIED_SEARCH_CANDIDATE_CAP);
+        } catch (RuntimeException e) {
+            log.warn("Semantic media search fell back to keyword matching: {}", e.getMessage());
         }
 
-        List<MediaAssetSummaryDto> items = ordered.values().stream()
-                .limit(60)
+        List<MediaAsset> keywordHits = mediaAssetRepository.findKeywordMatches(
+                networkWide, institutionScope, normalizedQuery,
+                PageRequest.of(0, UNIFIED_SEARCH_CANDIDATE_CAP));
+        Set<UUID> exactIds = new HashSet<>(mediaAssetRepository.findExactKeywordMatchIds(
+                networkWide, institutionScope, normalizedQuery,
+                PageRequest.of(0, UNIFIED_SEARCH_CANDIDATE_CAP)));
+
+        Map<UUID, MediaAsset> assetsById = keywordHits.stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset, (left, right) -> left));
+        List<UUID> semanticIds = semanticHits.stream()
+                .map(row -> UUID.fromString((String) row[0]))
+                .toList();
+        if (!semanticIds.isEmpty()) {
+            mediaAssetRepository.findActiveByIds(semanticIds)
+                    .forEach(asset -> assetsById.putIfAbsent(asset.getId(), asset));
+        }
+
+        Map<UUID, Double> fusedScores = new java.util.HashMap<>();
+        for (int i = 0; i < keywordHits.size(); i++) {
+            fusedScores.merge(keywordHits.get(i).getId(), 1.0 / (RRF_K + i + 1), Double::sum);
+        }
+        for (int i = 0; i < semanticIds.size(); i++) {
+            fusedScores.merge(semanticIds.get(i), 1.0 / (RRF_K + i + 1), Double::sum);
+        }
+
+        List<MediaAsset> ranked = fusedScores.keySet().stream()
+                .filter(assetsById::containsKey)
+                .sorted(java.util.Comparator
+                        .comparing((UUID id) -> !exactIds.contains(id))
+                        .thenComparing((UUID id) -> fusedScores.getOrDefault(id, 0.0), java.util.Comparator.reverseOrder())
+                        .thenComparing(
+                                id -> assetsById.get(id).getCreatedAt(),
+                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .map(assetsById::get)
+                .toList();
+
+        int fromIndex = Math.min((safePage - 1) * safePageSize, ranked.size());
+        int toIndex = Math.min(fromIndex + safePageSize, ranked.size());
+        List<MediaAssetSummaryDto> items = ranked.subList(fromIndex, toIndex).stream()
                 .map(MediaAssetSummaryDto::from)
                 .toList();
-        return new MediaAssetListResponseDto(items, items.size(), 1, items.size());
+        MediaAssetListResponseDto response = new MediaAssetListResponseDto(
+                items, ranked.size(), safePage, safePageSize);
+        mediaSearchCache.put(cacheKey, response);
+        return response;
     }
 
-    private static boolean matchesKeyword(MediaAsset a, String lower, List<String> manualTags) {
-        if (containsIgnoreCase(a.getFileName(), lower)
-                || containsIgnoreCase(a.getDisplayTitle(), lower)
-                || containsIgnoreCase(a.getAssetCode(), lower)
-                || containsIgnoreCase(a.getAiDescription(), lower)
-                || containsIgnoreCase(a.getAiCategory(), lower)
-                || (a.getUploader() != null && containsIgnoreCase(a.getUploader().getEmail(), lower))) {
-            return true;
-        }
-        String[] tags = a.getAiTags();
-        if (tags != null) {
-            for (String t : tags) {
-                if (containsIgnoreCase(t, lower)) {
-                    return true;
-                }
-            }
-        }
-        // UC-2.2 A3: a custom tag added after upload must be searchable too,
-        // not just AI-generated ones.
-        return manualTags.stream().anyMatch(label -> containsIgnoreCase(label, lower));
+    public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
+        return semanticSearch(query, institutionId, 1, 60, user);
     }
 
     @Transactional(readOnly = true)
@@ -495,6 +513,7 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
+        mediaSearchCache.invalidateAll();
         recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", false, "force", force));
     }
 
@@ -511,29 +530,42 @@ public class MediaAssetService {
                 .map(id -> loadAssetForDelete(id, user))
                 .toList();
 
-        for (UUID assetId : assetIds) {
-            validateDeleteReferences(assetId, dto.isForce());
+        List<MediaAsset> deletable = new ArrayList<>();
+        List<UUID> deletedIds = new ArrayList<>();
+        for (MediaAsset asset : assets) {
+            try {
+                validateDeleteReferences(asset.getId(), dto.isForce());
+                deletable.add(asset);
+                deletedIds.add(asset.getId());
+            } catch (MediaAssetDeletionConflictException ex) {
+                // Skip blocked assets automatically in bulk operations
+            }
+        }
+
+        if (deletable.isEmpty()) {
+            return new MediaAssetBulkDeleteResponseDto(List.of());
         }
 
         Instant deletedAt = Instant.now();
-        for (MediaAsset asset : assets) {
+        for (MediaAsset asset : deletable) {
             asset.setDeletedAt(deletedAt);
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
-        mediaAssetRepository.saveAll(assets);
+        mediaAssetRepository.saveAll(deletable);
+        mediaSearchCache.invalidateAll();
 
         // One summary row instead of N per-asset rows: the operation's intent (a
         // bulk delete of `count` assets) is legible at a glance in the audit view,
         // and the id list is retained for traceability (capped so metadata stays small).
-        List<String> auditedIds = assetIds.stream().limit(50).map(UUID::toString).toList();
+        List<String> auditedIds = deletedIds.stream().limit(50).map(UUID::toString).toList();
         recordAssetAudit(user, "MEDIA_BULK_DELETED", null, Map.of(
-                "count", assetIds.size(),
+                "count", deletedIds.size(),
                 "assetIds", auditedIds,
-                "truncated", assetIds.size() > auditedIds.size(),
+                "truncated", deletedIds.size() > auditedIds.size(),
                 "force", dto.isForce()));
-        return new MediaAssetBulkDeleteResponseDto(assetIds);
+        return new MediaAssetBulkDeleteResponseDto(deletedIds);
     }
 
     @Transactional(readOnly = true)
@@ -604,8 +636,10 @@ public class MediaAssetService {
 
         asset.setDeletedAt(null);
         asset.setDeletedByUserId(null);
-        asset.setStatus(MediaAssetStatus.READY);
+        asset.setStatus(MediaAssetStatus.PROCESSING);
         MediaAsset saved = mediaAssetRepository.save(asset);
+        mediaProcessingQueueService.enqueueAfterCommit(assetId);
+        mediaSearchCache.invalidateAll();
 
         recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
                 "assetCode", asset.getAssetCode(),
@@ -632,14 +666,16 @@ public class MediaAssetService {
                 }
                 asset.setDeletedAt(null);
                 asset.setDeletedByUserId(null);
-                asset.setStatus(MediaAssetStatus.READY);
+                asset.setStatus(MediaAssetStatus.PROCESSING);
                 mediaAssetRepository.save(asset);
+                mediaProcessingQueueService.enqueueAfterCommit(id);
                 restoredIds.add(id);
             }
         }
         recordAssetAudit(user, "MEDIA_BULK_RESTORED", null, Map.of(
                 "count", restoredIds.size(),
                 "assetIds", restoredIds.stream().limit(50).map(UUID::toString).toList()));
+        if (!restoredIds.isEmpty()) mediaSearchCache.invalidateAll();
         return restoredIds;
     }
 
@@ -660,6 +696,7 @@ public class MediaAssetService {
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         assetTagRepository.deleteByMediaAssetId(assetId);
         mediaAssetRepository.purgeAiProfile(assetId);
+        mediaSearchCache.invalidateAll();
 
         recordAssetAudit(user, "MEDIA_ASSET_PURGED", assetId, Map.of(
                 "permanent", true,
@@ -692,6 +729,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_BULK_PURGED", null, Map.of(
                 "count", purgedIds.size(),
                 "assetIds", purgedIds.stream().limit(50).map(UUID::toString).toList()));
+        if (!purgedIds.isEmpty()) mediaSearchCache.invalidateAll();
         return purgedIds;
     }
 
@@ -716,6 +754,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_TRASH_EMPTIED", null, Map.of(
                 "count", purgedCount,
                 "institutionId", institutionId != null ? institutionId.toString() : "all"));
+        if (purgedCount > 0) mediaSearchCache.invalidateAll();
         return purgedCount;
     }
 
@@ -728,7 +767,10 @@ public class MediaAssetService {
                     .map(MediaAssetUsageDto::from)
                     .filter(usage -> usage.status().equals("pending")
                     || usage.status().equals("in_review")
-                    || usage.status().equals("scheduled"))
+                    || usage.status().equals("scheduled")
+                    || usage.status().equals("publishing")
+                    || usage.status().equals("direct_post_scheduled")
+                    || usage.status().equals("direct_post_publishing"))
                     .toList();
             throw new MediaAssetDeletionConflictException(
                     "Asset is referenced by active submissions and cannot be deleted.", conflicts);
@@ -749,6 +791,7 @@ public class MediaAssetService {
     }
 
     public MediaAssetDetailDto upload(MediaAssetUploadRequestDto dto, JwtUserDetails user) {
+        long registrationStartedAt = System.nanoTime();
         MediaFileType fileType;
         try {
             fileType = MediaFileType.valueOf(dto.getFileType().toLowerCase());
@@ -783,6 +826,17 @@ public class MediaAssetService {
         asset.setStatus(fileType.isImage() ? MediaAssetStatus.PROCESSING : MediaAssetStatus.READY);
         asset = mediaAssetRepository.save(asset);
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
+        mediaSearchCache.invalidateAll();
+
+        if (mediaAiTelemetry != null) {
+            if (dto.getR2UploadDurationMs() != null) {
+                mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
+                        null, null, 1, 0, 0);
+            }
+            mediaAiTelemetry.record("DB_REGISTRATION",
+                    MediaAiTelemetryService.elapsedMillis(registrationStartedAt), "SUCCESS",
+                    null, null, 1, 0, 0);
+        }
 
         Map<String, Object> auditMeta = new LinkedHashMap<>();
         auditMeta.put("fileName", asset.getFileName());
@@ -794,16 +848,15 @@ public class MediaAssetService {
         auditMeta.put("tagCount", savedTags.size());
         recordAssetAudit(user, "MEDIA_ASSET_UPLOADED", asset.getId(), auditMeta);
 
-        // Trigger async classification + embedding — never blocks the upload response
+        // Register durable work after this upload transaction commits.
         final UUID savedId = asset.getId();
-        final String savedUrl = asset.getStorageUrl();
         final MediaFileType savedType = asset.getFileType();
         try {
             if (savedType.isImage()) {
-                aiClassificationService.classifyAndEmbed(savedId, savedUrl);
+                mediaProcessingQueueService.enqueueAfterCommit(savedId);
             }
         } catch (Exception e) {
-            log.warn("Failed to trigger AI classification for asset {}: {}", savedId, e.getMessage());
+            log.warn("Failed to enqueue AI classification for asset {}: {}", savedId, e.getMessage());
         }
 
         return MediaAssetDetailDto.from(asset, List.of(), savedTags);
@@ -840,7 +893,7 @@ public class MediaAssetService {
                     .toList();
         }
 
-        // Non-admin: own institution + the shared default institution.
+        // Contributor: own institution + the shared default institution.
         java.util.Set<UUID> ids = visibleInstitutionIds(user);
         if (ids.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Institution scope is required for media albums.");
@@ -887,16 +940,22 @@ public class MediaAssetService {
         UUID institutionId = album.getInstitution().getId();
         String name = normalizeRequiredAlbumName(dto.getName());
         assertAlbumNameFree(institutionId, album.getParentAlbum(), name, albumId);
+        boolean semanticInputChanged = !name.equals(album.getName());
         album.setName(name);
-        return MediaAlbumDto.from(mediaAlbumRepository.save(album));
+        MediaAlbumDto result = MediaAlbumDto.from(mediaAlbumRepository.save(album));
+        if (semanticInputChanged) {
+            mediaAssetRepository.findActiveIdsByMediaAlbumId(albumId)
+                    .forEach(this::invalidateSemanticEmbedding);
+        }
+        return result;
     }
 
     /**
      * Re-parent an album. {@code newParentId} null moves it to a root; the
      * target institution comes from the destination parent, else
      * {@code requestedInstitutionId}, else it stays put. Moving a folder into
-     * another institution (only the shared default for non-admins) re-homes the
-     * whole subtree and its assets.
+     * another institution re-homes the whole subtree and its assets. Only
+     * network-wide roles may move folders across institutions.
      */
     public MediaAlbumDto moveAlbum(UUID albumId, UUID newParentId, UUID requestedInstitutionId, JwtUserDetails user) {
         MediaAlbum album = loadAlbumForManage(albumId, user);
@@ -1064,8 +1123,9 @@ public class MediaAssetService {
         UUID assetInstitutionId = asset.getInstitution().getId();
         UUID targetInstitutionId = album.getInstitution().getId();
         if (!targetInstitutionId.equals(assetInstitutionId)) {
-            // Moving the asset into another institution — only its uploader or an
-            // admin, and (for non-admins) only into the shared default library.
+            // Moving the asset into another institution is reserved for
+            // network-wide roles, except contributors may move their own assets
+            // into the shared default library.
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
             if (!isNetworkRole(user) && !owner) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only move assets you uploaded.");
@@ -1076,9 +1136,12 @@ public class MediaAssetService {
             }
             asset.setInstitution(album.getInstitution());
         }
+        boolean semanticInputChanged = asset.getMediaAlbum() == null
+                || !java.util.Objects.equals(asset.getMediaAlbum().getName(), album.getName());
         asset.setMediaAlbum(album);
         MediaAssetDetailDto result
                 = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        if (semanticInputChanged) invalidateSemanticEmbedding(assetId);
 
         Map<String, Object> moveMeta = new LinkedHashMap<>();
         if (fromAlbum != null) {
@@ -1111,9 +1174,12 @@ public class MediaAssetService {
         String previousTitle = asset.getTitle();
         // Renaming back to the original filename just clears the override,
         // rather than storing a redundant copy of it.
-        asset.setDisplayTitle(title.equals(asset.getFileName()) ? null : title);
+        String displayTitle = title.equals(asset.getFileName()) ? null : title;
+        boolean semanticInputChanged = !java.util.Objects.equals(asset.getDisplayTitle(), displayTitle);
+        asset.setDisplayTitle(displayTitle);
         MediaAssetDetailDto result
                 = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        if (semanticInputChanged) invalidateSemanticEmbedding(assetId);
         recordAssetAudit(user, "MEDIA_ASSET_RENAMED", assetId,
                 Map.of("fromTitle", previousTitle, "toTitle", title));
         return result;
@@ -1132,7 +1198,7 @@ public class MediaAssetService {
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
         AssetTagDto saved = AssetTagDto.from(assetTagRepository.save(tag));
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_ADDED", assetId, Map.of("label", trimmedLabel));
+        invalidateSemanticEmbedding(assetId);
         return saved;
     }
 
@@ -1156,9 +1222,15 @@ public class MediaAssetService {
                         "At least one media tag is required — add a replacement before removing the last one.");
             }
         }
-        String label = tag.getLabel();
         assetTagRepository.delete(tag);
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of("label", label));
+        assetTagRepository.flush();
+        invalidateSemanticEmbedding(assetId);
+    }
+
+    private void invalidateSemanticEmbedding(UUID assetId) {
+        mediaSearchCache.invalidateAll();
+        mediaAssetRepository.incrementSemanticRevision(assetId);
+        mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
@@ -1255,7 +1327,6 @@ public class MediaAssetService {
         if (isNetworkRole(user) && requestedInstitutionId != null) {
             return requestedInstitutionId;
         }
-        // Non-admins may also add folders/files to the shared default institution.
         if (requestedInstitutionId != null && requestedInstitutionId.equals(sharedInstitutionId())) {
             return requestedInstitutionId;
         }
@@ -1363,11 +1434,11 @@ public class MediaAssetService {
     }
 
     private boolean isPublishedToRepository(
-            MediaAsset asset, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
-        if (!attachedAssetIds.contains(asset.getId())) {
+            UUID assetId, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
+        if (!attachedAssetIds.contains(assetId)) {
             return true;
         }
-        return assetIdsUsedBeyondDraft.contains(asset.getId());
+        return assetIdsUsedBeyondDraft.contains(assetId);
     }
 
     private boolean isContributor(JwtUserDetails user) {
@@ -1377,7 +1448,7 @@ public class MediaAssetService {
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isNetworkRole(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         if (!isPublishedToRepository(asset)) {
@@ -1393,46 +1464,17 @@ public class MediaAssetService {
         if (isAdmin(user)) {
             return asset;
         }
-        if (isContributor(user)) {
-            boolean sameInstitution = asset.getInstitution().getId().equals(user.institutionId());
+        
+        boolean isModerator = user.role() != null && "moderator".equalsIgnoreCase(user.role());
+        if (isContributor(user) || isModerator) {
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
-            if (sameInstitution && owner) {
+            if (owner) {
                 return asset;
             }
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Contributors can only delete assets they uploaded.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete assets you uploaded.");
         }
+        
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete media assets.");
-    }
-
-    private static boolean containsIgnoreCase(String value, String query) {
-        if (value == null) {
-            return false;
-        }
-        return value.toLowerCase().contains(query);
-    }
-
-    /**
-     * Every tag (manual or AI-generated) for each of the given assets, batched
-     * in one query instead of N+1. UC-2.2 A3: a custom tag added after upload
-     * must be searchable, same as an AI-generated one.
-     */
-    private Map<UUID, List<String>> loadAllTagLabels(List<UUID> assetIds) {
-        if (assetIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, List<String>> result = new java.util.HashMap<>();
-        List<Object[]> rows = assetTagRepository.findLabelsByMediaAssetIds(assetIds);
-        if (rows == null) {
-            return Map.of();
-        }
-        for (Object[] row : rows) {
-            UUID assetId = (UUID) row[0];
-            String label = row[1] instanceof String s ? s : null;
-            if (label != null && !label.isBlank()) {
-                result.computeIfAbsent(assetId, ignored -> new java.util.ArrayList<>()).add(label);
-            }
-        }
-        return result;
     }
 
     private static Sort resolveRepositorySort(String sort) {
@@ -1449,24 +1491,6 @@ public class MediaAssetService {
             return Sort.by(Sort.Order.desc("fileSizeBytes"), Sort.Order.desc("id"));
         }
         return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-    }
-
-    private static Comparator<MediaAsset> resolveSort(String sort) {
-        if (sort == null || sort.isBlank() || sort.equalsIgnoreCase("newest")) {
-            return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .reversed();
-        }
-        if (sort.equalsIgnoreCase("oldest")) {
-            return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()));
-        }
-        if (sort.equalsIgnoreCase("name")) {
-            return Comparator.comparing(MediaAsset::getFileName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
-        }
-        if (sort.equalsIgnoreCase("size")) {
-            return Comparator.comparingLong(MediaAsset::getFileSizeBytes).reversed();
-        }
-        return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed();
     }
 
     private static List<MediaFileType> resolveMediaTypes(String mediaType) {

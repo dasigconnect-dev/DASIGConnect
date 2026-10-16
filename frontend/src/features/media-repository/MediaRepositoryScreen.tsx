@@ -17,10 +17,8 @@ import {
   moveMediaAlbum,
   registerMediaAsset,
   renameMediaAlbum,
-  semanticSearchMediaAssets,
   updateMediaAssetAlbum,
   renameMediaAsset,
-  logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
 import { REQUEST_DEADLINES_MS } from "../../api/requestPolicy";
@@ -28,7 +26,7 @@ import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } fro
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import {
   attachAsset,
-  listSubmissions,
+  listSubmissionPage,
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import { useToast } from "../../context/ToastContext";
@@ -191,28 +189,36 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   // Meaning-based (Voyage embedding) search — explicit: toggle on, then press Enter.
   const [semantic, setSemantic] = useState(false);
-  const [semanticResults, setSemanticResults] = useState<MediaAsset[] | null>(null);
   const [semanticQuery, setSemanticQuery] = useState("");
-  const [semanticBusy, setSemanticBusy] = useState(false);
-  const semanticRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
-  const semanticRequestIdRef = useRef(0);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const folderUploadControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const semanticSearchActive = semantic && semanticQuery.length >= 2;
+  const effectiveSearch = semanticSearchActive
+    ? semanticQuery
+    : (!semantic && debouncedSearch.length >= 2 ? debouncedSearch : "");
 
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
   const networkAlbumMode = isNetworkBrowser && !selectedInstitutionId;
   // At that network root (no folder open, no search) only folder cards are
   // shown, so the network-wide asset fetch is skipped.
-  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim();
+  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !effectiveSearch;
 
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
-  const listAlbumId = search.trim() ? null : currentAlbumId;
+  const listAlbumId = effectiveSearch ? null : currentAlbumId;
   const {
     assets,
     setAssets,
     loading: assetsLoading,
     error: assetsError,
     refresh,
+    totalCount,
     hasNextPage,
     loadingMore,
     loadMore,
@@ -221,8 +227,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     networkView,
     selectedInstitutionId,
     listAlbumId,
+    effectiveSearch,
+    sort,
+    semanticSearchActive,
     !skipAssetFetch,
   );
+  const semanticResults = semanticSearchActive ? assets : null;
+  const semanticBusy = semanticSearchActive && assetsLoading;
 
   // Which institution's albums to load. null + network browser means every institution's albums.
   const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
@@ -274,12 +285,15 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }, [queryClient, user.role, userScope]);
 
-  const submissionsQueryKey = useMemo(
+  const draftsQueryKey = useMemo(
     () =>
-      queryKeys.submissions.all({
+      queryKeys.submissions.page({
         role: user.role,
         userId: userScope,
         institutionId: user.institutionId ?? null,
+        bucket: "drafts",
+        search: "",
+        pageSize: 50,
       }),
     [user.institutionId, user.role, userScope],
   );
@@ -354,6 +368,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsLoadingMore, setDraftsLoadingMore] = useState(false);
+  const [draftNextPage, setDraftNextPage] = useState<number | null>(null);
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -405,21 +421,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     };
   }, [isNetworkBrowser, toast]);
 
-  // UC-2.2 A2: the Network View banner tells the actor this session is being
-  // logged — make that true, once per browser session (sessionStorage survives
-  // navigating away and back, but not a fresh tab/reload of the auth session).
-  useEffect(() => {
-    if (!isNetworkBrowser) return;
-    const flagKey = `dasig:network-view-logged:${user.id ?? user.email}`;
-    try {
-      if (sessionStorage.getItem(flagKey)) return;
-      sessionStorage.setItem(flagKey, "1");
-    } catch {
-      // sessionStorage unavailable (e.g. private browsing) — log anyway rather than silently skip.
-    }
-    void logNetworkViewAccess();
-  }, [isNetworkBrowser, user.id, user.email]);
-
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,
     [albums, currentAlbumId],
@@ -465,60 +466,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setSearchParams(next);
     closePanel();
     clearSelection();
-    setSemanticResults(null);
+    setSemanticQuery("");
     setContentTypeFilter("all");
   }
 
   function cancelSemanticRequest() {
-    semanticRequestIdRef.current += 1;
-    semanticRequestRef.current?.controller.abort();
-    semanticRequestRef.current = null;
-    setSemanticBusy(false);
+    setSemanticQuery("");
   }
 
   useEffect(() => {
     return () => {
-      semanticRequestIdRef.current += 1;
-      semanticRequestRef.current?.controller.abort();
-      semanticRequestRef.current = null;
       folderUploadControllerRef.current?.abort();
       folderUploadControllerRef.current = null;
     };
   }, []);
 
-  async function runSemanticSearch() {
+  function runSemanticSearch() {
     const q = search.trim();
     if (q.length < 2) {
       cancelSemanticRequest();
-      setSemanticResults(null);
       return;
     }
-    semanticRequestRef.current?.controller.abort();
-    const request = {
-      id: ++semanticRequestIdRef.current,
-      controller: new AbortController(),
-    };
-    semanticRequestRef.current = request;
-    setSemanticBusy(true);
-    try {
-      const results = await semanticSearchMediaAssets(
-        q,
-        selectedInstitutionId,
-        request.controller.signal,
-      );
-      if (semanticRequestRef.current?.id !== request.id) return;
-      setSemanticResults(results);
-      setSemanticQuery(q);
-    } catch (err: unknown) {
-      if (semanticRequestRef.current?.id === request.id && !request.controller.signal.aborted) {
-        toast.error(getErrorText(err, "Semantic search failed. Try again."));
-      }
-    } finally {
-      if (semanticRequestRef.current?.id === request.id) {
-        semanticRequestRef.current = null;
-        setSemanticBusy(false);
-      }
-    }
+    setSemanticQuery(q);
   }
 
   function openInstitution(institutionId: string) {
@@ -582,7 +551,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const crumbInstitution = selectedInstitution ?? (networkAlbumMode ? currentAlbumInstitution : null);
 
   const filteredAssets = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const normalizedTerm = search.trim().toLowerCase();
+    // Server search also matches tags and asset codes that are absent from the
+    // summary DTO, so do not discard those valid results client-side.
+    const term = effectiveSearch ? "" : (normalizedTerm.length >= 2 ? normalizedTerm : "");
     let result = assets.filter((a) => {
       if (!term) return true;
       return [a.title, a.fileName, a.uploaderName, a.institutionName]
@@ -599,7 +571,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
 
     return result;
-  }, [assets, search, sort]);
+  }, [assets, effectiveSearch, search, sort]);
 
   // At the library root (no folder, no search) every asset lives in some folder,
   // so the root shows folders only — loose asset tiles would just be noise.
@@ -609,7 +581,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !hasNextPage || loadingMore || semanticResults !== null) return;
+    if (!target || !hasNextPage || loadingMore) return;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
       observer.unobserve(target);
@@ -617,7 +589,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }, { rootMargin: "240px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasNextPage, loadingMore, loadMore, semanticResults]);
+  }, [hasNextPage, loadingMore, loadMore]);
 
   // Folder-name and tag matches for the current search term (both search modes).
   const searchTerm = search.trim().toLowerCase();
@@ -699,7 +671,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "contributor") {
+    if (user.role === "contributor" || user.role === "moderator") {
       return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
     }
     return false;
@@ -717,14 +689,36 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setAddToDraftOpen(true);
     setDraftsLoading(true);
     queryClient.fetchQuery({
-      queryKey: submissionsQueryKey,
-      queryFn: ({ signal }) => listSubmissions(signal).then((res) => res.data),
+      queryKey: draftsQueryKey,
+      queryFn: ({ signal }) => listSubmissionPage(
+        { page: 0, pageSize: 50, bucket: "drafts" },
+        signal,
+      ).then((res) => res.data),
       staleTime: 30_000,
       meta: authenticatedQueryMeta,
     })
-      .then((submissions) => setDrafts(submissions.filter((item) => item.status === "draft")))
+      .then((page) => {
+        setDrafts(page.items);
+        setDraftNextPage(page.hasNext ? page.page + 1 : null);
+      })
       .catch(() => toast.error("Could not load your drafts."))
       .finally(() => setDraftsLoading(false));
+  }
+
+  function loadMoreDrafts() {
+    if (draftNextPage === null || draftsLoadingMore) return;
+    const requestedPage = draftNextPage;
+    setDraftsLoadingMore(true);
+    listSubmissionPage({ page: requestedPage, pageSize: 50, bucket: "drafts" })
+      .then(({ data: page }) => {
+        setDrafts((current) => {
+          const knownIds = new Set(current.map((draft) => draft.id));
+          return [...current, ...page.items.filter((draft) => !knownIds.has(draft.id))];
+        });
+        setDraftNextPage(page.hasNext ? page.page + 1 : null);
+      })
+      .catch(() => toast.error("Could not load more drafts."))
+      .finally(() => setDraftsLoadingMore(false));
   }
 
   async function handleSelectDraft(draftId: string) {
@@ -735,6 +729,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     let alreadyThere = 0;
     const updatedDrafts: SubmissionSummary[] = [];
     try {
+      let errorEncountered: unknown = null;
       for (const assetId of ids) {
         try {
           const { data } = await attachAsset(draftId, assetId);
@@ -742,7 +737,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           added += 1;
         } catch (err: unknown) {
           if (isConflict(err)) alreadyThere += 1;
-          else throw err;
+          else {
+            errorEncountered = err;
+            break;
+          }
         }
       }
       updatedDrafts.forEach(syncSubmissionCache);
@@ -751,13 +749,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       }
       setAddToDraftOpen(false);
       clearSelection();
+      
+      if (errorEncountered) {
+        throw errorEncountered;
+      }
+      
       const summary =
         added > 0
           ? `Added ${added} ${added === 1 ? "asset" : "assets"} to the draft.`
           : "Those assets are already in that draft.";
       toast.success(alreadyThere > 0 && added > 0 ? `${summary} ${alreadyThere} already there.` : summary);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Could not add to draft.";
+      const message = getErrorText(err, "Could not add to draft.");
       toast.error(message);
     } finally {
       setBusyDraftId(null);
@@ -984,18 +987,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       }, signal);
 
       // Reserve the last 10% for the metadata-register call below.
+      const uploadStartedAt = performance.now();
       await putToStorage(
         urlData.signedUrl,
         file,
         (pct) => onProgress?.(Math.round(pct * 0.9)),
         signal,
       );
+      const r2UploadDurationMs = Math.round(performance.now() - uploadStartedAt);
 
       await registerMediaAsset({
         storageUrl: urlData.publicUrl,
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        r2UploadDurationMs,
         contentHash,
         allowDuplicate: metadata.allowDuplicate,
         institutionId,
@@ -1162,7 +1168,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function deleteTierForAsset(asset: MediaAsset): DeleteTier {
     const usedIn = asset.usedIn ?? [];
-    if (usedIn.some((u) => u.submissionStatus === "scheduled" || u.submissionStatus === "in_review" || u.submissionStatus === "pending")) {
+    if (usedIn.some((u) => ["scheduled", "in_review", "pending", "publishing", "direct_post_scheduled", "direct_post_publishing"].includes(u.submissionStatus))) {
       return "blocked";
     }
     if (usedIn.some((u) => u.submissionStatus === "draft" || u.submissionStatus === "needs_revision")) {
@@ -1237,25 +1243,34 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setDeleting(true);
     try {
       const ids = deleteAssets.length > 0 ? deleteAssets.map((asset) => asset.id) : [deleteAsset.id];
+      let actuallyDeletedIds = ids;
       if (ids.length > 1) {
-        await bulkDeleteMediaAssets(ids, true);
+        const response = await bulkDeleteMediaAssets(ids, true);
+        actuallyDeletedIds = response.data.deletedIds;
       } else {
         await deleteMediaAsset(deleteAsset.id, deleteTier === "warning");
       }
-      setAssets((prev) => prev.filter((a) => !ids.includes(a.id)));
-      ids.forEach((id) => {
+      setAssets((prev) => prev.filter((a) => !actuallyDeletedIds.includes(a.id)));
+      actuallyDeletedIds.forEach((id) => {
         if (checkedIds.has(id)) toggleCheck(id);
       });
-      if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
+      if (selectedAsset && actuallyDeletedIds.includes(selectedAsset.id)) closePanel();
       setDeleteOpen(false);
       void invalidateMediaMetadata();
-      toast.success(
-        ids.length > 1
-          ? `${ids.length} assets deleted from the media library.`
-          : deleteTier === "warning"
-            ? "Asset deleted. Broken reference flagged in draft."
-            : "Asset deleted. Terminal submission records updated.",
-      );
+
+      if (actuallyDeletedIds.length === 0 && ids.length > 0) {
+        toast.error("Assets could not be deleted because they are referenced by active submissions.");
+      } else if (actuallyDeletedIds.length < ids.length) {
+        toast.success(`${actuallyDeletedIds.length} assets deleted. ${ids.length - actuallyDeletedIds.length} skipped due to active references.`);
+      } else {
+        toast.success(
+          actuallyDeletedIds.length > 1
+            ? `${actuallyDeletedIds.length} assets deleted from the media library.`
+            : deleteTier === "warning"
+              ? "Asset deleted. Broken reference flagged in draft."
+              : "Asset deleted. Terminal submission records updated.",
+        );
+      }
     } catch {
       toast.error("Failed to delete asset. It may be referenced by an active submission or outside your delete scope.");
     } finally {
@@ -1418,20 +1433,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         />
       ) : (
         <>
-          {/* Network View bar */}
-      {/* {isAdmin && (
-        <div className={`med-network-bar${networkView ? " visible" : ""}`}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <span>
-            <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
-          </span>
-        </div>
-      )} */}
-
       {/* Toolbar: institution · search (+ semantic) · sort · view · tags */}
       <MediaToolbar
         isAdmin={isNetworkBrowser}
@@ -1442,13 +1443,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onSearchChange={(v) => {
           cancelSemanticRequest();
           setSearch(v);
-          if (!v.trim()) setSemanticResults(null);
         }}
         semantic={semantic}
         onSemanticToggle={() => {
           cancelSemanticRequest();
           setSemantic((on) => {
-            if (on) setSemanticResults(null);
             return !on;
           });
         }}
@@ -1511,14 +1510,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {semanticResults !== null && (
         <div className="med-semantic-banner">
           <span>
-            <strong>{semanticResults.length}</strong> meaning-based {semanticResults.length === 1 ? "match" : "matches"} for
+            <strong>{totalCount}</strong> meaning-based {totalCount === 1 ? "match" : "matches"} for
             {" "}<em>“{semanticQuery}”</em>
           </span>
           <button
             type="button"
             onClick={() => {
               cancelSemanticRequest();
-              setSemanticResults(null);
+              setSemanticQuery("");
             }}
           >
             Clear
@@ -1664,7 +1663,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                           />
                         ))}
                       </div>
-                      {hasNextPage && semanticResults === null && (
+                      {hasNextPage && (
                         <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
                       )}
                     </section>
@@ -1767,6 +1766,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         assetCount={activeAssetIds(addToDraftAssetOverride ?? undefined).length}
         drafts={drafts}
         loading={draftsLoading}
+        loadingMore={draftsLoadingMore}
+        hasMore={draftNextPage !== null}
         busyDraftId={busyDraftId}
         onClose={() => {
           if (busyDraftId !== null) return;
@@ -1774,6 +1775,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           setAddToDraftAssetOverride(null);
         }}
         onSelectDraft={(id) => void handleSelectDraft(id)}
+        onLoadMore={loadMoreDrafts}
         onNewPostInstead={() => {
           setAddToDraftOpen(false);
           handleNewPost(addToDraftAssetOverride ?? undefined);

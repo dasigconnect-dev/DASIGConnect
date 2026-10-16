@@ -44,6 +44,7 @@ public class NotificationEventListener {
     private final UserRepository userRepository;
     private final EmailDeliveryService emailDeliveryService;
     private final MessengerDeliveryService messengerDeliveryService;
+    private final com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     private final String frontendBaseUrl;
 
     public NotificationEventListener(
@@ -51,11 +52,13 @@ public class NotificationEventListener {
             UserRepository userRepository,
             EmailDeliveryService emailDeliveryService,
             MessengerDeliveryService messengerDeliveryService,
+            com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository,
             @Value("${app.frontend.base-url:http://localhost:5173}") String frontendBaseUrl) {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.emailDeliveryService = emailDeliveryService;
         this.messengerDeliveryService = messengerDeliveryService;
+        this.auditLogRepository = auditLogRepository;
         this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
     }
 
@@ -68,11 +71,11 @@ public class NotificationEventListener {
         String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart + ".";
         String link = "/submissions/" + s.getId();
 
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.submission_pending, msg, link);
+        for (User reviewer : reviewers()) {
+            notificationService.createNotification(reviewer, NotificationEventType.submission_pending, msg, link);
             String messengerMsg = "New submission to review: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
     }
 
@@ -162,6 +165,31 @@ public class NotificationEventListener {
                     NotificationEventType.submission_edited_in_review.name(),
                     "DASIGConnect — Your submission was edited during review",
                     msg + "\n\nView the before/after: " + frontendBaseUrl + link);
+            notifyAdminsOfSubstantiveEdit(s, severity, event.editorId(), link);
+        }
+    }
+
+    /**
+     * A10 governance: a substantive review edit (FLAGGED / ADDED_MEDIA) is also
+     * surfaced to Administrators in-app, so a reviewer rewriting other people's
+     * posts is visible beyond the contributor. The editor is skipped when they
+     * are an admin themselves. In-app only — the contributor already gets the email.
+     */
+    private void notifyAdminsOfSubstantiveEdit(
+            Submission s, ReviewEditSeverity severity, java.util.UUID editorId, String link) {
+        String editor = editorId == null ? "A reviewer"
+                : userRepository.findById(editorId).map(User::getEmail).orElse("A reviewer");
+        String change = severity == ReviewEditSeverity.ADDED_MEDIA
+                ? "added Media Library media the contributor didn't submit to"
+                : "made substantive edits to";
+        String adminMsg = editor + " " + change + " '" + s.getEventTitle()
+                + "' during review. Open it to see the before/after.";
+        for (User admin : admins()) {
+            if (editorId != null && editorId.equals(admin.getId())) {
+                continue;
+            }
+            notificationService.createNotification(
+                    admin, NotificationEventType.submission_edited_in_review, adminMsg, link);
         }
     }
 
@@ -214,16 +242,36 @@ public class NotificationEventListener {
             }
         }
 
-        for (User admin : targetAdmins) {
-            notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
-            emailDeliveryService.send(admin,
-                    NotificationEventType.submission_publish_failed.name(),
-                    "DASIGConnect — Publishing failed",
-                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/validation/queue?tab=failed");
-            // Messenger alert (A4 / A5)
-            String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
-                    + "\". Manual action required: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
+                long recentFailures = auditLogRepository.countByActionAndCreatedAtAfter(
+                "PUBLISH_FAILED", java.time.Instant.now().minus(1, java.time.temporal.ChronoUnit.HOURS));
+        boolean consolidate = recentFailures > 5;
+        boolean isFirstConsolidated = recentFailures == 6;
+
+        if (consolidate) {
+            if (isFirstConsolidated) {
+                String consolidatedMsg = "High-Volume Failure Alert: More than 5 publishing failures in the last hour. "
+                        + "Individual alerts are now suppressed. Please check the Failed tab.";
+                for (User admin : targetAdmins) {
+                    notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, consolidatedMsg, "/queue?tab=failed");
+                    emailDeliveryService.send(admin,
+                            NotificationEventType.submission_publish_failed.name(),
+                            "DASIGConnect - High-Volume Failures",
+                            consolidatedMsg + "\n\nRecover here: " + frontendBaseUrl + "/queue?tab=failed");
+                    messengerDeliveryService.sendToUser(admin.getId(), "URGENT: " + consolidatedMsg);
+                }
+            }
+        } else {
+            for (User admin : targetAdmins) {
+                notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
+                emailDeliveryService.send(admin,
+                        NotificationEventType.submission_publish_failed.name(),
+                        "DASIGConnect - Publishing failed",
+                        adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
+                // Messenger alert (A4 / A5)
+                String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
+                        + "\". Manual action required: " + frontendBaseUrl + link;
+                messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
+            }
         }
 
         String contributorMsg = "'" + s.getEventTitle()
@@ -272,7 +320,7 @@ public class NotificationEventListener {
             }
         }
         String msg = sb.toString();
-        String link = "/scheduler/calendar";
+        String link = "/calendar";
 
         // A week-long content gap for a member HEI is a review + network
         // planning concern — notify every moderator, every admin, and that
@@ -391,15 +439,15 @@ public class NotificationEventListener {
                 + s.getEventTitle() + "' for a live event and it needs immediate review.";
         String link = "/submissions/" + s.getId();
 
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.fast_track_submission, msg, link);
-            emailDeliveryService.send(moderator,
+        for (User reviewer : reviewers()) {
+            notificationService.createNotification(reviewer, NotificationEventType.fast_track_submission, msg, link);
+            emailDeliveryService.send(reviewer,
                     NotificationEventType.fast_track_submission.name(),
                     "Urgent: fast-track submission needs review",
                     msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
             String messengerMsg = "Urgent fast-track submission: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
     }
 
@@ -427,7 +475,7 @@ public class NotificationEventListener {
         String name = event.institution().getName();
         String msg = name + " has no active moderator. Its pending submissions are being escalated "
                 + "until one is assigned.";
-        String link = "/admin/institution-management";
+        String link = "/institution-management";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_no_moderator, msg, link);
             emailDeliveryService.send(admin,
@@ -442,7 +490,7 @@ public class NotificationEventListener {
     public void onInstitutionOnboarded(InstitutionOnboardedEvent event) {
         String name = event.institution().getName();
         String msg = name + " finished onboarding — its moderator account is active and the workspace is ready.";
-        String link = "/admin/institution-management";
+        String link = "/institution-management";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
         }
@@ -495,6 +543,43 @@ public class NotificationEventListener {
         });
     }
 
+    // ── Administrator ownership transfer (UC-1.1 A8) — requested ────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminTransferRequested(AdminTransferRequestedEvent event) {
+        User user = event.target();
+        if (user == null) {
+            return;
+        }
+        String msg = "Admin Owner"
+                + (event.requestedByEmail() != null ? " (" + event.requestedByEmail() + ")" : "")
+                + " has requested to transfer Network Admin Ownership to your account. Confirm before the request expires.";
+        String link = "/admin/admin-management";
+        notificationService.createNotification(user, NotificationEventType.admin_transfer_requested, msg, link);
+        emailDeliveryService.send(user,
+                NotificationEventType.admin_transfer_requested.name(),
+                "DASIGConnect — Admin Ownership Transfer Request",
+                msg + "\n\nSign in to review and confirm: " + frontendBaseUrl + link);
+    }
+
+    // ── Administrator ownership transfer (UC-1.1 A8) — confirmed ────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminTransferConfirmed(AdminTransferConfirmedEvent event) {
+        if (event.newAdminOwner() != null) {
+            String msg = "Admin ownership transfer confirmed. You are now the Admin Owner of DASIGConnect.";
+            notificationService.createNotification(event.newAdminOwner(),
+                    NotificationEventType.admin_transfer_confirmed, msg, "/admin/admin-management");
+        }
+        if (event.previousAdminOwner() != null) {
+            String msg = "Admin ownership successfully transferred to "
+                    + (event.newAdminOwner() != null ? event.newAdminOwner().getEmail() : "the target administrator")
+                    + ". You remain an active Administrator.";
+            notificationService.createNotification(event.previousAdminOwner(),
+                    NotificationEventType.admin_transfer_confirmed, msg, "/admin/admin-management");
+        }
+    }
+
     private static String roleLabel(UserRole role) {
         if (role == null) {
             return "unknown";
@@ -510,6 +595,16 @@ public class NotificationEventListener {
      */
     private List<User> allModerators() {
         return userRepository.findByRole(UserRole.moderator);
+    }
+
+    private List<User> reviewers() {
+        List<User> targets = new java.util.ArrayList<>(admins());
+        for (User m : allModerators()) {
+            if (!targets.contains(m)) {
+                targets.add(m);
+            }
+        }
+        return targets;
     }
 
     private List<User> institutionContributors(java.util.UUID institutionId) {
@@ -548,3 +643,6 @@ public class NotificationEventListener {
         return n == 1 ? "1 day" : n + " days";
     }
 }
+
+
+

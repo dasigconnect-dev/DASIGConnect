@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { AnalyticsExportMetric, AnalyticsSummaryDto } from "../../../api/analyticsApi";
 import { formatNumber, formatPercent } from "../analyticsUtils";
 
@@ -203,10 +204,19 @@ export default function ExecutiveSummaryStrip({ summary, onOpenReport }: Props) 
     },
   ];
 
-  const cards = isContributor ? contributorCards : adminCards;
+  // "Top institution" only means something across two or more institutions:
+  // all institutions (network view) or an Admin selection of several. A single
+  // selected institution is always "rank #1" of itself.
+  const showTopInstitution = summary.selectedInstitutionIds.length !== 1;
+  const cards = isContributor
+    ? contributorCards
+    : adminCards.filter((card) => card.id !== "top-inst" || showTopInstitution);
 
   return (
-    <div className="analytics-kpi-strip-wrap">
+    <div
+      className="analytics-kpi-strip-wrap"
+      style={{ "--kpi-count": cards.length } as CSSProperties}
+    >
       {cards.map((c) => (
         <div
           className={`analytics-kpi-strip-card${c.reportMetric && onOpenReport ? " is-interactive" : ""}`}

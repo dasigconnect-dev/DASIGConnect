@@ -31,6 +31,7 @@ class SystemHealthServiceTest {
     private final ScheduledJobRunRepository scheduledJobRunRepository = mock(ScheduledJobRunRepository.class);
     private final MediaStorageService mediaStorage = mock(MediaStorageService.class);
     private final PublishSuccessRateRepository publishSuccessRateRepository = mock(PublishSuccessRateRepository.class);
+    private final MediaAiTelemetryService mediaAiTelemetryService = mock(MediaAiTelemetryService.class);
 
     private final SystemHealthService service = new SystemHealthService(
             jdbcTemplate,
@@ -38,6 +39,7 @@ class SystemHealthServiceTest {
             mock(TokenManagementService.class),
             mediaStorage,
             publishSuccessRateRepository,
+            mediaAiTelemetryService,
             1_000_000,
             1_000_000,
             80,
@@ -66,6 +68,7 @@ class SystemHealthServiceTest {
 
     @Test
     void operationalMetrics_whenNoRecentActivity_returnsHealthyNoActivityMetrics() {
+        when(mediaAiTelemetryService.operationalMetrics(30)).thenReturn(List.of());
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenReturn(Map.of("value", 0, "sample_size", 0))
                 .thenReturn(Map.of("approvals", 0, "edited", 0))
@@ -99,6 +102,7 @@ class SystemHealthServiceTest {
 
     @Test
     void operationalMetrics_whenDatabaseQueryFails_marksOnlyThatMetricUnavailable() {
+        when(mediaAiTelemetryService.operationalMetrics(30)).thenReturn(List.of());
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenThrow(new IllegalStateException("validation_logs is missing"))
                 .thenReturn(Map.of("approvals", 4, "edited", 1))
@@ -120,6 +124,7 @@ class SystemHealthServiceTest {
 
     @Test
     void missedReviewRate_computesShareOfReviewOutcomesThatWereMissed() {
+        when(mediaAiTelemetryService.operationalMetrics(30)).thenReturn(List.of());
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenReturn(Map.of("value", 0, "sample_size", 0))
                 .thenReturn(Map.of("approvals", 0, "edited", 0))

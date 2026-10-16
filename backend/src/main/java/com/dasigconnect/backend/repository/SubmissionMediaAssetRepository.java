@@ -48,13 +48,19 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
 
     List<SubmissionMediaAsset> findByMediaAssetIdOrderByCreatedAtDesc(UUID mediaAssetId);
 
+    @Query("SELECT sma.submission.id FROM SubmissionMediaAsset sma WHERE sma.mediaAsset.id = :assetId")
+    List<UUID> findSubmissionIdsByMediaAssetId(@Param("assetId") UUID assetId);
+
     @Query("""
         SELECT COUNT(sma) FROM SubmissionMediaAsset sma
         WHERE sma.mediaAsset.id = :assetId
           AND sma.submission.status IN (
                             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
                             com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
-                            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing
           )
         """)
     long countBlockingSubmissionsByAssetId(@Param("assetId") UUID assetId);
@@ -97,4 +103,13 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
         WHERE sma.mediaAsset.id IN :assetIds
         """)
     Set<UUID> findAssetIdsWithAnySubmissionLink(@Param("assetIds") Collection<UUID> assetIds);
+
+    /** [assetIdText, usageCount, mostRecentUse] for a bounded recommendation candidate set. */
+    @Query(value = """
+        SELECT CAST(media_asset_id AS text), COUNT(*), MAX(created_at)
+        FROM submission_media_assets
+        WHERE media_asset_id IN (:assetIds)
+        GROUP BY media_asset_id
+        """, nativeQuery = true)
+    List<Object[]> findUsageStatsByMediaAssetIds(@Param("assetIds") Collection<UUID> assetIds);
 }

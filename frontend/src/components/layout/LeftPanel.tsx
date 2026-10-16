@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import TopologyField from '../ui/topology-field'
 
 interface LeftPanelProps {
   children: ReactNode
@@ -7,7 +8,7 @@ interface LeftPanelProps {
 export default function LeftPanel({ children }: LeftPanelProps) {
   return (
     <div className="panel-l">
-      <div className="l-orb"></div>
+      <TopologyField className="panel-l-topology" />
       <div className="l-content">{children}</div>
     </div>
   )

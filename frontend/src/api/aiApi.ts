@@ -55,30 +55,68 @@ export interface MediaSuggestResult {
   fileType: string;
   fileSizeBytes: number;
   aiCategory: string | null;
+  assetType?: string | null;
   similarityScore: number;
   matchReasons?: string[];
+  scoreBreakdown?: Record<string, number>;
+  rankingVersion?: string;
   createdAt: string;
 }
 
 export interface MediaSuggestRequest {
   eventTitle?: string;
   caption?: string;
-  category?: string;
+
   tags?: string[];
+  selectedAssetIds?: string[];
 }
+
+export interface MediaSuggestResponse {
+  results: MediaSuggestResult[];
+  processing: boolean;
+  outcome: MediaSuggestOutcome;
+}
+
+export type MediaSuggestOutcome =
+  | "READY"
+  | "PROCESSING"
+  | "EMBEDDING_FAILED"
+  | "NO_INDEXED_CANDIDATES"
+  | "NO_RELEVANT_MATCHES"
+  | "ERROR";
 
 export async function suggestMedia(
   submissionId: string,
   params: MediaSuggestRequest,
   signal?: AbortSignal,
-): Promise<MediaSuggestResult[]> {
+): Promise<MediaSuggestResponse> {
   const res = await api.post<MediaSuggestResult[]>(
     `/ai/submissions/${submissionId}/suggest-media`,
     params,
     { signal, validateStatus: () => true }
   );
-  if (res.status !== 200) return [];
-  return res.data ?? [];
+  if (res.status !== 200) throw new Error("media_suggestions_unavailable");
+  const processing = res.headers["x-media-suggestions-processing"] === "true";
+  const outcomeHeader = res.headers["x-media-suggestions-outcome"] as MediaSuggestOutcome | undefined;
+  return {
+    results: res.data ?? [],
+    processing,
+    outcome: outcomeHeader ?? (processing ? "PROCESSING" : "NO_RELEVANT_MATCHES"),
+  };
+}
+
+export async function getMediaSuggestionProcessingStatus(
+  submissionId: string,
+  selectedAssetIds: string[],
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const res = await api.post<boolean>(
+    `/ai/submissions/${submissionId}/suggest-media-status`,
+    { selectedAssetIds },
+    { signal, validateStatus: () => true },
+  );
+  if (res.status !== 200) throw new Error("media_suggestion_status_unavailable");
+  return res.data === true;
 }
 
 export interface AlbumMatchCandidate {
@@ -238,4 +276,53 @@ export function logCaptionInteraction(
   api
     .post("/ai/caption/log", { submissionId, actionTaken, toneSelected })
     .catch(() => {});
+}
+
+// ─── Proofreading (review-queue edit safeguards) ─────────────────────────────
+
+export interface ProofreadIssue {
+  kind: "spelling" | "grammar" | "clarity" | "meaning";
+  /** Exact text the finding refers to — always a substring of the checked text. */
+  excerpt: string;
+  /** Replacement for `excerpt`; empty for a "meaning" finding (no safe automatic fix). */
+  suggestion: string;
+  explanation: string;
+}
+
+/**
+ * Advisory proofreading. With `originalText`, only mistakes the edit
+ * introduced are reported, plus any changed name/date/number ("meaning").
+ * Throws Error("rate-limit") on 429, Error("timeout") on timeout.
+ */
+export async function proofreadText(
+  text: string,
+  originalText?: string,
+  signal?: AbortSignal,
+  submissionId?: string | null,
+): Promise<ProofreadIssue[]> {
+  let res;
+  try {
+    res = await api.post<ApiEnvelope<{ issues: ProofreadIssue[] }>>(
+      "/ai/proofread",
+      {
+        text,
+        ...(originalText?.trim() ? { originalText } : {}),
+        ...(submissionId ? { submissionId } : {}),
+      },
+      { signal, validateStatus: () => true },
+    );
+  } catch (error) {
+    if (isRequestDeadlineError(error)) throw new Error("timeout", { cause: error });
+    throw error;
+  }
+  if (res.status === 429) throw new Error("rate-limit");
+  if (res.status === 504) throw new Error("timeout");
+  if (res.status !== 200) throw new Error("unavailable");
+  const body = "data" in res.data ? res.data.data : (res.data as unknown as { issues: ProofreadIssue[] });
+  return body?.issues ?? [];
+}
+
+/** AI Feature Adoption: one suggested writing fix was applied. Fire-and-forget. */
+export function logProofreadFixApplied(submissionId?: string | null): void {
+  api.post("/ai/proofread/applied", { submissionId: submissionId ?? null }).catch(() => {});
 }

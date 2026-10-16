@@ -2,6 +2,7 @@ package com.dasigconnect.backend.external;
 
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
+import com.dasigconnect.backend.model.dto.ai.EventHypothesisDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -46,6 +47,8 @@ public class ClaudeVisionClient {
     private static final String API_URL = "https://api.anthropic.com/v1/messages";
     private static final String ANTHROPIC_VERSION = "2023-06-01";
     private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB — Anthropic hard limit
+    private static final int VISUAL_EMBEDDING_MAX_DIMENSION = 1280;
+    private static final int VISUAL_EMBEDDING_MAX_BYTES = 1536 * 1024;
     private static final int DEFAULT_CAPTION_MAX_TOKENS = 512;
     private static final int MAX_CAPTION_MAX_TOKENS = 4096;
     public static final int MAX_REQUESTED_CAPTION_WORDS = 2000;
@@ -139,6 +142,14 @@ public class ClaudeVisionClient {
      * Generates a plain-text completion for system alerts / suggestions.
      */
     public String generateText(String systemPrompt, String userPrompt) {
+        return generateText(systemPrompt, userPrompt, 512);
+    }
+
+    /**
+     * Same as {@link #generateText(String, String)} with a caller-chosen output
+     * budget, for completions longer than a short suggestion list.
+     */
+    public String generateText(String systemPrompt, String userPrompt, int maxTokens) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new ClaudeApiException("Anthropic API key is not configured.");
         }
@@ -151,7 +162,7 @@ public class ClaudeVisionClient {
 
             var root = objectMapper.createObjectNode();
             root.put("model", model);
-            root.put("max_tokens", 512);
+            root.put("max_tokens", maxTokens);
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 root.put("system", systemPrompt);
             }
@@ -278,6 +289,58 @@ public class ClaudeVisionClient {
     public PreparedImage prepareImageForEmbedding(String url) {
         ImageData data = fetchAndPrepareImage(url);
         return new PreparedImage(data.bytes(), data.mediaType());
+    }
+
+    /**
+     * Prepares a smaller copy for Voyage visual retrieval. The original object
+     * in storage is never modified. Capping resolution avoids sending a large
+     * base64 payload when the retrieval model only needs a representative image.
+     */
+    public PreparedImage prepareImageForVisualEmbedding(String url) {
+        byte[] raw = fetchImageBytes(url);
+        String mediaType = detectMediaType(url);
+        try {
+            BufferedImage original = ImageIO.read(new ByteArrayInputStream(raw));
+            if (original == null) return new PreparedImage(raw, mediaType);
+            int maxDimension = Math.max(original.getWidth(), original.getHeight());
+            if (maxDimension <= VISUAL_EMBEDDING_MAX_DIMENSION
+                    && raw.length <= VISUAL_EMBEDDING_MAX_BYTES) {
+                return new PreparedImage(raw, mediaType);
+            }
+
+            double scale = Math.min(
+                    1.0,
+                    (double) VISUAL_EMBEDDING_MAX_DIMENSION / maxDimension);
+            byte[] resized = null;
+            for (int attempt = 0; attempt < 5; attempt++) {
+                int width = Math.max(1, (int) Math.round(original.getWidth() * scale));
+                int height = Math.max(1, (int) Math.round(original.getHeight() * scale));
+                BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+                Graphics2D graphics = output.createGraphics();
+                graphics.setRenderingHint(
+                        RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.setRenderingHint(
+                        RenderingHints.KEY_RENDERING,
+                        RenderingHints.VALUE_RENDER_QUALITY);
+                graphics.drawImage(original, 0, 0, width, height, null);
+                graphics.dispose();
+
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                ImageIO.write(output, "JPEG", bytes);
+                resized = bytes.toByteArray();
+                if (resized.length <= VISUAL_EMBEDDING_MAX_BYTES) break;
+                scale *= 0.8;
+            }
+            if (resized == null || resized.length == 0) return new PreparedImage(raw, mediaType);
+            log.info("Prepared {}x{} visual embedding image ({} -> {} bytes)",
+                    original.getWidth(), original.getHeight(), raw.length, resized.length);
+            return new PreparedImage(resized, "image/jpeg");
+        } catch (Exception error) {
+            log.warn("Could not resize visual embedding input; using original image: {}",
+                    error.getMessage());
+            return new PreparedImage(raw, mediaType);
+        }
     }
 
     private ImageData fetchAndPrepareImage(String url) {
@@ -747,6 +810,18 @@ public class ClaudeVisionClient {
               "possible_use_cases": [],
               "ai_tags": [],
               "excluded_categories": [],
+              "observed_scenes": [],
+              "observed_activities": [],
+              "people_count_range": "",
+              "equipment_signals": [],
+              "recognition_signals": [],
+              "ocr_text": [],
+              "visible_dates": [],
+              "event_hypotheses": [{"event_type": "", "confidence": 0.0, "evidence": []}],
+              "temporal_classification": "",
+              "possible_expiration": "",
+              "visual_quality_signals": [],
+              "composition_signals": [],
               "confidence": 0.0
             }
 
@@ -755,6 +830,11 @@ public class ClaudeVisionClient {
             - ai_caption must be factual and neutral, not promotional.
             - ai_tags must contain 8 to 30 searchable visual tags.
             - Tags must describe visible subjects, objects, setting, style, or use case.
+            - Describe observable scenes and activities before suggesting an event type.
+            - Event hypotheses are probabilities, not facts. Include only hypotheses supported by visible evidence.
+            - people_count_range must be a coarse range such as "0", "1", "2-5", "6-20", or "20+".
+            - OCR and visible dates must contain only legible text. Do not guess obscured text.
+            - temporal_classification may be evergreen, time_bound, expired, or unknown.
             - Do not identify private individuals by name.
             """;
     }
@@ -793,9 +873,25 @@ public class ClaudeVisionClient {
             }
             List<String> excludedCategories = readStringArray(node, "excluded_categories", 15, 80);
 
+            List<String> observedScenes = readStringArray(node, "observed_scenes", 15, 80);
+            List<String> observedActivities = readStringArray(node, "observed_activities", 20, 80);
+            String peopleCountRange = node.path("people_count_range").asText("").strip();
+            List<String> equipmentSignals = readStringArray(node, "equipment_signals", 15, 80);
+            List<String> recognitionSignals = readStringArray(node, "recognition_signals", 15, 80);
+            List<String> ocrText = readStringArray(node, "ocr_text", 20, 160);
+            List<String> visibleDates = readStringArray(node, "visible_dates", 10, 60);
+            List<EventHypothesisDto> eventHypotheses = readEventHypotheses(node.path("event_hypotheses"));
+            String temporalClassification = node.path("temporal_classification").asText("").strip();
+            String possibleExpiration = node.path("possible_expiration").asText("").strip();
+            List<String> visualQualitySignals = readStringArray(node, "visual_quality_signals", 15, 80);
+            List<String> compositionSignals = readStringArray(node, "composition_signals", 15, 80);
+
             return new MediaClassificationDto(category, assetType, confidence, description,
                     visibleObjects, specificSubjects, visualStyle, dominantColors,
-                    possibleUseCases, tags, excludedCategories);
+                    possibleUseCases, tags, excludedCategories, observedScenes, observedActivities,
+                    peopleCountRange, equipmentSignals, recognitionSignals, ocrText, visibleDates,
+                    eventHypotheses, temporalClassification, possibleExpiration,
+                    visualQualitySignals, compositionSignals);
         } catch (Exception e) {
             log.warn("Failed to parse Claude classification response: {}", e.getMessage());
             throw new ClaudeApiException("Could not parse classification from Claude response.");
@@ -824,6 +920,20 @@ public class ClaudeVisionClient {
             if (values.size() >= maxItems) break;
         }
         return values;
+    }
+
+    private static List<EventHypothesisDto> readEventHypotheses(JsonNode array) {
+        if (!array.isArray()) return List.of();
+        List<EventHypothesisDto> hypotheses = new ArrayList<>();
+        for (JsonNode item : array) {
+            String eventType = item.path("event_type").asText("").strip();
+            if (eventType.isBlank()) continue;
+            double confidence = Math.min(1.0, Math.max(0.0, item.path("confidence").asDouble(0.0)));
+            List<String> evidence = readStringArray(item, "evidence", 8, 100);
+            hypotheses.add(new EventHypothesisDto(eventType, confidence, evidence));
+            if (hypotheses.size() >= 8) break;
+        }
+        return List.copyOf(hypotheses);
     }
 
     public static class ClaudeApiException extends RuntimeException {

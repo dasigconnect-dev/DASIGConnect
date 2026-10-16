@@ -35,4 +35,53 @@ public class GuardRailSettingsService {
                 .map(PageSettings::isGuardrailsEnforced)
                 .orElse(defaultEnforced);
     }
+
+    @Transactional(readOnly = true)
+    public int postingWindowStartHour() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPostingWindowStartHour)
+                .orElse(8);
+    }
+
+    @Transactional(readOnly = true)
+    public int postingWindowEndHour() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPostingWindowEndHour)
+                .orElse(20);
+    }
+    @Transactional(readOnly = true)
+    public int conflictBufferMinutes() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getConflictBufferMinutes)
+                .orElse(30);
+    }
+
+    @Transactional(readOnly = true)
+    public int minimumLeadTimeHours() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getMinimumLeadTimeHours)
+                .orElse(2);
+    }
+
+    @Transactional(readOnly = true)
+    public int maximumLeadTimeDays() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getMaximumLeadTimeDays)
+                .orElse(30);
+    }
+    
+    @Transactional(readOnly = true)
+    public int perInstitutionActiveQuota() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getPerInstitutionActiveQuota)
+                .orElse(3);
+    }
+    
+    @Transactional(readOnly = true)
+    public int dailyVolumeCap() {
+        return pageSettingsRepository.findByInstitutionIsNull()
+                .map(PageSettings::getDailyVolumeCap)
+                .orElse(6);
+    }
 }
+

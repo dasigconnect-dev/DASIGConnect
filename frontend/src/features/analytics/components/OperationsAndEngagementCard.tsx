@@ -80,25 +80,43 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
             <div className="analytics-matrix-grid">
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Content Completeness</span>
-                <strong className="analytics-matrix-cell-val">100%</strong>
-                <span className="analytics-matrix-cell-sub">Target: 95.0%</span>
+                <strong className="analytics-matrix-cell-val">
+                  {formatPercent(summary.contentCompleteness?.value ?? 0)}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  Target: {summary.contentCompleteness?.target?.toFixed(1) ?? "95.0"}%
+                </span>
               </div>
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Watermark Valid</span>
-                <strong className="analytics-matrix-cell-val">100%</strong>
-                <span className="analytics-matrix-cell-sub">brand aligned</span>
+                <span className="analytics-matrix-cell-label">First-Time Approval</span>
+                <strong className="analytics-matrix-cell-val">
+                  {summary.contributorAnalytics 
+                    ? formatPercent(Math.max(0, 100 - summary.contributorAnalytics.rejectedOrNeedsRevisionRate))
+                    : "N/A"}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  {summary.contributorAnalytics 
+                    ? `${summary.contributorAnalytics.rejectedOrNeedsRevisionCount} revisions requested`
+                    : "historical data unavailable"}
+                </span>
               </div>
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Missing Metadata</span>
                 <strong className="analytics-matrix-cell-val">
                   {formatNumber(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0)}
                 </strong>
-                <span className="analytics-matrix-cell-sub">zero missing tags</span>
+                <span className="analytics-matrix-cell-sub">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "zero missing tags" : "across published posts"}
+                </span>
               </div>
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Publish Readiness</span>
-                <strong className="analytics-matrix-cell-val">Optimal</strong>
-                <span className="analytics-matrix-cell-sub">ready for scheduling</span>
+                <strong className="analytics-matrix-cell-val">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "Optimal" : "Needs Review"}
+                </strong>
+                <span className="analytics-matrix-cell-sub">
+                  {(summary.contentIssues?.reduce((sum, i) => sum + i.count, 0) ?? 0) === 0 ? "ready for scheduling" : "missing data"}
+                </span>
               </div>
             </div>
           </div>
@@ -122,19 +140,39 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
 
             <div className="analytics-matrix-grid">
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Caption Acceptance</span>
+                <span className="analytics-matrix-cell-label">Caption Generator</span>
                 <strong className="analytics-matrix-cell-val">{formatPercent(ai.captionAcceptanceRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.captionAcceptedEvents} of {ai.captionSuggestionEvents} events</span>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.captionAcceptedEvents} of {ai.captionSuggestionEvents} captions used
+                </span>
               </div>
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Tag Correction</span>
-                <strong className="analytics-matrix-cell-val">{formatPercent(ai.tagCorrectionRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.tagCorrectionEvents} of {ai.tagClassificationEvents} events</span>
-              </div>
-              <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Media Recommendation</span>
+                <span className="analytics-matrix-cell-label">Media Suggestions</span>
                 <strong className="analytics-matrix-cell-val">{formatPercent(ai.mediaRecommendationRelevanceRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.mediaRecommendationRelevantEvents} of {ai.mediaRecommendationEvents} events</span>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.mediaRecommendationRelevantEvents} added of {ai.mediaRecommendationEvents} shown
+                </span>
+              </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Album Auto-Match</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.albumMatchKeptRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.albumMatchKeptEvents} of {ai.albumMatchEvents} posts kept the AI album
+                </span>
+              </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Template from Top Posts</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.templateDraftSaveRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.templateDraftsSaved} of {ai.templateDraftsGenerated} drafts saved
+                </span>
+              </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Writing Check</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.proofreadApplyRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.proofreadFixesApplied} of {ai.proofreadSuggestions} fixes applied · {ai.proofreadChecks} checks
+                </span>
               </div>
             </div>
           </div>

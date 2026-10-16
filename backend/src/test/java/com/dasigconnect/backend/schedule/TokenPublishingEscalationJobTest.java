@@ -15,14 +15,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
-import com.dasigconnect.backend.event.TokenPublishingSuspendedEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
+import com.dasigconnect.backend.service.PublishingStateService;
 import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,7 +37,7 @@ class TokenPublishingEscalationJobTest {
     private FacebookPublisherService facebookPublisherService;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private PublishingStateService publishingStateService;
 
     @Mock
     private ScheduledJobHealthService scheduledJobHealthService;
@@ -57,7 +56,8 @@ class TokenPublishingEscalationJobTest {
         job.run();
 
         verify(facebookPublisherService).publishMediaLinks(submission, mediaLinks);
-        verify(facebookPublisherService, never()).markFailed(any(), any());
+        verify(publishingStateService, never()).failAfterFortyEightHours(any());
+        verify(publishingStateService, never()).escalateAfterTwentyFourHours(any());
     }
 
     @Test
@@ -72,15 +72,8 @@ class TokenPublishingEscalationJobTest {
 
         job.run();
 
-        verify(facebookPublisherService).recordAttempt(
-                eq(submission),
-                eq(1),
-                eq("failed"),
-                org.mockito.ArgumentMatchers.startsWith(FacebookPublisherService.TOKEN_EXPIRED_24H_PREFIX),
-                eq(null));
-        verify(eventPublisher).publishEvent(any(TokenPublishingSuspendedEvent.class));
-        verify(submissionRepository).save(submission);
-        verify(facebookPublisherService, never()).markFailed(any(), any());
+        verify(publishingStateService).escalateAfterTwentyFourHours(submission);
+        verify(publishingStateService, never()).failAfterFortyEightHours(any());
     }
 
     @Test
@@ -95,16 +88,8 @@ class TokenPublishingEscalationJobTest {
 
         job.run();
 
-        verify(facebookPublisherService).recordAttempt(
-                eq(submission),
-                eq(1),
-                eq("failed"),
-                org.mockito.ArgumentMatchers.startsWith(FacebookPublisherService.TOKEN_EXPIRED_48H_PREFIX),
-                eq(null));
-        verify(facebookPublisherService).markFailed(
-                eq(submission),
-                eq("Facebook Page Access Token was not reauthorized within 48 hours."));
-        verify(submissionRepository).save(submission);
+        verify(publishingStateService).failAfterFortyEightHours(submission);
+        verify(publishingStateService, never()).escalateAfterTwentyFourHours(any());
     }
 
     private TokenPublishingEscalationJob job() {
@@ -112,7 +97,7 @@ class TokenPublishingEscalationJobTest {
                 submissionRepository,
                 publishingQueryService,
                 facebookPublisherService,
-                eventPublisher,
+                publishingStateService,
                 scheduledJobHealthService);
     }
 

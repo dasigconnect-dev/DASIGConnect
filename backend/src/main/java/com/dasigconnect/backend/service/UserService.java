@@ -41,7 +41,10 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 public class UserService {
 
     private static final Duration SUPER_ADMIN_TRANSFER_TTL = Duration.ofHours(24);
-    /** A proposed Administrator promotion lapses if the invitee does not confirm within this window. */
+    /**
+     * A proposed Administrator promotion lapses if the invitee does not confirm
+     * within this window.
+     */
     private static final Duration ADMIN_PROMOTION_TTL = Duration.ofHours(72);
     private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
 
@@ -60,7 +63,10 @@ public class UserService {
     private final InvitationTokenRepository invitationTokenRepository;
     private final AuditLogService auditLogService;
     private final ApplicationEventPublisher eventPublisher;
-    /** Administrator headcount cap (`app.admins.max`, default 3) — see {@link AdminCapPolicy}. */
+    /**
+     * Administrator headcount cap (`app.admins.max`, default 3) — see
+     * {@link AdminCapPolicy}.
+     */
     private final AdminCapPolicy adminCapPolicy;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
@@ -120,15 +126,6 @@ public class UserService {
         user.setNotifyInApp(request.notifyInApp());
         user.setNotifyEmail(request.notifyEmail());
         var saved = userRepository.save(user);
-        auditLogService.record(
-                saved,
-                "USER_SETTINGS_UPDATED",
-                null,
-                null,
-                saved.getId(),
-                Map.of(
-                        "notifyInApp", saved.isNotifyInApp(),
-                        "notifyEmail", saved.isNotifyEmail()));
         return UserDto.from(saved);
     }
 
@@ -176,7 +173,7 @@ public class UserService {
                     "Only admins can access admin accounts.");
         }
         return userRepository.findByRolesOrderByCreatedAtDesc(
-                        EnumSet.of(UserRole.admin))
+                EnumSet.of(UserRole.admin))
                 .stream()
                 .map(UserDto::from)
                 .toList();
@@ -204,7 +201,7 @@ public class UserService {
                     "Only admins can access the network-wide user directory.");
         }
         return userRepository.findByRolesWithInstitutionOrderByCreatedAtDesc(
-                        EnumSet.of(UserRole.contributor, UserRole.moderator))
+                EnumSet.of(UserRole.contributor, UserRole.moderator))
                 .stream()
                 .map(UserDto::from)
                 .toList();
@@ -248,6 +245,9 @@ public class UserService {
             }
         }
 
+        if (newStatus == UserStatus.inactive || newStatus == UserStatus.cancelled) {
+            clearPendingPromotion(user);
+        }
         user.setAccountState(newStatus);
         User saved = userRepository.save(user);
         if (newStatus == UserStatus.inactive) {
@@ -296,13 +296,6 @@ public class UserService {
         user.setAvatarContentType(contentType);
         user.setAvatarUpdatedAt(Instant.now());
         User saved = userRepository.save(user);
-
-        auditLogService.record(
-                findRequesterForAudit(requester),
-                "USER_AVATAR_UPDATED",
-                null, null,
-                saved.getId(),
-                java.util.Map.of("contentType", contentType, "sizeBytes", bytes.length));
         return UserDto.from(saved);
     }
 
@@ -346,8 +339,8 @@ public class UserService {
     /**
      * Removes a deactivated user.
      *
-     * Only works on users that are currently in INACTIVE state. Active or pending
-     * users cannot be removed without deactivating or cancelling first.
+     * Only works on users that are currently in INACTIVE state. Active or
+     * pending users cannot be removed without deactivating or cancelling first.
      */
     @Transactional
     public String removeUser(UUID id, JwtUserDetails requester) {
@@ -409,8 +402,11 @@ public class UserService {
         return "deleted";
     }
 
-    /** Summary returned after a personal-data erasure. */
+    /**
+     * Summary returned after a personal-data erasure.
+     */
     public record ErasureResult(String anonymizedEmail, int mediaAssetsPurged) {
+
     }
 
     /**
@@ -474,6 +470,7 @@ public class UserService {
         target.setAdminOwner(false);
         target.setSuperAdminTransferRequestedBy(null);
         target.setSuperAdminTransferExpiresAt(null);
+        clearPendingPromotion(target);
         target.setAccountState(UserStatus.inactive);
         target.setPurgedAt(Instant.now());
         target.setPurgedByUserId(actor.getId());
@@ -500,29 +497,28 @@ public class UserService {
      * Promote or demote an account between contributor, moderator, and admin.
      *
      * <ul>
-     *   <li>Any active admin may move an account between contributor and
-     *       moderator, and may propose promoting a contributor/moderator to
-     *       admin — the target still has to confirm (see below), so this
-     *       carries no more unilateral risk than sending an admin invitation.
-     *       Only the Admin Owner may change an <em>existing</em> admin's role
-     *       (demotion).</li>
-     *   <li>Proposing a promotion does NOT apply the role change. It reserves
-     *       an Administrator slot and records
-     *       {@code adminPromotionRequestedBy}/{@code adminPromotionExpiresAt}
-     *       on the target (72h TTL). The role only becomes {@code admin} once
-     *       the target calls {@link #confirmAdminPromotion}; they may instead
-     *       {@link #declineAdminPromotion}, or the proposer can
-     *       {@link #cancelAdminPromotion} before either happens. Every demotion
-     *       and every contributor/moderator move, by contrast, still applies
-     *       immediately.</li>
-     *   <li>{@code contributor} requires an active {@code institutionId}; the
-     *       network-wide roles clear the institution.</li>
-     *   <li>Promoting to admin is blocked when
-     *       {@link AdminCapPolicy#assertHasFreeSlot} finds no free slot —
-     *       confirmed admins + pending admin invites + pending promotions
-     *       already at {@code app.admins.max}.</li>
-     *   <li>The Admin Owner's own role cannot be changed here — transfer
-     *       ownership first. Nobody can change their own role.</li>
+     * <li>Any active admin may move an account between contributor and
+     * moderator, and may propose promoting a contributor/moderator to admin —
+     * the target still has to confirm (see below), so this carries no more
+     * unilateral risk than sending an admin invitation. Only the Admin Owner
+     * may change an <em>existing</em> admin's role (demotion).</li>
+     * <li>Proposing a promotion does NOT apply the role change. It reserves an
+     * Administrator slot and records
+     * {@code adminPromotionRequestedBy}/{@code adminPromotionExpiresAt} on the
+     * target (72h TTL). The role only becomes {@code admin} once the target
+     * calls {@link #confirmAdminPromotion}; they may instead
+     * {@link #declineAdminPromotion}, or the proposer can
+     * {@link #cancelAdminPromotion} before either happens. Every demotion and
+     * every contributor/moderator move, by contrast, still applies
+     * immediately.</li>
+     * <li>{@code contributor} requires an active {@code institutionId}; the
+     * network-wide roles clear the institution.</li>
+     * <li>Promoting to admin is blocked when
+     * {@link AdminCapPolicy#assertHasFreeSlot} finds no free slot — confirmed
+     * admins + pending admin invites + pending promotions already at
+     * {@code app.admins.max}.</li>
+     * <li>The Admin Owner's own role cannot be changed here — transfer
+     * ownership first. Nobody can change their own role.</li>
      * </ul>
      *
      * For every transition applied immediately here (demotion, and
@@ -571,21 +567,31 @@ public class UserService {
         // keeps their current role until they confirm (UC-1.1: "the promoted
         // person must accept"). An Administrator slot is reserved immediately so
         // the cap can never be exceeded by concurrent invites/promotions.
-        if (newRole == UserRole.admin) {
-            if (userRepository.hasLivePendingAdminPromotion(userId, Instant.now())) {
+
+        boolean isPromotionToModerator = newRole == UserRole.moderator && fromRole == UserRole.contributor;
+        boolean isPromotionToAdmin = newRole == UserRole.admin;
+
+        if (isPromotionToModerator || isPromotionToAdmin) {
+            if (userRepository.hasLivePendingPromotionByRole(userId, newRole, Instant.now())) {
+                String roleName = newRole == UserRole.admin ? "Administrator" : "Moderator";
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "This account already has an Administrator promotion awaiting confirmation.");
+                        "This account already has a " + roleName + " promotion awaiting confirmation.");
             }
-            adminCapPolicy.assertHasFreeSlot(null, userId);
+
+            if (isPromotionToAdmin) {
+                adminCapPolicy.assertHasFreeSlot(null, userId);
+            }
 
             Instant expiresAt = Instant.now().plus(ADMIN_PROMOTION_TTL);
-            target.setAdminPromotionRequestedBy(requester != null ? requester.userId() : null);
-            target.setAdminPromotionExpiresAt(expiresAt);
+            target.setPendingPromotionRole(newRole);
+            target.setPendingPromotionRequestedBy(requester != null ? requester.userId() : null);
+            target.setPendingPromotionExpiresAt(expiresAt);
             User pending = userRepository.save(target);
 
+            String eventName = newRole == UserRole.admin ? "ADMIN_PROMOTION_REQUESTED" : "MODERATOR_PROMOTION_REQUESTED";
             auditLogService.record(
                     findRequesterForAudit(requester),
-                    "ADMIN_PROMOTION_REQUESTED",
+                    eventName,
                     null, null,
                     pending.getId(),
                     Map.of(
@@ -593,8 +599,13 @@ public class UserService {
                             "fromRole", fromRole.name(),
                             "expiresAt", expiresAt.toString()));
 
-            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminPromotionRequestedEvent(
-                    pending, requester != null ? requester.email() : null, expiresAt));
+            if (isPromotionToAdmin) {
+                eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminPromotionRequestedEvent(
+                        pending, requester != null ? requester.email() : null, expiresAt));
+            } else {
+                eventPublisher.publishEvent(new com.dasigconnect.backend.event.ModeratorPromotionRequestedEvent(
+                        pending, requester != null ? requester.email() : null, expiresAt));
+            }
 
             return UserDto.from(pending);
         }
@@ -629,6 +640,7 @@ public class UserService {
             reviewLockRepository.deleteByLockedById(userId);
         }
 
+        clearPendingPromotion(target);
         target.setRole(newRole);
         User saved = userRepository.save(target);
         jwtService.invalidateUserTokens(saved.getId());
@@ -660,48 +672,53 @@ public class UserService {
      * as expired rather than confirmed.
      */
     @Transactional
-    public UserDto confirmAdminPromotion(JwtUserDetails requester) {
+    public UserDto confirmPromotion(JwtUserDetails requester) {
         User self = requireSelf(requester);
 
-        if (self.getAdminPromotionRequestedBy() == null || self.getAdminPromotionExpiresAt() == null) {
+        if (self.getPendingPromotionRole() == null || self.getPendingPromotionExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No pending Administrator promotion exists for this account.");
+                    "No pending promotion exists for this account.");
         }
-        if (self.getAdminPromotionExpiresAt().isBefore(Instant.now())) {
-            clearAdminPromotion(self);
+        if (self.getPendingPromotionExpiresAt().isBefore(Instant.now())) {
+            clearPendingPromotion(self);
             userRepository.save(self);
-            throw new ResponseStatusException(HttpStatus.GONE, "This Administrator promotion has expired.");
+            throw new ResponseStatusException(HttpStatus.GONE, "This promotion has expired.");
         }
         if (self.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only an active account can confirm an Administrator promotion.");
+                    "Only an active account can confirm a promotion.");
         }
 
-        // Exclude this account's own reserved slot — it is converting from
-        // "pending promotion" to "confirmed admin", net zero.
-        adminCapPolicy.assertHasFreeSlot(null, self.getId());
+        boolean isToAdmin = self.getPendingPromotionRole() == UserRole.admin;
+        if (isToAdmin) {
+            adminCapPolicy.assertHasFreeSlot(null, self.getId());
+        }
 
-        UserRole fromRole = self.getRole();
-        self.setRole(UserRole.admin);
+        self.setRole(self.getPendingPromotionRole());
         self.setInstitution(null);
-        self.setAdminOwner(false);
-        clearAdminPromotion(self);
-        if (fromRole == UserRole.moderator) {
-            reviewLockRepository.deleteByLockedById(self.getId());
+        if (isToAdmin) {
+            self.setAdminOwner(false);
         }
+        clearPendingPromotion(self);
+
+        reviewLockRepository.deleteByLockedById(self.getId());
 
         User saved = userRepository.save(self);
         jwtService.invalidateUserTokens(saved.getId());
 
+        String evt = isToAdmin ? "ADMIN_PROMOTION_CONFIRMED" : "MODERATOR_PROMOTION_CONFIRMED";
         auditLogService.record(
-                saved,
-                "ADMIN_PROMOTION_CONFIRMED",
+                findRequesterForAudit(requester),
+                evt,
                 null, null,
                 saved.getId(),
-                Map.of("email", saved.getEmail(), "fromRole", fromRole.name()));
+                Map.of("email", saved.getEmail()));
 
-        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(
-                saved, fromRole, UserRole.admin, saved.getEmail()));
+        if (isToAdmin) {
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(saved, UserRole.moderator, UserRole.admin, saved.getEmail()));
+        } else {
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(saved, UserRole.contributor, UserRole.moderator, saved.getEmail()));
+        }
 
         return UserDto.from(saved);
     }
@@ -711,27 +728,35 @@ public class UserService {
      * reserved slot immediately and notifies whoever proposed it.
      */
     @Transactional
-    public UserDto declineAdminPromotion(JwtUserDetails requester) {
+    public UserDto declinePromotion(JwtUserDetails requester) {
         User self = requireSelf(requester);
 
-        if (self.getAdminPromotionRequestedBy() == null || self.getAdminPromotionExpiresAt() == null) {
+        if (self.getPendingPromotionRole() == null || self.getPendingPromotionExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No pending Administrator promotion exists for this account.");
+                    "No pending promotion exists for this account.");
         }
+        boolean isToAdmin = self.getPendingPromotionRole() == UserRole.admin;
+        UUID requestedBy = self.getPendingPromotionRequestedBy();
 
-        UUID requestedBy = self.getAdminPromotionRequestedBy();
-        clearAdminPromotion(self);
+        clearPendingPromotion(self);
+
         User saved = userRepository.save(self);
 
+        String evt = isToAdmin ? "ADMIN_PROMOTION_DECLINED" : "MODERATOR_PROMOTION_DECLINED";
         auditLogService.record(
-                saved,
-                "ADMIN_PROMOTION_DECLINED",
+                findRequesterForAudit(requester),
+                evt,
                 null, null,
                 saved.getId(),
                 Map.of("email", saved.getEmail()));
 
-        eventPublisher.publishEvent(
-                new com.dasigconnect.backend.event.AdminPromotionDeclinedEvent(saved, requestedBy));
+        if (isToAdmin) {
+            eventPublisher.publishEvent(
+                    new com.dasigconnect.backend.event.AdminPromotionDeclinedEvent(saved, requestedBy));
+        } else {
+            eventPublisher.publishEvent(
+                    new com.dasigconnect.backend.event.ModeratorPromotionDeclinedEvent(saved, requestedBy));
+        }
 
         return UserDto.from(saved);
     }
@@ -741,22 +766,32 @@ public class UserService {
      * invitee has responded, freeing the reserved slot right away.
      */
     @Transactional
-    public UserDto cancelAdminPromotion(UUID userId, JwtUserDetails requester) {
-        requireActiveAdminOwner(requester);
-
+    public UserDto cancelPromotion(UUID userId, JwtUserDetails requester) {
         User target = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if (target.getAdminPromotionRequestedBy() == null || target.getAdminPromotionExpiresAt() == null) {
+
+        if (target.getPendingPromotionRole() == null || target.getPendingPromotionExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No pending Administrator promotion exists for this account.");
+                    "No pending promotion exists for this account.");
         }
 
-        clearAdminPromotion(target);
+        boolean isToAdmin = target.getPendingPromotionRole() == UserRole.admin;
+
+        // Authorization: If to admin, only admin owner can cancel. If to moderator, any admin can.
+        if (isToAdmin) {
+            requireActiveAdminOwner(requester);
+        } else {
+            requireActiveAdmin(requester);
+        }
+
+        clearPendingPromotion(target);
+
         User saved = userRepository.save(target);
 
+        String evt = isToAdmin ? "ADMIN_PROMOTION_CANCELLED" : "MODERATOR_PROMOTION_CANCELLED";
         auditLogService.record(
                 findRequesterForAudit(requester),
-                "ADMIN_PROMOTION_CANCELLED",
+                evt,
                 null, null,
                 saved.getId(),
                 Map.of("email", saved.getEmail()));
@@ -764,9 +799,10 @@ public class UserService {
         return UserDto.from(saved);
     }
 
-    private void clearAdminPromotion(User user) {
-        user.setAdminPromotionRequestedBy(null);
-        user.setAdminPromotionExpiresAt(null);
+    private void clearPendingPromotion(User user) {
+        user.setPendingPromotionRole(null);
+        user.setPendingPromotionRequestedBy(null);
+        user.setPendingPromotionExpiresAt(null);
     }
 
     private User requireSelf(JwtUserDetails requester) {
@@ -803,7 +839,7 @@ public class UserService {
 
         var targetInstitution = institutionRepository.findById(targetInstitutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Target institution not found."));
+                        "Target institution not found."));
 
         if (targetInstitution.getStatus() != InstitutionStatus.active) {
             throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
@@ -873,10 +909,10 @@ public class UserService {
 
         User target = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if ((target.getRole() != UserRole.moderator && target.getRole() != UserRole.admin)
+        if (target.getRole() != UserRole.admin
                 || target.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Admin ownership can only be transferred to an active moderator or admin");
+                    "Admin ownership can only be transferred to an active administrator");
         }
         if (target.isAdminOwner()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -886,7 +922,7 @@ public class UserService {
         Instant expiresAt = Instant.now().plus(SUPER_ADMIN_TRANSFER_TTL);
         target.setSuperAdminTransferRequestedBy(requesterAccount.getId());
         target.setSuperAdminTransferExpiresAt(expiresAt);
-        userRepository.save(target);
+        User savedTarget = userRepository.save(target);
 
         auditLogService.record(
                 requesterAccount,
@@ -894,6 +930,11 @@ public class UserService {
                 null, null,
                 target.getId(),
                 java.util.Map.of("targetEmail", target.getEmail(), "expiresAt", expiresAt.toString()));
+
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminTransferRequestedEvent(
+                savedTarget,
+                requesterAccount.getEmail(),
+                expiresAt));
 
         return new AdminTransferResponseDto(
                 target.getId(),
@@ -906,12 +947,11 @@ public class UserService {
     public UserDto confirmAdminTransfer(JwtUserDetails requester) {
         User incoming = userRepository.findById(requester.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if ((incoming.getRole() != UserRole.moderator && incoming.getRole() != UserRole.admin)
+        if (incoming.getRole() != UserRole.admin
                 || incoming.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only an active moderator or admin can confirm an Admin ownership transfer");
+                    "Only an active administrator can confirm an Admin ownership transfer");
         }
-        boolean incomingWasModerator = incoming.getRole() == UserRole.moderator;
         if (incoming.getSuperAdminTransferRequestedBy() == null
                 || incoming.getSuperAdminTransferExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -927,7 +967,7 @@ public class UserService {
 
         User outgoing = userRepository.findById(incoming.getSuperAdminTransferRequestedBy())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                "Requesting Admin account no longer exists"));
+                        "Requesting Admin account no longer exists"));
         if (outgoing.getRole() != UserRole.admin
                 || outgoing.getAccountState() != UserStatus.active
                 || !outgoing.isAdminOwner()) {
@@ -935,22 +975,19 @@ public class UserService {
                     "Requesting account is no longer the active Admin");
         }
 
+        // Relinquish owner status on outgoing owner first and flush to avoid violating
+        // the single active admin owner unique partial index in PostgreSQL (idx_users_single_active_admin_owner).
+        outgoing.setAdminOwner(false);
+        outgoing.setRole(UserRole.admin);
+        outgoing.setSuperAdminTransferRequestedBy(null);
+        outgoing.setSuperAdminTransferExpiresAt(null);
+        User savedOutgoing = userRepository.saveAndFlush(outgoing);
+
         incoming.setRole(UserRole.admin);
         incoming.setAdminOwner(true);
         incoming.setSuperAdminTransferRequestedBy(null);
         incoming.setSuperAdminTransferExpiresAt(null);
-        outgoing.setAdminOwner(false);
-        if (incomingWasModerator) {
-            // Owner-to-moderator handoff is 1-for-1: the outgoing owner steps
-            // down to moderator so the admin headcount stays the same. Handing
-            // ownership to an existing admin leaves both as admins.
-            outgoing.setRole(UserRole.moderator);
-        }
-        outgoing.setSuperAdminTransferRequestedBy(null);
-        outgoing.setSuperAdminTransferExpiresAt(null);
-
-        userRepository.save(outgoing);
-        User savedIncoming = userRepository.save(incoming);
+        User savedIncoming = userRepository.saveAndFlush(incoming);
         jwtService.invalidateUserTokens(outgoing.getId());
 
         auditLogService.record(
@@ -959,6 +996,10 @@ public class UserService {
                 null, null,
                 incoming.getId(),
                 java.util.Map.of("previousAdminOwnerId", outgoing.getId().toString()));
+
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminTransferConfirmedEvent(
+                savedIncoming,
+                savedOutgoing));
 
         return UserDto.from(savedIncoming);
     }
@@ -1003,7 +1044,7 @@ public class UserService {
         if (!"admin".equalsIgnoreCase(requester != null ? requester.role() : null)) {
             boolean ownCancelledInvitee = target.getRole() == UserRole.contributor
                     && (target.getAccountState() == UserStatus.cancelled
-                            || target.getAccountState() == UserStatus.expired)
+                    || target.getAccountState() == UserStatus.expired)
                     && target.getInvitedByUserId() != null
                     && requester != null
                     && target.getInvitedByUserId().equals(requester.userId());
@@ -1038,16 +1079,15 @@ public class UserService {
     private User requireActiveAdminOwner(JwtUserDetails requester) {
         if (requester == null || requester.userId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only the Admin can manage Moderator accounts");
+                    "Only the Admin Owner can perform this action");
         }
         User requesterAccount = userRepository.findById(requester.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only the Admin can manage Moderator accounts"));
+                        "Only the Admin Owner can perform this action"));
         if (requesterAccount.getRole() != UserRole.admin
                 || requesterAccount.getAccountState() != UserStatus.active
                 || !requesterAccount.isAdminOwner()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only the Admin can manage Moderator accounts");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the Admin Owner can perform this action");
         }
         return requesterAccount;
     }

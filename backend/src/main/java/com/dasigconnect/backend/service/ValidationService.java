@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -22,11 +27,16 @@ import com.dasigconnect.backend.event.SubmissionApprovedEvent;
 import com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent;
 import com.dasigconnect.backend.event.SubmissionRejectedEvent;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationDashboardSummaryDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationQueueCountsDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
 import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.ValidationAction;
@@ -44,11 +54,26 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class ValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationService.class);
+    private static final int DEFAULT_QUEUE_PAGE_SIZE = 20;
+    private static final int MAX_QUEUE_PAGE_SIZE = 50;
+    private static final ZoneId DASHBOARD_ZONE = ZoneId.of("Asia/Manila");
 
-    // BR-VAL-03 rejection reason codes
-    private static final Set<String> VALID_REJECTION_CODES = Set.of(
-            "INCOMPLETE_CONTENT", "INAPPROPRIATE_CONTENT", "WRONG_FORMAT",
-            "DUPLICATE_EVENT", "WRONG_INSTITUTION", "OTHER");
+    /**
+     * BR-VAL-03 rejection reason codes → the label the contributor sees.
+     * Rejecting declines the post as submitted (the contributor can still edit
+     * and resubmit — {@code SubmissionService.submit} accepts {@code rejected});
+     * anything that only needs fixing (content, format) goes through Request
+     * Revision instead, so INCOMPLETE_CONTENT and WRONG_FORMAT are no longer accepted. Rejections stored under those codes
+     * before 2026-09-24 still display — the frontend keeps their labels.
+     */
+    static final Map<String, String> REJECTION_REASON_LABELS = Map.of(
+            "INAPPROPRIATE_CONTENT", "Inappropriate content",
+            "OUT_OF_SCOPE", "Not a DASIG activity",
+            "DUPLICATE_EVENT", "Duplicate",
+            "NO_LONGER_RELEVANT", "No longer timely",
+            "RIGHTS_OR_PRIVACY", "Rights or privacy issue",
+            "WRONG_INSTITUTION", "Belongs to another institution",
+            "OTHER", "Other");
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -104,12 +129,14 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        return submissionRepository.findValidationQueue().stream()
-                .map(this::toQueueSummary)
-                .toList();
+        java.time.Instant priorityCutoff = java.time.Instant.now().plus(30, java.time.temporal.ChronoUnit.MINUTES);
+        return buildQueueSummaries(submissionRepository.findValidationQueue(priorityCutoff));
     }
 
-    private SubmissionSummaryDto toQueueSummary(Submission s) {
+    private SubmissionSummaryDto toQueueSummary(
+            Submission s,
+            Map<UUID, Long> mediaCounts,
+            Map<UUID, SubmissionMediaPreviewDto> previews) {
         if (s.getStatus() == SubmissionStatus.needs_revision && s.getReviewSnapshot() != null) {
             try {
                 return SubmissionSummaryDto.fromSnapshot(s,
@@ -119,7 +146,10 @@ public class ValidationService {
                 log.warn("Failed to parse review_snapshot for submission {}, falling back to live fields", s.getId(), e);
             }
         }
-        return SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId()));
+        return SubmissionSummaryDto.from(
+                s,
+                mediaCounts.getOrDefault(s.getId(), 0L),
+                previews.get(s.getId()));
     }
 
     /**
@@ -128,10 +158,170 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getHistory(JwtUserDetails caller) {
-        return submissionRepository.findValidationHistory().stream()
-                .map(s -> SubmissionSummaryDto.from(s,
-                        submissionMediaAssetRepository.countBySubmissionId(s.getId())))
+        return buildQueueSummaries(submissionRepository.findValidationHistory());
+    }
+
+    @Transactional(readOnly = true)
+    public ValidationQueuePageDto getQueuePage(
+            JwtUserDetails caller,
+            String view,
+            String sort,
+            int page,
+            int pageSize,
+            String search) {
+        String normalizedView = normalizeView(view);
+        String normalizedSort = normalizeSort(sort);
+        int safePage = Math.max(page, 0);
+        int safePageSize = pageSize <= 0
+                ? DEFAULT_QUEUE_PAGE_SIZE
+                : Math.min(pageSize, MAX_QUEUE_PAGE_SIZE);
+        boolean activeOrdering = isActiveView(normalizedView);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+
+        Page<Submission> result = submissionRepository.findValidationPage(
+                statusesForView(normalizedView),
+                normalizedSearch,
+                normalizedSort,
+                activeOrdering,
+                activeOrdering,
+                PageRequest.of(safePage, safePageSize));
+
+        return new ValidationQueuePageDto(
+                buildQueueSummaries(result.getContent()),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext(),
+                buildQueueCounts(submissionRepository.countValidationStatuses()));
+    }
+
+    @Transactional(readOnly = true)
+    public ValidationDashboardSummaryDto getDashboardSummary() {
+        ValidationQueueCountsDto counts = buildQueueCounts(submissionRepository.countValidationStatuses());
+        LocalDate firstDay = LocalDate.now(DASHBOARD_ZONE).withDayOfMonth(1);
+        Instant monthStart = firstDay.atStartOfDay(DASHBOARD_ZONE).toInstant();
+        Instant nextMonthStart = firstDay.plusMonths(1).atStartOfDay(DASHBOARD_ZONE).toInstant();
+        long approved = submissionRepository.countValidationDashboardStatusesBetween(
+                List.of(
+                        SubmissionStatus.scheduled,
+                        SubmissionStatus.published,
+                        SubmissionStatus.published_manual,
+                        SubmissionStatus.admin_direct_post),
+                monthStart,
+                nextMonthStart);
+        long rejected = submissionRepository.countValidationDashboardStatusesBetween(
+                List.of(SubmissionStatus.rejected),
+                monthStart,
+                nextMonthStart);
+
+        return new ValidationDashboardSummaryDto(
+                counts.pending() + counts.inReview() + counts.needsRevision(),
+                approved,
+                rejected,
+                submissionRepository.countDistinctValidationContributors());
+    }
+
+    private List<SubmissionSummaryDto> buildQueueSummaries(List<Submission> submissions) {
+        if (submissions.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> liveSubmissionIds = submissions.stream()
+                .filter(s -> s.getStatus() != SubmissionStatus.needs_revision || s.getReviewSnapshot() == null)
+                .map(Submission::getId)
                 .toList();
+        Map<UUID, Long> mediaCounts = new HashMap<>();
+        Map<UUID, SubmissionMediaPreviewDto> previews = new HashMap<>();
+        if (!liveSubmissionIds.isEmpty()) {
+            for (SubmissionMediaAsset link
+                    : submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(liveSubmissionIds)) {
+                UUID submissionId = link.getSubmission().getId();
+                mediaCounts.merge(submissionId, 1L, Long::sum);
+                previews.putIfAbsent(
+                        submissionId,
+                        SubmissionMediaPreviewDto.from(link.getMediaAsset()));
+            }
+        }
+
+        return submissions.stream()
+                .map(s -> toQueueSummary(s, mediaCounts, previews))
+                .toList();
+    }
+
+    private String normalizeView(String view) {
+        String normalized = view == null ? "all" : view.trim().toLowerCase().replace('-', '_');
+        return switch (normalized) {
+            case "all", "pending", "in_review", "needs_revision", "scheduled", "published", "rejected" -> normalized;
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported validation queue view: " + view);
+        };
+    }
+
+    private String normalizeSort(String sort) {
+        String normalized = sort == null ? "submitted" : sort.trim().toLowerCase();
+        return switch (normalized) {
+            case "publish_slot", "submitted" -> normalized;
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported validation queue sort: " + sort);
+        };
+    }
+
+    private boolean isActiveView(String view) {
+        return view.equals("pending") || view.equals("in_review") || view.equals("needs_revision");
+    }
+
+    private List<SubmissionStatus> statusesForView(String view) {
+        return switch (view) {
+            case "all" -> java.util.Arrays.stream(SubmissionStatus.values())
+                    .filter(status -> status != SubmissionStatus.draft)
+                    .toList();
+            case "pending" -> List.of(SubmissionStatus.pending);
+            case "in_review" -> List.of(SubmissionStatus.in_review);
+            case "needs_revision" -> List.of(SubmissionStatus.needs_revision);
+            case "scheduled" -> List.of(SubmissionStatus.scheduled);
+            case "published" -> List.of(SubmissionStatus.published);
+            case "rejected" -> List.of(SubmissionStatus.rejected);
+            default -> throw new IllegalStateException("Validated view was not mapped: " + view);
+        };
+    }
+
+    private ValidationQueueCountsDto buildQueueCounts(
+            List<SubmissionRepository.SubmissionStatusCount> statusCounts) {
+        long all = 0;
+        long pending = 0;
+        long inReview = 0;
+        long needsRevision = 0;
+        long scheduled = 0;
+        long published = 0;
+        long rejected = 0;
+
+        for (SubmissionRepository.SubmissionStatusCount row : statusCounts) {
+            long count = row.getCount();
+            all += count;
+            switch (row.getStatus()) {
+                case pending -> pending += count;
+                case in_review -> inReview += count;
+                case needs_revision -> needsRevision += count;
+                case scheduled -> scheduled += count;
+                case published -> published += count;
+                case rejected -> rejected += count;
+                default -> {
+                    // Other non-draft workflow statuses contribute only to All.
+                }
+            }
+        }
+
+        return new ValidationQueueCountsDto(
+                all,
+                pending,
+                inReview,
+                needsRevision,
+                scheduled,
+                published,
+                rejected);
     }
 
     /**
@@ -144,11 +334,42 @@ public class ValidationService {
      * must make the approval decision.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
+        approve(submissionId, false, caller);
+    }
+
+    /**
+     * Approves a submission. A Scheduled post whose slot has already passed is
+     * not approved silently — the scheduler would post it up to 5 minutes late,
+     * or the stale-slot sweep would mark it Publish Failed. The reviewer must
+     * pick a new slot first (edit), or an Administrator approves with
+     * {@code publishNow}: the slot moves to now, the next scheduler run
+     * publishes it, and the late publish is audited ({@code LATE_PUBLISH_OVERRIDE}).
+     */
+    public void approve(UUID submissionId, boolean publishNow, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
         boolean selfReview = isSelfReview(submission, caller);
         assertNotSelfApproval(selfReview);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        Instant now = Instant.now();
+        Instant passedSlot = slotHasPassed(submission, now) ? submission.getScheduledAt() : null;
+        if (passedSlot == null && publishNow) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Publish now is only for a post whose publish slot has already passed.");
+        }
+        if (passedSlot != null && !publishNow) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This post's publish slot has already passed. Pick a new slot before approving"
+                            + ("admin".equals(caller.role()) ? ", or publish it now." : "."));
+        }
+        if (passedSlot != null && !"admin".equals(caller.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can publish a post after its slot has passed.");
+        }
+        if (passedSlot != null) {
+            submission.setScheduledAt(now);
+        }
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
         ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
@@ -174,11 +395,16 @@ public class ValidationService {
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.approved,
                 null, null, selfReview, submission.isFastTrack(), sessionEditDiff, null);
+        if (passedSlot != null) {
+            auditLogService.record(validator, "LATE_PUBLISH_OVERRIDE", null, null, submissionId,
+                    Map.of("originalSlot", passedSlot.toString(), "newSlot", now.toString()));
+        }
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
         if (edited) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
                 submission.isFastTrack(), edited, submissionId, caller.userId());
@@ -190,7 +416,7 @@ public class ValidationService {
      * still select a terminal action afterwards. Each edit records its own
      * before/after diff in the audit log (A10), so repeated edits within a review
      * session are all traceable.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked.
      */
     public void edit(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
@@ -335,7 +561,8 @@ public class ValidationService {
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
     }
@@ -367,15 +594,24 @@ public class ValidationService {
         logAction(submission, validator, ValidationAction.rejected, null, fullReason,
                 selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
-        eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
+        eventPublisher.publishEvent(
+                new SubmissionRejectedEvent(submission, readableRejectionReason(reasonCode, notes)));
         if (sessionEditDiff != null || sessionSeverity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+                    new SubmissionEditedDuringReviewEvent(
+                            submission, sessionSeverity, sessionEditDiff, caller.userId()));
         }
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** A Scheduled (not Live Event) post whose slot is now or earlier. */
+    static boolean slotHasPassed(Submission submission, Instant now) {
+        return !submission.isFastTrack()
+                && submission.getScheduledAt() != null
+                && !submission.getScheduledAt().isAfter(now);
+    }
 
     private void validateRemarks(String remarks) {
         if (remarks == null || remarks.trim().length() < 10 || remarks.trim().length() > 1000) {
@@ -384,16 +620,23 @@ public class ValidationService {
         }
     }
 
-    private void validateRejectionCode(String reasonCode, String notes) {
-        if (reasonCode == null || !VALID_REJECTION_CODES.contains(reasonCode)) {
+    static void validateRejectionCode(String reasonCode, String notes) {
+        if (reasonCode == null || !REJECTION_REASON_LABELS.containsKey(reasonCode)) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Invalid rejection reason code. Valid codes: "
-                            + String.join(", ", VALID_REJECTION_CODES));
+                            + String.join(", ", REJECTION_REASON_LABELS.keySet())
+                            + ". Missing or fixable content should be sent back with Request Revision.");
         }
         if ("OTHER".equals(reasonCode) && (notes == null || notes.trim().isEmpty())) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Notes are required when rejection reason is OTHER.");
         }
+    }
+
+    /** "Duplicate — already posted on 12 Sep", for the contributor's email. */
+    static String readableRejectionReason(String reasonCode, String notes) {
+        String label = REJECTION_REASON_LABELS.getOrDefault(reasonCode, reasonCode);
+        return notes != null && !notes.trim().isEmpty() ? label + " — " + notes.trim() : label;
     }
 
     private String buildRejectionReason(String reasonCode, String notes) {
@@ -442,7 +685,7 @@ public class ValidationService {
         snapshot.put("eventDate", submission.getEventDate());
         snapshot.put("caption", submission.getCaption());
         snapshot.put("description", submission.getDescription());
-        snapshot.put("category", submission.getCategory());
+
         snapshot.put("tags", submission.getTags());
         snapshot.put("scheduledAt", submission.getScheduledAt());
         return snapshot;
@@ -656,3 +899,4 @@ public class ValidationService {
         }
     }
 }
+

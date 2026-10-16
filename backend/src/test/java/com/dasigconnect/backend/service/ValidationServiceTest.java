@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import com.dasigconnect.backend.config.JacksonConfig;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
@@ -12,7 +13,6 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,12 +26,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -79,7 +83,10 @@ class ValidationServiceTest {
         submissionInstitutionId = UUID.randomUUID();
         adminId = UUID.randomUUID();
         contributorId = UUID.randomUUID();
-        ReflectionTestUtils.setField(validationService, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(
+                validationService,
+                "objectMapper",
+                new JacksonConfig().objectMapper());
         ReflectionTestUtils.setField(validationService, "captionMajorChangeRatio", 0.30);
     }
 
@@ -260,11 +267,11 @@ class ValidationServiceTest {
     @Test
     void getQueue_callsNetworkWideQueryRegardlessOfCallerInstitution() {
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
-        when(submissionRepository.findValidationQueue()).thenReturn(List.of());
+        when(submissionRepository.findValidationQueue(any(java.time.Instant.class))).thenReturn(List.of());
 
         validationService.getQueue(admin);
 
-        verify(submissionRepository).findValidationQueue();
+        verify(submissionRepository).findValidationQueue(any(java.time.Instant.class));
     }
 
     @Test
@@ -275,6 +282,169 @@ class ValidationServiceTest {
         validationService.getHistory(admin);
 
         verify(submissionRepository).findValidationHistory();
+    }
+
+    @Test
+    void getQueuePage_clampsPageSizeMapsCountsAndBatchesPageMedia() {
+        Submission submission = inReviewSubmission();
+        submission.setEventTitle("Research Expo");
+        submission.setEventDate(java.time.LocalDate.parse("2026-10-01"));
+        submission.getInstitution().setName("CIT-U");
+        submission.getContributor().setEmail("contributor@example.test");
+
+        when(submissionRepository.findValidationPage(
+                any(), any(), any(), anyBoolean(), anyBoolean(), any()))
+                .thenReturn(new PageImpl<>(
+                        List.of(submission),
+                        PageRequest.of(0, 50),
+                        61));
+        when(submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(any()))
+                .thenReturn(List.of());
+
+        SubmissionRepository.SubmissionStatusCount pending = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        SubmissionRepository.SubmissionStatusCount published = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        when(pending.getStatus()).thenReturn(SubmissionStatus.pending);
+        when(pending.getCount()).thenReturn(4L);
+        when(published.getStatus()).thenReturn(SubmissionStatus.published);
+        when(published.getCount()).thenReturn(7L);
+        when(submissionRepository.countValidationStatuses()).thenReturn(List.of(pending, published));
+
+        var result = validationService.getQueuePage(
+                moderator(), "in-review", "submitted", -3, 500, " Research ");
+
+        assertThat(result.page()).isZero();
+        assertThat(result.pageSize()).isEqualTo(50);
+        assertThat(result.totalCount()).isEqualTo(61);
+        assertThat(result.totalPages()).isEqualTo(2);
+        assertThat(result.hasNext()).isTrue();
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.counts().all()).isEqualTo(11);
+        assertThat(result.counts().pending()).isEqualTo(4);
+        assertThat(result.counts().published()).isEqualTo(7);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SubmissionStatus>> statuses = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> sort = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Boolean> active = ArgumentCaptor.forClass(Boolean.class);
+        ArgumentCaptor<Boolean> ascending = ArgumentCaptor.forClass(Boolean.class);
+        ArgumentCaptor<org.springframework.data.domain.Pageable> pageable =
+                ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(submissionRepository).findValidationPage(
+                statuses.capture(),
+                search.capture(),
+                sort.capture(),
+                active.capture(),
+                ascending.capture(),
+                pageable.capture());
+        assertThat(statuses.getValue()).containsExactly(SubmissionStatus.in_review);
+        assertThat(search.getValue()).isEqualTo("research");
+        assertThat(sort.getValue()).isEqualTo("submitted");
+        assertThat(active.getValue()).isTrue();
+        assertThat(ascending.getValue()).isTrue();
+        assertThat(pageable.getValue().getPageNumber()).isZero();
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+        verify(submissionMediaAssetRepository)
+                .findListPreviewMediaBySubmissionIds(List.of(submission.getId()));
+        verify(submissionMediaAssetRepository, never()).countBySubmissionId(any());
+    }
+
+    @Test
+    void getQueuePage_allUsesDescendingHistoryOrderingAndRejectsUnsupportedInputs() {
+        when(submissionRepository.findValidationPage(
+                any(), any(), any(), anyBoolean(), anyBoolean(), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        when(submissionRepository.countValidationStatuses()).thenReturn(List.of());
+
+        validationService.getQueuePage(moderator(), "all", "publish_slot", 0, 20, "");
+
+        verify(submissionRepository).findValidationPage(
+                any(),
+                any(),
+                any(),
+                org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.eq(false),
+                any());
+
+        assertThatThrownBy(() ->
+                validationService.getQueuePage(moderator(), "failed", "submitted", 0, 20, ""))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Unsupported validation queue view");
+        assertThatThrownBy(() ->
+                validationService.getQueuePage(moderator(), "all", "unknown", 0, 20, ""))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Unsupported validation queue sort");
+    }
+
+    @Test
+    void getDashboardSummary_returnsExactWorkflowAggregates() {
+        SubmissionRepository.SubmissionStatusCount pending = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        SubmissionRepository.SubmissionStatusCount inReview = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        SubmissionRepository.SubmissionStatusCount needsRevision = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        when(pending.getStatus()).thenReturn(SubmissionStatus.pending);
+        when(pending.getCount()).thenReturn(4L);
+        when(inReview.getStatus()).thenReturn(SubmissionStatus.in_review);
+        when(inReview.getCount()).thenReturn(3L);
+        when(needsRevision.getStatus()).thenReturn(SubmissionStatus.needs_revision);
+        when(needsRevision.getCount()).thenReturn(2L);
+        when(submissionRepository.countValidationStatuses())
+                .thenReturn(List.of(pending, inReview, needsRevision));
+        when(submissionRepository.countValidationDashboardStatusesBetween(
+                any(), any(), any()))
+                .thenReturn(11L, 2L);
+        when(submissionRepository.countDistinctValidationContributors()).thenReturn(7L);
+
+        var result = validationService.getDashboardSummary();
+
+        assertThat(result.awaitingReview()).isEqualTo(9);
+        assertThat(result.approvedThisMonth()).isEqualTo(11);
+        assertThat(result.rejectedThisMonth()).isEqualTo(2);
+        assertThat(result.contributorCount()).isEqualTo(7);
+    }
+
+    @Test
+    void getQueuePage_needsRevisionUsesFrozenSnapshotWithoutLiveMediaLookup() {
+        Submission submission = inReviewSubmission();
+        submission.setStatus(SubmissionStatus.needs_revision);
+        submission.setEventTitle("Unsubmitted contributor edit");
+        submission.setEventDate(java.time.LocalDate.parse("2026-12-31"));
+        submission.getInstitution().setName("CIT-U");
+        submission.getContributor().setEmail("contributor@example.test");
+        submission.setReviewSnapshot("""
+                {
+                  "eventTitle": "Frozen reviewed title",
+                  "eventDate": "2026-10-01",
+                  "caption": "Frozen caption",
+                  "fastTrack": false,
+                  "tags": [],
+                  "mediaTags": [],
+                  "scheduledAt": "2026-10-02T02:00:00Z",
+                  "mediaCount": 2,
+                  "mediaAssets": []
+                }
+                """);
+
+        when(submissionRepository.findValidationPage(
+                any(), any(), any(), anyBoolean(), anyBoolean(), any()))
+                .thenReturn(new PageImpl<>(List.of(submission), PageRequest.of(0, 20), 1));
+        when(submissionRepository.countValidationStatuses()).thenReturn(List.of());
+
+        var result = validationService.getQueuePage(
+                moderator(), "needs_revision", "publish_slot", 0, 20, "");
+
+        assertThat(result.items()).singleElement().satisfies(item -> {
+            assertThat(item.getEventTitle()).isEqualTo("Frozen reviewed title");
+            assertThat(item.getCaption()).isEqualTo("Frozen caption");
+            assertThat(item.getMediaCount()).isEqualTo(2);
+        });
+        verify(submissionMediaAssetRepository, never())
+                .findListPreviewMediaBySubmissionIds(any());
+        verify(submissionMediaAssetRepository, never()).countBySubmissionId(any());
     }
 
     @Test
@@ -408,7 +578,9 @@ class ValidationServiceTest {
         submission.setId(UUID.randomUUID());
         submission.setStatus(SubmissionStatus.pending);
         submission.setFastTrack(false);
-        java.time.Instant slot = java.time.Instant.parse("2026-06-01T08:00:00Z");
+        // Relative, not a fixed date: approving a slot that has already passed is refused.
+        java.time.Instant slot = java.time.Instant.now().plus(java.time.Duration.ofDays(7))
+                .truncatedTo(java.time.temporal.ChronoUnit.HOURS);
         submission.setScheduledAt(slot);
 
         Institution institution = new Institution();
@@ -682,4 +854,77 @@ class ValidationServiceTest {
                 .findFirst().orElseThrow();
         assertThat(approvedEvent.edited()).isFalse();
     }
+
+    private Submission scheduledInReview(java.time.Instant slot) {
+        Submission submission = inReviewSubmission();
+        submission.setFastTrack(false);
+        submission.setScheduledAt(slot);
+        stubInReview(submission);
+        return submission;
+    }
+
+    @Test
+    void approve_slotPassed_refusesWithoutAnExplicitChoice() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), moderator()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("slot has already passed");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.in_review);
+    }
+
+    @Test
+    void approve_slotPassed_publishNowIsAdminOnly() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), true, moderator()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Only an Administrator");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.in_review);
+    }
+
+    @Test
+    void approve_slotPassed_adminPublishNow_movesSlotToNowAndAudits() {
+        java.time.Instant passed = java.time.Instant.now().minusSeconds(600);
+        Submission submission = scheduledInReview(passed);
+
+        validationService.approve(submission.getId(), true, admin());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        assertThat(submission.getScheduledAt()).isAfter(passed);
+        assertThat(submission.getScheduledAt()).isBeforeOrEqualTo(java.time.Instant.now());
+        verify(auditLogService).record(any(), org.mockito.ArgumentMatchers.eq("LATE_PUBLISH_OVERRIDE"),
+                any(), any(), org.mockito.ArgumentMatchers.eq(submission.getId()), any());
+    }
+
+    @Test
+    void approve_publishNowWithAFutureSlot_isRejected() {
+        Submission submission = scheduledInReview(java.time.Instant.now().plusSeconds(3600));
+
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), true, admin()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("only for a post whose publish slot has already passed");
+    }
+
+    @Test
+    void approve_futureSlot_approvesNormally() {
+        Submission submission = scheduledInReview(java.time.Instant.now().plusSeconds(3600));
+
+        validationService.approve(submission.getId(), moderator());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        verify(auditLogService, org.mockito.Mockito.never()).record(any(),
+                org.mockito.ArgumentMatchers.eq("LATE_PUBLISH_OVERRIDE"), any(), any(), any(), any());
+    }
+
+    @Test
+    void approve_liveEventWithAPastSlotField_isNotTreatedAsLate() {
+        Submission submission = scheduledInReview(java.time.Instant.now().minusSeconds(60));
+        submission.setFastTrack(true);
+
+        validationService.approve(submission.getId(), moderator());
+
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+    }
 }
+

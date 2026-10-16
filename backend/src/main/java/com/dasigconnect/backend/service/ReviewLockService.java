@@ -57,8 +57,7 @@ public class ReviewLockService {
     /**
      * Acquires a review lock for a submission.
      *
-     * A5: self-review (validator == contributor) is allowed, not blocked — the
-     * resulting ValidationLog entries are flagged via ValidationService/isSelfReview.
+     * A5: self-review is unconditionally blocked. — the
      * If the caller already holds the lock, its TTL is renewed and the lock is
      * returned (idempotent keep-alive — the review panel pings this while open so a
      * long edit session does not lose the lock to ReviewLockCleanupJob).
@@ -153,7 +152,7 @@ public class ReviewLockService {
         // without approving/revising/rejecting, the contributor still needs to know.
         // The terminal actions publish this event themselves.
         if (noTerminalAction) {
-            publishEditedIfSessionHadEdits(submission, submissionId);
+            publishEditedIfSessionHadEdits(submission, submissionId, validator.getId());
         }
     }
 
@@ -219,7 +218,7 @@ public class ReviewLockService {
                 submission.getId(), lock.getLockedBy().getId());
 
         if (noTerminalAction) {
-            publishEditedIfSessionHadEdits(submission, submission.getId());
+            publishEditedIfSessionHadEdits(submission, submission.getId(), lock.getLockedBy().getId());
         }
     }
 
@@ -229,7 +228,7 @@ public class ReviewLockService {
      * expiry). Severity is the highest recorded across this session's
      * {@code edited} / {@code media_added} rows; null (no edits) publishes nothing.
      */
-    private void publishEditedIfSessionHadEdits(Submission submission, UUID submissionId) {
+    private void publishEditedIfSessionHadEdits(Submission submission, UUID submissionId, UUID editorId) {
         List<ValidationLog> logs = validationLogRepository
                 .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
         int lastLockIndex = -1;
@@ -253,7 +252,7 @@ public class ReviewLockService {
         }
         if (severity != null) {
             eventPublisher.publishEvent(
-                    new SubmissionEditedDuringReviewEvent(submission, severity, null));
+                    new SubmissionEditedDuringReviewEvent(submission, severity, null, editorId));
         }
     }
 
@@ -283,3 +282,5 @@ public class ReviewLockService {
                         "Authenticated user not found."));
     }
 }
+
+

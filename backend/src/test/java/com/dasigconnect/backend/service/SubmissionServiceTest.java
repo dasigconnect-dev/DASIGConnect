@@ -7,6 +7,7 @@ import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionPageDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -34,14 +35,21 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -106,6 +114,9 @@ class SubmissionServiceTest {
 
     @Mock
     private GuardRailSettingsService guardRailSettings;
+
+    @Mock
+    private MediaProcessingQueueService mediaProcessingQueueService;
 
     @InjectMocks
     private SubmissionService submissionService;
@@ -281,6 +292,34 @@ class SubmissionServiceTest {
 
         verify(slotReservationService).deleteAllForSubmission(submissionId);
         verify(submissionRepository).delete(submission);
+    }
+
+    @Test
+    void delete_rejectedSubmission_releasesSlotAndDeletes() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.rejected, Instant.now());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        submissionService.delete(submissionId, contributorPrincipal);
+
+        verify(slotReservationService).deleteAllForSubmission(submissionId);
+        verify(submissionRepository).delete(submission);
+        // Its review rows go by DB cascade (V103); the deletion itself is audited.
+        verify(auditLogService).record(any(), eq("SUBMISSION_DELETED"), eq(null), eq(null), eq(submissionId),
+                argThat(details -> "rejected".equals(details.get("status"))));
+    }
+
+    @Test
+    void delete_pendingSubmission_isRejectedWithConflict() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.pending, Instant.now());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.delete(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(submissionRepository, never()).delete(any(Submission.class));
     }
 
     @Test
@@ -489,6 +528,123 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void listPage_scopesFiltersAndMediaWorkToRequestedPage() {
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.needs_revision, Instant.now());
+        PageRequest requestedPage = PageRequest.of(1, 20);
+        when(submissionRepository.findSubmissionPage(
+                eq(contributorId),
+                eq(List.of(SubmissionStatus.needs_revision)),
+                eq("research expo"),
+                eq(false),
+                eq(List.of(SubmissionStatus.draft)),
+                any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(submission), requestedPage, 45));
+        when(submissionRepository.countStatusesByContributorId(contributorId)).thenReturn(List.of(
+                statusCount(SubmissionStatus.draft, 2),
+                statusCount(SubmissionStatus.needs_revision, 3),
+                statusCount(SubmissionStatus.rejected, 7),
+                statusCount(SubmissionStatus.pending, 4),
+                statusCount(SubmissionStatus.published, 5),
+                statusCount(SubmissionStatus.publish_failed, 6)));
+        when(submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(List.of(submission.getId())))
+                .thenReturn(List.of());
+
+        SubmissionPageDto result = submissionService.listPage(
+                contributorPrincipal, 1, 20, "action-needed", " Research Expo ");
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.page()).isEqualTo(1);
+        assertThat(result.pageSize()).isEqualTo(20);
+        assertThat(result.totalCount()).isEqualTo(45);
+        assertThat(result.totalPages()).isEqualTo(3);
+        assertThat(result.hasNext()).isTrue();
+        assertThat(result.counts().all()).isEqualTo(27);
+        assertThat(result.counts().drafts()).isEqualTo(2);
+        // Rejected is its own bucket, no longer part of Action Needed.
+        assertThat(result.counts().actionNeeded()).isEqualTo(3);
+        assertThat(result.counts().rejected()).isEqualTo(7);
+        assertThat(result.counts().submitted()).isEqualTo(4);
+        assertThat(result.counts().underReview()).isEqualTo(4);
+        assertThat(result.counts().scheduled()).isZero();
+        assertThat(result.counts().published()).isEqualTo(5);
+        assertThat(result.counts().failed()).isEqualTo(6);
+        verify(submissionMediaAssetRepository, never()).countBySubmissionId(any());
+    }
+
+    @Test
+    void listPage_clampsPageAndPageSize() {
+        when(submissionRepository.findSubmissionPage(
+                eq(contributorId), any(), eq(""), eq(false), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 50), 0));
+        when(submissionRepository.countStatusesByContributorId(contributorId)).thenReturn(List.of());
+
+        submissionService.listPage(contributorPrincipal, -3, 500, "all", null);
+
+        var pageable = org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(submissionRepository).findSubmissionPage(
+                eq(contributorId), any(), eq(""), eq(false), any(), pageable.capture());
+        assertThat(pageable.getValue().getPageNumber()).isZero();
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+        verify(submissionMediaAssetRepository, never()).findListPreviewMediaBySubmissionIds(any());
+    }
+
+    @Test
+    void listPage_withUnsupportedBucketReturnsBadRequest() {
+        assertThatThrownBy(() -> submissionService.listPage(
+                contributorPrincipal, 0, 20, "unknown", ""))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        verify(submissionRepository, never()).findSubmissionPage(
+                any(), any(), any(), anyBoolean(), any(), any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("submissionBucketMappings")
+    void listPage_mapsFrontendBucketsToExpectedStatuses(
+            String bucket,
+            List<SubmissionStatus> expectedStatuses) {
+        when(submissionRepository.findSubmissionPage(
+                eq(contributorId), any(), eq(""), eq(false), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        when(submissionRepository.countStatusesByContributorId(contributorId)).thenReturn(List.of());
+
+        submissionService.listPage(contributorPrincipal, 0, 20, bucket, "");
+
+        verify(submissionRepository).findSubmissionPage(
+                eq(contributorId),
+                argThat(actual -> actual.size() == expectedStatuses.size()
+                        && actual.containsAll(expectedStatuses)),
+                eq(""),
+                eq(false),
+                any(),
+                any(Pageable.class));
+    }
+
+    @ParameterizedTest
+    @MethodSource("submissionStatusSearchMappings")
+    void listPage_preservesFrontendStatusLabelSearch(
+            String search,
+            List<SubmissionStatus> expectedStatuses) {
+        when(submissionRepository.findSubmissionPage(
+                eq(contributorId), any(), eq(search), eq(true), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        when(submissionRepository.countStatusesByContributorId(contributorId)).thenReturn(List.of());
+
+        submissionService.listPage(contributorPrincipal, 0, 20, "all", search);
+
+        verify(submissionRepository).findSubmissionPage(
+                eq(contributorId),
+                any(),
+                eq(search),
+                eq(true),
+                argThat(actual -> actual.size() == expectedStatuses.size()
+                        && actual.containsAll(expectedStatuses)),
+                any(Pageable.class));
+    }
+
+    @Test
     void get_validatorFromOtherInstitutionIsForbidden() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.pending, Instant.now());
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
@@ -614,6 +770,34 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void attachAsset_contributorCanUseSharedDefaultAsset() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        UUID sharedInstitutionId = UUID.randomUUID();
+        Institution sharedInstitution = institution(sharedInstitutionId);
+        AttachAssetDto dto = new AttachAssetDto();
+        dto.setMediaAssetId(assetId);
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, sharedInstitution);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.of(sharedInstitution));
+        when(submissionMediaAssetRepository.existsBySubmissionIdAndMediaAssetId(submissionId, assetId)).thenReturn(false);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachAsset(submissionId, dto, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(mediaProcessingQueueService).enqueueImageOnlyAfterCommit(assetId);
+        verify(auditLogService).record(
+                any(), eq("MEDIA_ASSET_REUSED"), eq(null), eq(null), eq(assetId), any());
     }
 
     @Test
@@ -755,6 +939,31 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isNull();
         assertThat(captor.getValue().getStatus()).isEqualTo(MediaAssetStatus.STAGED);
+        verify(mediaProcessingQueueService).enqueueDraftAnalysisAfterCommit(captor.getValue().getId());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
+    }
+
+    @Test
+    void attachMedia_onDraftVideoDoesNotEnqueueImageProcessing() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/video.mp4");
+        dto.setFileName("video.mp4");
+        dto.setFileType("mp4");
+        dto.setFileSizeBytes(1024L);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        verify(mediaProcessingQueueService, never()).enqueueImageOnlyAfterCommit(any());
+        verify(mediaProcessingQueueService, never()).enqueueDraftAnalysisAfterCommit(any());
+        verify(mediaProcessingQueueService, never()).enqueueAfterCommit(any());
     }
 
     @Test
@@ -807,6 +1016,8 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isEqualTo(institution);
         assertThat(captor.getValue().getStatus()).isNotEqualTo(MediaAssetStatus.STAGED);
+        verify(mediaProcessingQueueService).enqueueAfterCommit(captor.getValue().getId());
+        verify(mediaProcessingQueueService, never()).enqueueImageOnlyAfterCommit(any());
     }
 
     @Test
@@ -921,6 +1132,7 @@ class SubmissionServiceTest {
         assertThat(staged.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
         assertThat(staged.getInstitution()).isEqualTo(institution);
         verify(mediaAssetRepository).saveAll(List.of(staged));
+        verify(mediaProcessingQueueService).enqueueAfterCommit(staged.getId());
     }
 
     @Test
@@ -1285,5 +1497,58 @@ class SubmissionServiceTest {
 
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {
         return new JwtUserDetails(id, role + "@example.com", role, institutionId);
+    }
+
+    private static SubmissionRepository.SubmissionStatusCount statusCount(
+            SubmissionStatus status,
+            long count) {
+        return new SubmissionRepository.SubmissionStatusCount() {
+            @Override
+            public SubmissionStatus getStatus() {
+                return status;
+            }
+
+            @Override
+            public long getCount() {
+                return count;
+            }
+        };
+    }
+
+    private static Stream<Arguments> submissionBucketMappings() {
+        return Stream.of(
+                Arguments.of("drafts", List.of(SubmissionStatus.draft)),
+                Arguments.of("action-needed", List.of(SubmissionStatus.needs_revision)),
+                Arguments.of("rejected", List.of(SubmissionStatus.rejected)),
+                Arguments.of("submitted", List.of(
+                        SubmissionStatus.pending,
+                        SubmissionStatus.in_review,
+                        SubmissionStatus.missed_review,
+                        SubmissionStatus.scheduled,
+                        SubmissionStatus.publishing,
+                        SubmissionStatus.direct_post_scheduled,
+                        SubmissionStatus.direct_post_publishing)),
+                Arguments.of("published", List.of(
+                        SubmissionStatus.published,
+                        SubmissionStatus.published_manual,
+                        SubmissionStatus.admin_direct_post)),
+                Arguments.of("failed", List.of(
+                        SubmissionStatus.publish_failed,
+                        SubmissionStatus.direct_post_failed)),
+                Arguments.of("all", List.of(SubmissionStatus.values())));
+    }
+
+    private static Stream<Arguments> submissionStatusSearchMappings() {
+        return Stream.of(
+                Arguments.of("pending approval", List.of(SubmissionStatus.pending)),
+                Arguments.of("under review", List.of(SubmissionStatus.in_review)),
+                Arguments.of("published", List.of(
+                        SubmissionStatus.published,
+                        SubmissionStatus.published_manual)),
+                Arguments.of("direct post", List.of(
+                        SubmissionStatus.admin_direct_post,
+                        SubmissionStatus.direct_post_scheduled,
+                        SubmissionStatus.direct_post_publishing,
+                        SubmissionStatus.direct_post_failed)));
     }
 }

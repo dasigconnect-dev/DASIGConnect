@@ -61,11 +61,10 @@ export default function FacebookEngagementPanel({ data, onOpenReport, isAdmin = 
         </div>
       )}
 
-      {data.pendingCount > 0 && (
-        <p style={{ marginTop: 10, fontSize: 11.5, color: "var(--d-muted)", fontStyle: "italic" }}>
-          {data.pendingCount} posts pending updated figures from Facebook.
-        </p>
-      )}
+      <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--d-muted)", fontStyle: "italic" }}>
+        {data.pendingCount > 0 && <span style={{ display: "block" }}>{data.pendingCount} posts pending updated figures from Facebook.</span>}
+        {data.lastFetchedAt && <span style={{ display: "block" }}>Data current as of {new Date(data.lastFetchedAt).toLocaleString()}</span>}
+      </div>
 
       <div className="analytics-panel-report-row">
         <button type="button" className="analytics-text-btn" onClick={onOpenReport}>

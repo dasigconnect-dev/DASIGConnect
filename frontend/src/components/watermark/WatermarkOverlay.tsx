@@ -32,9 +32,9 @@ function WatermarkImageItem({ el }: { el: WatermarkElement }) {
     );
   }
 
-  const src = el.imageUrl && el.imageUrl.trim() !== "" && el.imageUrl !== "/dasig-logo.png"
+  const src = el.imageUrl && el.imageUrl.trim() !== "" 
     ? el.imageUrl
-    : "/favicon.svg";
+    : "/dasig-logo.png";
 
   return (
     <img
@@ -121,7 +121,12 @@ export default function WatermarkOverlay({ elements, className = "" }: Watermark
                 style={{
                   width: "100%",
                   height: "100%",
-                  backgroundColor: el.fillColor || "transparent",
+                  background:
+                    el.shapeType === "line"
+                      ? "transparent"
+                      : el.shapeType === "gradient"
+                        ? `linear-gradient(to bottom, transparent 0%, ${el.fillColor || "#07112a"} 100%)`
+                        : el.fillColor || "transparent",
                   borderWidth:
                     el.shapeType === "line"
                       ? "2px 0 0 0"
@@ -132,7 +137,7 @@ export default function WatermarkOverlay({ elements, className = "" }: Watermark
                         : "0px",
                   borderStyle: "solid",
                   borderColor: el.strokeColor || "transparent",
-                  borderRadius: "0px",
+                  borderRadius: el.shapeType === "line" ? "0px" : "8px",
                 }}
               />
             )}

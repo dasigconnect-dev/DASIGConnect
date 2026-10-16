@@ -13,5 +13,6 @@ public record FacebookEngagementSummaryDto(
         long totalShares,
         long sampleSize,
         long pendingCount,
-        String pageId) {
+        String pageId,
+        java.time.Instant lastFetchedAt) {
 }

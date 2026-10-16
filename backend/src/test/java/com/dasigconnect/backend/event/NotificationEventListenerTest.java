@@ -30,6 +30,7 @@ class NotificationEventListenerTest {
     private UserRepository userRepository;
     private EmailDeliveryService emailDeliveryService;
     private MessengerDeliveryService messengerDeliveryService;
+    private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     private NotificationEventListener listener;
 
     private Institution institution;
@@ -43,12 +44,14 @@ class NotificationEventListenerTest {
         userRepository = Mockito.mock(UserRepository.class);
         emailDeliveryService = Mockito.mock(EmailDeliveryService.class);
         messengerDeliveryService = Mockito.mock(MessengerDeliveryService.class);
+        auditLogRepository = Mockito.mock(com.dasigconnect.backend.repository.AuditLogRepository.class);
 
         listener = new NotificationEventListener(
                 notificationService,
                 userRepository,
                 emailDeliveryService,
                 messengerDeliveryService,
+                auditLogRepository,
                 "http://localhost:5173");
 
         institution = new Institution();
@@ -82,7 +85,7 @@ class NotificationEventListenerTest {
     }
 
     @Test
-    void onSubmissionPending_T01_dispatchesInAppAndMessengerToAdmin() {
+    void onSubmissionPending_T01_dispatchesInAppAndMessengerToModeratorAndAdmin() {
         Submission s = new Submission();
         s.setId(UUID.randomUUID());
         s.setEventTitle("AI Expo");
@@ -94,6 +97,10 @@ class NotificationEventListenerTest {
         verify(notificationService).createNotification(
                 eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("AI Expo"));
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("AI Expo"));
     }
 
     @Test
@@ -208,7 +215,7 @@ class NotificationEventListenerTest {
     }
 
     @Test
-    void onFastTrackSubmission_T11_dispatchesInAppEmailAndMessengerToAdmin() {
+    void onFastTrackSubmission_T11_dispatchesInAppEmailAndMessengerToModeratorAndAdmin() {
         Submission s = new Submission();
         s.setId(UUID.randomUUID());
         s.setEventTitle("Breaking Science News");
@@ -222,6 +229,12 @@ class NotificationEventListenerTest {
         verify(emailDeliveryService).send(
                 eq(admin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("Breaking Science News"));
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), any());
+        verify(emailDeliveryService).send(
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("Breaking Science News"));
     }
 
     @Test
@@ -231,4 +244,51 @@ class NotificationEventListenerTest {
         verify(notificationService).createNotification(
                 eq(superAdmin), eq(NotificationEventType.embedding_failure_digest), contains("3 media asset(s)"), any());
     }
+
+    @Test
+    void onSubmissionEditedDuringReview_flagged_alertsOtherAdminsInAppOnly() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Robotics Expo");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+        User editingAdmin = new User();
+        editingAdmin.setId(UUID.randomUUID());
+        editingAdmin.setEmail("editor@dasig.ph");
+        User otherAdmin = new User();
+        otherAdmin.setId(UUID.randomUUID());
+        when(userRepository.findByRole(UserRole.admin)).thenReturn(java.util.List.of(editingAdmin, otherAdmin));
+        when(userRepository.findById(editingAdmin.getId())).thenReturn(java.util.Optional.of(editingAdmin));
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.FLAGGED, null, editingAdmin.getId()));
+
+        verify(notificationService).createNotification(
+                eq(otherAdmin), eq(NotificationEventType.submission_edited_in_review),
+                contains("editor@dasig.ph"), any());
+        verify(notificationService, Mockito.never()).createNotification(
+                eq(editingAdmin), any(), any(), any());
+        verify(emailDeliveryService, Mockito.never()).send(
+                eq(otherAdmin), any(), any(), any());
+    }
+
+    @Test
+    void onSubmissionEditedDuringReview_quiet_doesNotAlertAdmins() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Career Fair");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+        User admin = new User();
+        admin.setId(UUID.randomUUID());
+        when(userRepository.findByRole(UserRole.admin)).thenReturn(java.util.List.of(admin));
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.QUIET, null, UUID.randomUUID()));
+
+        verify(notificationService, Mockito.never()).createNotification(eq(admin), any(), any(), any());
+    }
 }
+
+
+

@@ -1,11 +1,7 @@
 import type { FormEvent } from 'react'
-import Screen from '../../components/layout/Screen'
-import LeftPanel from '../../components/layout/LeftPanel'
-import RightPanel from '../../components/layout/RightPanel'
-import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 interface ForgotScreenProps {
-  active: boolean
+  active?: boolean
   email: string
   loading: boolean
   onEmailChange: (value: string) => void
@@ -14,7 +10,6 @@ interface ForgotScreenProps {
 }
 
 export default function ForgotScreen({
-  active,
   email,
   loading,
   onEmailChange,
@@ -22,104 +17,57 @@ export default function ForgotScreen({
   onBack,
 }: ForgotScreenProps) {
   return (
-    <Screen id="forgot" active={active}>
-      <div className="split">
-        <LeftPanel>
-          <div>
-            <div className="dost-badge">
-              <i className="ti ti-star"></i> DOST Region 7 — Academe
-            </div>
-            <div className="brand-lockup">
-              <div className="brand-icon">
-                <img src={dasigLogo} alt="DASIGConnect logo" />
-              </div>
-              <div className="brand-text">
-                <div className="brand-name">
-                  DASIG<em>Connect</em>
-                </div>
-                <div className="brand-tag">Content Coordination Platform</div>
-              </div>
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-headline">
-              Secure account <em>recovery.</em>
-            </div>
-            <div className="l-desc">
-              We'll send a single-use, time-limited reset link to your registered
-              institutional email. Any previous reset tokens are immediately
-              invalidated for security.
-            </div>
-          </div>
-          <div className="brand-footer-part">
-            <div className="l-feat">
-              <div className="l-feat-icon">
-                <i className="ti ti-shield-lock"></i>
-              </div>
-              <div className="l-feat-text">
-                <div className="l-feat-title">
-                  Account Enumeration Protection
-                </div>
-                <div className="l-feat-sub">
-                  We never reveal whether an email exists in our system — you'll
-                  always see the same response.
-                </div>
-              </div>
-            </div>
-          </div>
-        </LeftPanel>
-        <RightPanel>
-          <button type="button" className="back-btn" onClick={onBack}>
-            <i className="ti ti-arrow-left"></i> Back to sign in
-          </button>
-          <div className="form-head">
-            <div className="form-title">Forgot your password?</div>
-            <div className="form-desc">
-              Enter your registered institutional email. If a matching account
-              exists, a reset link will be dispatched.
-            </div>
-          </div>
-          <div className="alert alert-info">
-            <i className="ti ti-shield-check"></i>
-            <div>
-              For security, we will not confirm whether this email address is
-              registered in DASIGConnect.
-            </div>
-          </div>
-          <form
-            onSubmit={(event: FormEvent<HTMLFormElement>) => {
-              event.preventDefault()
-              onSubmit()
-            }}
-          >
-            <div className="fgroup">
-              <label className="flabel" htmlFor="forgot-email">Institutional Email</label>
-              <input
-                id="forgot-email"
-                name="email"
-                className="finput"
-                type="email"
-                autoComplete="email"
-                placeholder="yourname@institution.edu.ph"
-                value={email}
-                onChange={(event) => onEmailChange(event.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={loading}
-              aria-busy={loading}
-            >
-              <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-send'}`}></i>
-              {loading ? 'Sending...' : 'Send Reset Link'}
-            </button>
-          </form>
-          <button type="button" className="btn-ghost" onClick={onBack}>
-            Cancel
-          </button>
-        </RightPanel>
+    <>
+      <button type="button" className="back-btn" onClick={onBack}>
+        <i className="ti ti-arrow-left"></i> Back to sign in
+      </button>
+      <div className="form-head">
+        <div className="form-title">Forgot your password?</div>
+        <div className="form-desc">
+          Enter your registered institutional email. If a matching account
+          exists, a reset link will be dispatched.
+        </div>
       </div>
-    </Screen>
+      <div className="alert alert-info">
+        <i className="ti ti-shield-check"></i>
+        <div>
+          For security, we will not confirm whether this email address is
+          registered in DASIGConnect.
+        </div>
+      </div>
+      <form
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault()
+          onSubmit()
+        }}
+      >
+        <div className="fgroup">
+          <label className="flabel" htmlFor="forgot-email">Institutional Email</label>
+          <input
+            id="forgot-email"
+            name="email"
+            className="finput"
+            type="email"
+            autoComplete="email"
+            placeholder="yourname@institution.edu.ph"
+            value={email}
+            onChange={(event) => onEmailChange(event.target.value)}
+          />
+        </div>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={loading}
+          aria-busy={loading}
+        >
+          <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-send'}`}></i>
+          {loading ? 'Sending...' : 'Send Reset Link'}
+        </button>
+      </form>
+      <button type="button" className="btn-ghost btn-cancel" onClick={onBack}>
+        Cancel
+      </button>
+    </>
   )
 }
+

@@ -2,21 +2,30 @@ package com.dasigconnect.backend.service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -35,28 +44,41 @@ import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaContext;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaProcessingJobRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
+import com.dasigconnect.backend.repository.SubmissionMediaContextRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Provides AI media recommendations for UC-3.3.
  *
  * Asset image understanding is generated once at upload time. Suggestion
- * requests only embed the contributor's current text context and run pgvector
- * search, then apply lightweight category/tag/recency boosts. This keeps the
- * feature fast and avoids rescanning images during content submission.
+ * requests reuse stored image embeddings for attached-media context and only
+ * embed the contributor's text when text context is present. Candidate search
+ * then applies lightweight category/tag/recency boosts. This keeps the feature
+ * fast and avoids rescanning images during content submission.
  */
 @Service
 @Transactional(readOnly = true)
 public class AIRecommendationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
+    private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
+    private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
+    private static final String LEGACY_RANKING_VERSION = "legacy-v1";
+    private static final String HYBRID_RANKING_VERSION = "hybrid-v2";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final long QUERY_EMBEDDING_TTL_MILLIS = Duration.ofMinutes(2).toMillis();
+    private static final int QUERY_EMBEDDING_CACHE_LIMIT = 200;
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -66,6 +88,18 @@ public class AIRecommendationService {
     private final AiInteractionLogRepository aiInteractionLogRepository;
     private final VoyageAIClient voyageAIClient;
     private final MediaAlbumRepository mediaAlbumRepository;
+    private final SubmissionMediaContextRepository submissionMediaContextRepository;
+    private final boolean visualSuggestionsEnabled;
+    private final boolean hybridRankingEnabled;
+    private final boolean hybridShadowEnabled;
+    private final ConcurrentHashMap<String, QueryEmbeddingCacheEntry> queryEmbeddingCache =
+            new ConcurrentHashMap<>();
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaProcessingJobRepository mediaProcessingJobRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -74,7 +108,11 @@ public class AIRecommendationService {
             AssetTagRepository assetTagRepository,
             AiInteractionLogRepository aiInteractionLogRepository,
             VoyageAIClient voyageAIClient,
-            MediaAlbumRepository mediaAlbumRepository) {
+            MediaAlbumRepository mediaAlbumRepository,
+            SubmissionMediaContextRepository submissionMediaContextRepository,
+            @Value("${app.ai.media-suggestions.visual-enabled:true}") boolean visualSuggestionsEnabled,
+            @Value("${app.ai.media-suggestions.hybrid-ranking-enabled:false}") boolean hybridRankingEnabled,
+            @Value("${app.ai.media-suggestions.hybrid-shadow-enabled:true}") boolean hybridShadowEnabled) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -83,6 +121,10 @@ public class AIRecommendationService {
         this.aiInteractionLogRepository = aiInteractionLogRepository;
         this.voyageAIClient = voyageAIClient;
         this.mediaAlbumRepository = mediaAlbumRepository;
+        this.submissionMediaContextRepository = submissionMediaContextRepository;
+        this.visualSuggestionsEnabled = visualSuggestionsEnabled;
+        this.hybridRankingEnabled = hybridRankingEnabled;
+        this.hybridShadowEnabled = hybridShadowEnabled;
     }
 
     /**
@@ -115,7 +157,7 @@ public class AIRecommendationService {
                 .map(MediaAssetSummaryDto::from)
                 .toList();
 
-        logInteraction(submissionId, institutionId, "media_recommendation", "shown");
+        logInteractionInternal(submissionId, institutionId, "media_recommendation", "shown");
         return results;
     }
 
@@ -124,73 +166,709 @@ public class AIRecommendationService {
      * context.
      *
      * The expensive image scan was already done when media was uploaded. At
-     * request time we embed the contributor's title/caption/category/tags once,
-     * fetch pgvector nearest neighbors, and re-rank a small candidate set with
-     * deterministic metadata boosts.
+     * request time we reuse every available attached IMAGE embedding, optionally
+     * embed the contributor's text context once, and re-rank a bounded candidate
+     * set with deterministic metadata boosts.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MediaSuggestResultDto> suggestMedia(UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        return suggestMediaBatch(submissionId, dto, user).results();
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public MediaSuggestionBatch suggestMediaBatch(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
         Submission submission = loadAndAuthorise(submissionId, user);
         UUID institutionId = submission.getInstitution().getId();
+        boolean hybridEnabledForInstitution = hybridRankingEnabled
+                && submission.getInstitution().isAiMediaHybridRankingEnabled();
 
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
-        Map<UUID, List<TagSignal>> attachedTagMap = loadTagSignalMap(attachedAssets.stream().map(MediaAsset::getId).toList());
+        List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        Set<UUID> selectedImageIds = selectedImageAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        EmbeddingReadiness embeddingReadiness = visualSuggestionsEnabled
+                ? selectedImageReadiness(selectedImageIds, submissionId)
+                : EmbeddingReadiness.READY;
+        boolean processing = embeddingReadiness.processing();
+        Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
 
-        String embeddingText = buildQueryEmbeddingText(dto, attachedAssets, attachedTagMap);
-        if (embeddingText.isBlank()) {
-            return List.of();
-        }
+        CandidateSignals visualSignals = visualSuggestionsEnabled
+                ? loadAttachedCandidateScores(
+                        institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId)
+                : CandidateSignals.EMPTY;
+        CandidateSignals selectedMediaSemanticSignals = visualSuggestionsEnabled
+                ? loadAttachedCandidateScores(
+                        institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
+                : CandidateSignals.EMPTY;
+        ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
+                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
+        Map<UUID, Double> semanticScores = combineSemanticScores(
+                selectedMediaSemanticSignals.similarityScores(), textSemanticLoad.scores());
 
-        String queryVector;
-        try {
-            queryVector = voyageAIClient.embedQuery(embeddingText);
-        } catch (Exception e) {
-            log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
-            return fallbackSuggestions(institutionId, attachedIds, dto);
-        }
-
-        List<Object[]> rows = mediaAssetEmbeddingRepository.findTopSimilarWithScore(
-                institutionId, MediaAssetEmbeddingType.SEMANTIC, queryVector, 30);
-        List<UUID> candidateIds = new ArrayList<>();
-        Map<UUID, Double> semanticScores = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            UUID id = toUuid(row[0]);
-            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
-            candidateIds.add(id);
-            semanticScores.put(id, score);
-        }
+        List<UUID> candidateIds = new ArrayList<>(visualSignals.similarityScores().keySet());
+        semanticScores.keySet().stream()
+                .filter(id -> !visualSignals.similarityScores().containsKey(id))
+                .forEach(candidateIds::add);
         if (candidateIds.isEmpty()) {
-            return fallbackSuggestions(institutionId, attachedIds, dto);
+            List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
+                    ? List.of()
+                    : fallbackOrEmpty(institutionId, attachedIds, selectedImageAssets, dto);
+            MediaSuggestionOutcome outcome = fallback.isEmpty()
+                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                            visualSignals.failed() || selectedMediaSemanticSignals.failed()
+                                    || textSemanticLoad.failed())
+                    : MediaSuggestionOutcome.READY;
+            return new MediaSuggestionBatch(fallback, processing, outcome);
         }
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
                 .stream()
                 .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
+        Map<UUID, UsageSignal> usageMap = loadUsageSignalMap(candidateIds);
+        SubmissionMediaContext mediaContext = submissionMediaContextRepository.findById(submissionId)
+                .filter(context -> institutionId.equals(context.getInstitutionId()))
+                .orElse(null);
+        List<RankedAsset> legacyRanking = rankCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores,
+                visualSignals.similarityScores(), visualSignals.coverageScores(),
+                dto, tagMap, usageMap, selectedImageAssets, mediaContext, false);
+        List<RankedAsset> hybridRanking = hybridEnabledForInstitution || hybridShadowEnabled
+                ? rankCandidates(candidateIds, assetMap, attachedIds, semanticScores,
+                        visualSignals.similarityScores(),
+                        visualSignals.coverageScores(), dto, tagMap, usageMap,
+                        selectedImageAssets, mediaContext, true)
+                : List.of();
+        if (hybridShadowEnabled) {
+            logShadowComparison(submissionId, institutionId, legacyRanking, hybridRanking);
+        }
 
-        List<MediaSuggestResultDto> rankedResults = candidateIds.stream()
-                .filter(id -> assetMap.containsKey(id))
-                .filter(id -> !attachedIds.contains(id))
-                .map(id -> rankAsset(
-                assetMap.get(id),
-                semanticScores.getOrDefault(id, 0.0),
-                dto,
-                tagMap.getOrDefault(id, List.of())
-        ))
-                .filter(result -> result.score() >= 0.40)
-                .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
+        List<RankedAsset> selectedRanking = hybridEnabledForInstitution ? hybridRanking : legacyRanking;
+        String rankingVersion = hybridEnabledForInstitution ? HYBRID_RANKING_VERSION : LEGACY_RANKING_VERSION;
+        List<MediaSuggestResultDto> rankedResults = selectedRanking.stream()
                 .limit(8)
-                .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
+                .map(result -> MediaSuggestResultDto.from(
+                        result.asset(), result.score(), result.reasons(),
+                        result.signalScores(), rankingVersion))
                 .toList();
 
         if (rankedResults.isEmpty()) {
-            log.info("No suggest-media candidates remained after excluding attached assets for submission {}; using metadata fallback.",
-                    submissionId);
-            return fallbackSuggestions(institutionId, attachedIds, dto);
+            if (hasTextContext(dto)) {
+                log.info("No suggest-media candidates remained for submission {}; using metadata fallback.",
+                        submissionId);
+            } else {
+                log.info("No visual media candidates are ready for submission {}.", submissionId);
+            }
+            List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
+                    ? List.of()
+                    : fallbackOrEmpty(institutionId, attachedIds, selectedImageAssets, dto);
+            MediaSuggestionOutcome outcome = fallback.isEmpty()
+                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                            visualSignals.failed() || selectedMediaSemanticSignals.failed()
+                                    || textSemanticLoad.failed())
+                    : MediaSuggestionOutcome.READY;
+            return new MediaSuggestionBatch(fallback, processing, outcome);
         }
 
-        return rankedResults;
+        return new MediaSuggestionBatch(rankedResults, processing, MediaSuggestionOutcome.READY);
+    }
+
+    /**
+     * Runs the Phase 6 offline ranking experiments against the same authorized
+     * candidate retrieval used by live suggestions. This method is not exposed
+     * by a controller and is invoked only by the media-ai-evaluation profile.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public MediaEvaluationSnapshot evaluateMediaStrategies(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        long totalStarted = System.nanoTime();
+        Submission submission = loadAndAuthorise(submissionId, user);
+        UUID institutionId = submission.getInstitution().getId();
+        List<MediaAsset> attachedAssets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId);
+        Set<UUID> attachedIds = attachedAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toSet());
+        List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        Set<UUID> selectedImageIds = selectedImageAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, List<TagSignal>> selectedTagMap = loadTagSignalMap(List.copyOf(selectedImageIds));
+
+        long visualStarted = System.nanoTime();
+        CandidateSignals visualSignals = loadAttachedCandidateScores(
+                institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId);
+        long visualDurationMs = MediaAiTelemetryService.elapsedMillis(visualStarted);
+
+        long semanticStarted = System.nanoTime();
+        CandidateSignals selectedSemanticSignals = loadAttachedCandidateScores(
+                institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
+        ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
+                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
+        Map<UUID, Double> semanticScores = combineSemanticScores(
+                selectedSemanticSignals.similarityScores(), textSemanticLoad.scores());
+        long semanticDurationMs = MediaAiTelemetryService.elapsedMillis(semanticStarted);
+
+        List<UUID> candidateIds = new ArrayList<>(visualSignals.similarityScores().keySet());
+        semanticScores.keySet().stream()
+                .filter(id -> !visualSignals.similarityScores().containsKey(id))
+                .forEach(candidateIds::add);
+
+        Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings =
+                new EnumMap<>(MediaEvaluationStrategy.class);
+        for (MediaEvaluationStrategy strategy : MediaEvaluationStrategy.values()) {
+            rankings.put(strategy, List.of());
+        }
+        if (candidateIds.isEmpty()) {
+            return new MediaEvaluationSnapshot(
+                    submissionId,
+                    institutionId,
+                    selectedImageIds.size(),
+                    0,
+                    Map.copyOf(rankings),
+                    new MediaEvaluationTimings(
+                            visualDurationMs,
+                            semanticDurationMs,
+                            MediaAiTelemetryService.elapsedMillis(totalStarted)));
+        }
+
+        Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
+                .stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
+        Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
+        Map<UUID, UsageSignal> usageMap = loadUsageSignalMap(candidateIds);
+        SubmissionMediaContext mediaContext = submissionMediaContextRepository.findById(submissionId)
+                .filter(context -> institutionId.equals(context.getInstitutionId()))
+                .orElse(null);
+
+        rankings.put(MediaEvaluationStrategy.IMAGE_ONLY, evaluationCandidates(rankSignalCandidates(
+                candidateIds, assetMap, attachedIds, visualSignals.similarityScores(),
+                "visual similarity to selected media")));
+        rankings.put(MediaEvaluationStrategy.SEMANTIC_ONLY, evaluationCandidates(rankSignalCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores,
+                "semantic similarity to submission context")));
+        rankings.put(MediaEvaluationStrategy.HYBRID_V2, evaluationCandidates(rankCandidates(
+                candidateIds, assetMap, attachedIds, semanticScores,
+                visualSignals.similarityScores(), visualSignals.coverageScores(),
+                dto, tagMap, usageMap, selectedImageAssets, mediaContext, true)));
+        rankings.put(MediaEvaluationStrategy.RECIPROCAL_RANK_FUSION,
+                evaluationCandidates(rankReciprocalFusionCandidates(
+                        candidateIds, assetMap, attachedIds,
+                        visualSignals.similarityScores(), semanticScores)));
+
+        return new MediaEvaluationSnapshot(
+                submissionId,
+                institutionId,
+                selectedImageIds.size(),
+                candidateIds.size(),
+                Map.copyOf(rankings),
+                new MediaEvaluationTimings(
+                        visualDurationMs,
+                        semanticDurationMs,
+                        MediaAiTelemetryService.elapsedMillis(totalStarted)));
+    }
+
+    private EmbeddingReadiness selectedImageReadiness(Set<UUID> selectedImageIds, UUID submissionId) {
+        if (selectedImageIds.isEmpty()) return EmbeddingReadiness.READY;
+        try {
+            long ready = mediaAssetEmbeddingRepository.countEmbeddingsForAssets(
+                    List.copyOf(selectedImageIds), MediaAssetEmbeddingType.IMAGE);
+            boolean enrichmentProcessing = mediaProcessingJobRepository != null
+                    && mediaProcessingJobRepository.existsActiveEnrichmentJob(
+                            List.copyOf(selectedImageIds),
+                            MediaProcessingQueueService.ENRICHMENT_VERSION);
+            if (ready >= selectedImageIds.size() && !enrichmentProcessing) {
+                return EmbeddingReadiness.READY;
+            }
+            boolean failed = mediaProcessingJobRepository != null
+                    && mediaProcessingJobRepository.existsDeadImageEmbeddingJob(
+                            List.copyOf(selectedImageIds),
+                            MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION,
+                            MediaProcessingQueueService.PROCESSING_VERSION);
+            return new EmbeddingReadiness(!failed, failed);
+        } catch (RuntimeException error) {
+            log.warn("Could not determine image preparation status for submission {}: {}",
+                    submissionId, error.getMessage());
+            return new EmbeddingReadiness(false, true);
+        }
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public boolean areSelectedImagesProcessing(
+            UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
+        loadAndAuthorise(submissionId, user);
+        if (!visualSuggestionsEnabled) return false;
+        List<MediaAsset> attachedAssets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId);
+        Set<UUID> attachedIds = attachedAssets.stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toSet());
+        Set<UUID> selectedImageIds = resolveSelectedImageAssets(dto, attachedAssets, attachedIds).stream()
+                .map(MediaAsset::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return selectedImageReadiness(selectedImageIds, submissionId).processing();
+    }
+
+    private static List<MediaAsset> resolveSelectedImageAssets(
+            MediaSuggestRequestDto dto,
+            List<MediaAsset> attachedAssets,
+            Set<UUID> attachedIds) {
+        Set<UUID> requestedIds = dto.getSelectedAssetIds() == null
+                ? Set.of()
+                : new LinkedHashSet<>(dto.getSelectedAssetIds());
+        if (!requestedIds.isEmpty() && !attachedIds.containsAll(requestedIds)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "selectedAssetIds must reference media attached to this submission.");
+        }
+
+        return attachedAssets.stream()
+                .filter(asset -> requestedIds.isEmpty() || requestedIds.contains(asset.getId()))
+                .filter(asset -> asset.getFileType() != null && asset.getFileType().isImage())
+                .toList();
+    }
+
+    private static List<RankedAsset> rankCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> semanticScores,
+            Map<UUID, Double> visualScores,
+            Map<UUID, Double> coverageScores,
+            MediaSuggestRequestDto dto,
+            Map<UUID, List<TagSignal>> tagMap,
+            Map<UUID, UsageSignal> usageMap,
+            List<MediaAsset> attachedAssets,
+            SubmissionMediaContext mediaContext,
+            boolean hybrid) {
+        List<RankedAsset> ranked = candidateIds.stream()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
+                .filter(id -> hasCompatibleMediaFormat(assetMap.get(id), attachedAssets))
+                .map(id -> hybrid
+                        ? rankAssetHybrid(
+                                assetMap.get(id),
+                                semanticScores.getOrDefault(id, 0.0),
+                                visualScores.getOrDefault(id, 0.0),
+                                coverageScores.getOrDefault(id, 0.0),
+                                dto,
+                                tagMap.getOrDefault(id, List.of()),
+                                usageMap.getOrDefault(id, UsageSignal.NEVER_USED),
+                                attachedAssets,
+                                mediaContext)
+                        : rankAsset(
+                                assetMap.get(id),
+                                semanticScores.getOrDefault(id, 0.0),
+                                visualScores.getOrDefault(id, 0.0),
+                                dto,
+                                tagMap.getOrDefault(id, List.of())))
+                .map(result -> applyMediaFormatBoost(result, attachedAssets))
+                .filter(result -> result.score() >= 0.40)
+                .sorted(rankedAssetComparator())
+                .toList();
+        return hybrid ? diversify(ranked, 8) : ranked;
+    }
+
+    static boolean hasCompatibleMediaFormat(
+            MediaAsset candidate,
+            List<MediaAsset> selectedAssets) {
+        Set<String> selectedTypes = selectedAssets.stream()
+                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::normalize)
+                .filter(type -> !type.isBlank() && !"other".equals(type))
+                .collect(Collectors.toSet());
+        if (selectedTypes.isEmpty()) return true;
+
+        String candidateType = normalize(candidate.getAssetType());
+        if (candidateType.isBlank() || "other".equals(candidateType)) return false;
+        if (selectedTypes.contains(candidateType)) return true;
+
+        // Graphic formats have different intent. A screenshot or poster should not
+        // be offered as an infographic merely because both contain text and logos.
+        if (mediaFormatFamily(candidateType) == MediaFormatFamily.GRAPHIC
+                || selectedTypes.stream()
+                        .map(AIRecommendationService::mediaFormatFamily)
+                        .anyMatch(family -> family == MediaFormatFamily.GRAPHIC)) {
+            return false;
+        }
+
+        Set<MediaFormatFamily> selectedFamilies = selectedAssets.stream()
+                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::mediaFormatFamily)
+                .filter(family -> family != MediaFormatFamily.UNKNOWN)
+                .collect(Collectors.toSet());
+        MediaFormatFamily candidateFamily = mediaFormatFamily(candidate.getAssetType());
+        return candidateFamily != MediaFormatFamily.UNKNOWN && selectedFamilies.contains(candidateFamily);
+    }
+
+    private static RankedAsset applyMediaFormatBoost(
+            RankedAsset result,
+            List<MediaAsset> selectedAssets) {
+        String candidateType = normalize(result.asset().getAssetType());
+        if (candidateType.isBlank()) return result;
+        Set<String> selectedTypes = selectedAssets.stream()
+                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::normalize)
+                .filter(type -> !type.isBlank())
+                .collect(Collectors.toSet());
+        if (selectedTypes.isEmpty()) return result;
+
+        List<String> reasons = new ArrayList<>(result.reasons());
+        double boost;
+        if (selectedTypes.contains(candidateType)) {
+            boost = 0.10;
+            reasons.add(0, "Gemini detected the same format: "
+                    + displayAssetType(result.asset().getAssetType()) + ".");
+        } else {
+            MediaFormatFamily candidateFamily = mediaFormatFamily(candidateType);
+            boolean sameFamily = selectedTypes.stream()
+                    .map(AIRecommendationService::mediaFormatFamily)
+                    .anyMatch(family -> family != MediaFormatFamily.UNKNOWN && family == candidateFamily);
+            if (!sameFamily) return result;
+            boost = 0.04;
+            reasons.add(0, "Gemini detected a related photo format: "
+                    + displayAssetType(result.asset().getAssetType()) + ".");
+        }
+        sharedGeminiDetails(result.asset(), selectedAssets).ifPresent(reason -> reasons.add(1, reason));
+        Map<String, Double> signalScores = new LinkedHashMap<>(result.signalScores());
+        signalScores.put("format", selectedTypes.contains(candidateType) ? 1.0 : 0.70);
+        return new RankedAsset(result.asset(), clamp(result.score() + boost),
+                List.copyOf(reasons), Map.copyOf(signalScores));
+    }
+
+    private static String displayAssetType(String assetType) {
+        String value = assetType == null ? "" : assetType.strip();
+        return value.isBlank() ? "Media" : value;
+    }
+
+    private static Optional<String> sharedGeminiDetails(
+            MediaAsset candidate,
+            List<MediaAsset> selectedAssets) {
+        Set<String> selectedSignals = selectedAssets.stream()
+                .flatMap(asset -> geminiDetailValues(asset).stream())
+                .map(AIRecommendationService::normalize)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toSet());
+        if (selectedSignals.isEmpty()) return Optional.empty();
+
+        List<String> shared = geminiDetailValues(candidate).stream()
+                .filter(value -> selectedSignals.contains(normalize(value)))
+                .distinct()
+                .limit(3)
+                .toList();
+        if (shared.isEmpty()) return Optional.empty();
+        return Optional.of("Gemini found shared details: " + String.join(", ", shared) + ".");
+    }
+
+    private static List<String> geminiDetailValues(MediaAsset asset) {
+        List<String> values = new ArrayList<>();
+        addValues(values, asset.getVisibleObjects());
+        addValues(values, asset.getSpecificSubjects());
+        addValues(values, asset.getVisualStyle());
+        addValues(values, asset.getObservedScenes());
+        addValues(values, asset.getObservedActivities());
+        addValues(values, asset.getEquipmentSignals());
+        addValues(values, asset.getRecognitionSignals());
+        addValues(values, asset.getCompositionSignals());
+        return values;
+    }
+
+    private static void addValues(List<String> target, String[] values) {
+        if (values == null) return;
+        for (String value : values) {
+            if (value != null && !value.isBlank()) target.add(value.strip());
+        }
+    }
+
+    private static MediaFormatFamily mediaFormatFamily(String assetType) {
+        return switch (normalize(assetType)) {
+            case "infographic", "poster", "document", "screenshot",
+                    "project presentation" -> MediaFormatFamily.GRAPHIC;
+            case "product photo", "food photo", "event photo", "lab photo",
+                    "portrait", "group photo", "landscape", "building photo" -> MediaFormatFamily.PHOTO;
+            case "artwork photo" -> MediaFormatFamily.ARTWORK;
+            default -> MediaFormatFamily.UNKNOWN;
+        };
+    }
+
+    private static Comparator<RankedAsset> rankedAssetComparator() {
+        return Comparator.comparingDouble(RankedAsset::score).reversed()
+                .thenComparing(result -> result.asset().getId());
+    }
+
+    private static List<RankedAsset> rankSignalCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> scores,
+            String reason) {
+        List<RankedAsset> ranked = candidateIds.stream()
+                .distinct()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
+                .filter(id -> scores.getOrDefault(id, 0.0) >= 0.40)
+                .map(id -> new RankedAsset(
+                        assetMap.get(id),
+                        clamp(scores.get(id)),
+                        List.of("Ranked by " + reason + "."),
+                        Map.of("retrieval", clamp(scores.get(id)))))
+                .sorted(rankedAssetComparator())
+                .toList();
+        return diversify(ranked, 10);
+    }
+
+    private static List<RankedAsset> rankReciprocalFusionCandidates(
+            List<UUID> candidateIds,
+            Map<UUID, MediaAsset> assetMap,
+            Set<UUID> attachedIds,
+            Map<UUID, Double> visualScores,
+            Map<UUID, Double> semanticScores) {
+        Map<UUID, Integer> visualRanks = signalRanks(visualScores);
+        Map<UUID, Integer> semanticRanks = signalRanks(semanticScores);
+        int availableSignals = (visualRanks.isEmpty() ? 0 : 1) + (semanticRanks.isEmpty() ? 0 : 1);
+        if (availableSignals == 0) return List.of();
+
+        double maximum = availableSignals / 61.0;
+        List<RankedAsset> ranked = candidateIds.stream()
+                .distinct()
+                .filter(assetMap::containsKey)
+                .filter(id -> !attachedIds.contains(id))
+                .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
+                .map(id -> {
+                    double fused = reciprocalContribution(visualRanks.get(id))
+                            + reciprocalContribution(semanticRanks.get(id));
+                    return new RankedAsset(
+                            assetMap.get(id),
+                            clamp(fused / maximum),
+                            List.of("Ranked by reciprocal fusion of visual and semantic retrieval."),
+                            signalScoreMap(
+                                    semanticScores.getOrDefault(id, 0.0),
+                                    visualScores.getOrDefault(id, 0.0)));
+                })
+                .filter(result -> result.score() > 0.0)
+                .sorted(rankedAssetComparator())
+                .toList();
+        return diversify(ranked, 10);
+    }
+
+    static Map<UUID, Double> reciprocalRankFusionScores(
+            Map<UUID, Double> visualScores, Map<UUID, Double> semanticScores) {
+        Map<UUID, Integer> visualRanks = signalRanks(visualScores);
+        Map<UUID, Integer> semanticRanks = signalRanks(semanticScores);
+        int availableSignals = (visualRanks.isEmpty() ? 0 : 1) + (semanticRanks.isEmpty() ? 0 : 1);
+        if (availableSignals == 0) return Map.of();
+        double maximum = availableSignals / 61.0;
+        Set<UUID> ids = new LinkedHashSet<>(visualRanks.keySet());
+        ids.addAll(semanticRanks.keySet());
+        Map<UUID, Double> fused = new LinkedHashMap<>();
+        ids.stream()
+                .sorted()
+                .forEach(id -> fused.put(id, clamp((reciprocalContribution(visualRanks.get(id))
+                        + reciprocalContribution(semanticRanks.get(id))) / maximum)));
+        return Map.copyOf(fused);
+    }
+
+    private static Map<UUID, Integer> signalRanks(Map<UUID, Double> scores) {
+        Map<UUID, Integer> ranks = new LinkedHashMap<>();
+        List<UUID> ordered = scores.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() >= 0.40)
+                .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed()
+                        .thenComparing(Map.Entry::getKey))
+                .map(Map.Entry::getKey)
+                .toList();
+        for (int index = 0; index < ordered.size(); index++) {
+            ranks.put(ordered.get(index), index + 1);
+        }
+        return ranks;
+    }
+
+    private static double reciprocalContribution(Integer rank) {
+        return rank == null ? 0.0 : 1.0 / (60.0 + rank);
+    }
+
+    private static List<MediaEvaluationCandidate> evaluationCandidates(List<RankedAsset> ranked) {
+        return ranked.stream()
+                .limit(10)
+                .map(result -> new MediaEvaluationCandidate(
+                        result.asset().getId(),
+                        result.asset().getInstitution() == null
+                                ? null : result.asset().getInstitution().getId(),
+                        result.score()))
+                .toList();
+    }
+
+    private void logShadowComparison(
+            UUID submissionId,
+            UUID institutionId,
+            List<RankedAsset> legacy,
+            List<RankedAsset> hybrid) {
+        List<UUID> legacyTop = legacy.stream().limit(8).map(result -> result.asset().getId()).toList();
+        List<UUID> hybridTop = hybrid.stream().limit(8).map(result -> result.asset().getId()).toList();
+        long overlap = hybridTop.stream().filter(legacyTop::contains).count();
+        boolean topChanged = !legacyTop.isEmpty() && !hybridTop.isEmpty()
+                && !legacyTop.getFirst().equals(hybridTop.getFirst());
+        log.info("Media ranking shadow comparison submission={} legacy={} hybrid={} overlap={} topChanged={}",
+                submissionId, legacyTop.size(), hybridTop.size(), overlap, topChanged);
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.recordRankingShadow(
+                    institutionId,
+                    submissionId,
+                    legacyTop.size(),
+                    hybridTop.size(),
+                    Math.toIntExact(overlap),
+                    topChanged);
+        }
+    }
+
+    private CandidateSignals loadAttachedCandidateScores(
+            UUID institutionId,
+            Set<UUID> attachedIds,
+            MediaAssetEmbeddingType embeddingType,
+            UUID submissionId) {
+        if (attachedIds.isEmpty()) {
+            return CandidateSignals.EMPTY;
+        }
+        try {
+            return candidateSignals(mediaAssetEmbeddingRepository.findTopSimilarToAssetsWithScore(
+                    institutionId,
+                    submissionId,
+                    embeddingType,
+                    List.copyOf(attachedIds),
+                    ATTACHED_CANDIDATES_PER_ASSET,
+                    SUGGESTION_CANDIDATE_LIMIT));
+        } catch (RuntimeException e) {
+            // Attached-media retrieval is additive. Preserve the established
+            // text path if a transient database error occurs.
+            log.warn("{} media retrieval failed for submission {}: {}",
+                    embeddingType, submissionId, e.getMessage());
+            return CandidateSignals.failure();
+        }
+    }
+
+    private ScoreLoad loadTextSemanticCandidateScores(
+            UUID institutionId,
+            List<MediaAsset> attachedAssets,
+            Map<UUID, List<TagSignal>> attachedTagMap,
+            MediaSuggestRequestDto dto,
+            UUID submissionId) {
+        if (!hasTextContext(dto)) {
+            return ScoreLoad.EMPTY;
+        }
+        String embeddingText = buildQueryEmbeddingText(dto, attachedAssets, attachedTagMap);
+        try {
+            String queryVector = cachedQueryEmbedding(embeddingText);
+            return new ScoreLoad(scoreMap(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+                    institutionId,
+                    MediaAssetEmbeddingType.SEMANTIC,
+                    queryVector,
+                    SUGGESTION_CANDIDATE_LIMIT)), false);
+        } catch (Exception e) {
+            log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
+            return new ScoreLoad(Map.of(), true);
+        }
+    }
+
+    /**
+     * Reuses the short-lived text vector when polling refreshes the same hybrid
+     * request after a visual embedding completes. Without this cache, one photo
+     * upload can make the same Voyage text call twice in quick succession.
+     */
+    private String cachedQueryEmbedding(String embeddingText) {
+        long now = System.currentTimeMillis();
+        QueryEmbeddingCacheEntry cached = queryEmbeddingCache.get(embeddingText);
+        if (cached != null && cached.expiresAtMillis() > now) return cached.vector();
+        if (cached != null) queryEmbeddingCache.remove(embeddingText, cached);
+
+        String vector = voyageAIClient.embedQuery(embeddingText);
+        if (queryEmbeddingCache.size() >= QUERY_EMBEDDING_CACHE_LIMIT) {
+            queryEmbeddingCache.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+            if (queryEmbeddingCache.size() >= QUERY_EMBEDDING_CACHE_LIMIT) queryEmbeddingCache.clear();
+        }
+        queryEmbeddingCache.put(
+                embeddingText,
+                new QueryEmbeddingCacheEntry(vector, now + QUERY_EMBEDDING_TTL_MILLIS));
+        return vector;
+    }
+
+    private static Map<UUID, Double> combineSemanticScores(
+            Map<UUID, Double> selectedMediaScores,
+            Map<UUID, Double> textScores) {
+        Map<UUID, Double> combined = new LinkedHashMap<>(selectedMediaScores);
+        textScores.forEach((id, textScore) -> combined.merge(
+                id,
+                textScore,
+                (selectedScore, existingTextScore) -> (0.40 * selectedScore) + (0.60 * existingTextScore)));
+        return combined;
+    }
+
+    private static Map<UUID, Double> scoreMap(List<Object[]> rows) {
+        Map<UUID, Double> scores = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID id = toUuid(row[0]);
+            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
+            scores.merge(id, score, Math::max);
+        }
+        return scores;
+    }
+
+    private static CandidateSignals candidateSignals(List<Object[]> rows) {
+        Map<UUID, Double> similarityScores = new LinkedHashMap<>();
+        Map<UUID, Double> coverageScores = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID id = toUuid(row[0]);
+            double similarity = row[1] instanceof Number number ? number.doubleValue() : 0.0;
+            double coverage = row.length > 2 && row[2] instanceof Number number
+                    ? number.doubleValue() : 1.0;
+            similarityScores.merge(id, similarity, Math::max);
+            coverageScores.merge(id, coverage, Math::max);
+        }
+        return new CandidateSignals(similarityScores, coverageScores, false);
+    }
+
+    private MediaSuggestionOutcome emptyOutcome(
+            UUID institutionId,
+            Set<UUID> selectedImageIds,
+            MediaSuggestRequestDto dto,
+            EmbeddingReadiness readiness,
+            boolean retrievalFailed) {
+        if (readiness.failed()) return MediaSuggestionOutcome.EMBEDDING_FAILED;
+        if (readiness.processing()) return MediaSuggestionOutcome.PROCESSING;
+        if (retrievalFailed) return MediaSuggestionOutcome.ERROR;
+
+        try {
+            long indexedCandidates = 0;
+            if (!selectedImageIds.isEmpty()) {
+                indexedCandidates += mediaAssetEmbeddingRepository.countCurrentReadyCandidates(
+                        institutionId,
+                        MediaAssetEmbeddingType.IMAGE.dbValue(),
+                        voyageAIClient.multimodalModelName(),
+                        MediaProcessingQueueService.IMAGE_EMBEDDING_VERSION);
+            }
+            if (hasTextContext(dto)) {
+                indexedCandidates += mediaAssetEmbeddingRepository.countCurrentReadyCandidates(
+                        institutionId,
+                        MediaAssetEmbeddingType.SEMANTIC.dbValue(),
+                        voyageAIClient.modelName(),
+                        MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION);
+            }
+            return indexedCandidates == 0
+                    ? MediaSuggestionOutcome.NO_INDEXED_CANDIDATES
+                    : MediaSuggestionOutcome.NO_RELEVANT_MATCHES;
+        } catch (RuntimeException error) {
+            log.warn("Could not classify empty media suggestions for institution {}: {}",
+                    institutionId, error.getMessage());
+            return MediaSuggestionOutcome.ERROR;
+        }
+    }
+
+    private static boolean hasTextContext(MediaSuggestRequestDto dto) {
+        return !normalize(dto.getEventTitle()).isBlank()
+                || !normalize(dto.getCaption()).isBlank()
+                || (dto.getTags() != null && dto.getTags().stream().anyMatch(tag -> !normalize(tag).isBlank()));
     }
 
     // NOT the same feature as UploadModal.tsx's Auto-Match (UC-2.1,
@@ -336,7 +1014,19 @@ public class AIRecommendationService {
     }
 
     @Transactional
-    public void logInteraction(UUID submissionId, UUID institutionId, String type, String actionTaken) {
+    public void logInteraction(
+            UUID submissionId, String type, String actionTaken, JwtUserDetails user) {
+        Submission submission = loadAndAuthorise(submissionId, user);
+        if (!Set.of("tag_classification", "media_recommendation").contains(type)
+                || !Set.of("shown", "accepted", "dismissed").contains(actionTaken)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported AI interaction.");
+        }
+        logInteractionInternal(
+                submissionId, submission.getInstitution().getId(), type, actionTaken);
+    }
+
+    private void logInteractionInternal(
+            UUID submissionId, UUID institutionId, String type, String actionTaken) {
         try {
             // Admin composers have no institution of their own — fall back to the
             // submission's institution (ai_interaction_log.institution_id is NOT NULL).
@@ -369,11 +1059,10 @@ public class AIRecommendationService {
         StringBuilder sb = new StringBuilder();
         append(sb, "event_title", dto.getEventTitle());
         append(sb, "caption", dto.getCaption());
-        append(sb, "category", dto.getCategory());
+
         appendAll(sb, "tags", dto.getTags());
         if (attachedAssets != null && !attachedAssets.isEmpty()) {
             String selectedContext = attachedAssets.stream()
-                    .limit(3)
                     .map(asset -> selectedMediaContext(asset, attachedTagMap.getOrDefault(asset.getId(), List.of())))
                     .filter(text -> !text.isBlank())
                     .collect(Collectors.joining(" "));
@@ -389,27 +1078,43 @@ public class AIRecommendationService {
         return rankAsset(asset, semanticScore, dto, tagSignals).score();
     }
 
-    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore, MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
-        double score = semanticScore;
+    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore,
+            MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
+        return rankAsset(asset, semanticScore, 0.0, dto, assetTags);
+    }
+
+    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore, double visualScore,
+            MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
+        boolean hasSemanticSignal = semanticScore > 0.0;
+        boolean hasVisualSignal = visualScore > 0.0;
+        double score = hasSemanticSignal && hasVisualSignal
+                ? (0.55 * semanticScore) + (0.45 * visualScore)
+                : Math.max(semanticScore, visualScore);
+        double metadataEvidence = 0.0;
         List<String> reasons = new ArrayList<>();
         Set<String> queryTerms = normalizedTerms(dto);
 
         if (semanticScore >= 0.75) {
-            reasons.add("Strong semantic similarity to the title, caption, or tags.");
+            reasons.add("Strong content match with the post title, caption, or tags.");
         } else if (semanticScore >= 0.55) {
-            reasons.add("Similar to the post context from the title or caption.");
+            reasons.add("Matches the post context from the title or caption.");
         } else if (semanticScore >= 0.40) {
-            reasons.add("Some semantic overlap with the post context.");
+            reasons.add("Shares some topics with the post context.");
+        }
+
+        if (visualScore >= 0.75) {
+            reasons.add("Strong visual match with your selected media.");
+        } else if (visualScore >= 0.55) {
+            reasons.add("Shares visual features with your selected media.");
+        } else if (visualScore >= 0.40) {
+            reasons.add("Shares some visual features with your selected media.");
         }
 
         String assetCategory = normalize(asset.getAiCategory());
-        String requestCategory = normalize(dto.getCategory());
         if (!assetCategory.isBlank()) {
-            if (assetCategory.equals(requestCategory)) {
-                score += 0.10;
-                reasons.add("Category matches " + asset.getAiCategory() + ".");
-            } else if (queryTerms.contains(assetCategory)) {
+            if (queryTerms.contains(assetCategory)) {
                 score += 0.06;
+                metadataEvidence += 0.06;
                 reasons.add("Detected category appears in the post text.");
             }
         }
@@ -422,7 +1127,9 @@ public class AIRecommendationService {
                 .distinct()
                 .limit(3)
                 .toList();
-        score += Math.min(0.18, matchingManualTags.size() * 0.06);
+        double manualTagBoost = Math.min(0.18, matchingManualTags.size() * 0.06);
+        score += manualTagBoost;
+        metadataEvidence += manualTagBoost;
         if (!matchingManualTags.isEmpty()) {
             reasons.add("Shares manual tags: " + matchingManualTags.stream()
                     .map(tag -> "#" + tag)
@@ -437,7 +1144,9 @@ public class AIRecommendationService {
                 .distinct()
                 .limit(3)
                 .toList();
-        score += Math.min(0.105, matchingAiTags.size() * 0.035);
+        double aiTagBoost = Math.min(0.105, matchingAiTags.size() * 0.035);
+        score += aiTagBoost;
+        metadataEvidence += aiTagBoost;
         if (!matchingAiTags.isEmpty()) {
             reasons.add("AI detected tags: " + matchingAiTags.stream()
                     .map(tag -> "#" + tag)
@@ -448,7 +1157,9 @@ public class AIRecommendationService {
                 .filter(queryTerms::contains)
                 .limit(3)
                 .toList();
-        score += Math.min(0.08, matchingAssetTerms.size() * 0.03);
+        double assetTermBoost = Math.min(0.08, matchingAssetTerms.size() * 0.03);
+        score += assetTermBoost;
+        metadataEvidence += assetTermBoost;
         if (!matchingAssetTerms.isEmpty()) {
             reasons.add("Asset details mention " + String.join(", ", matchingAssetTerms) + ".");
         }
@@ -457,6 +1168,7 @@ public class AIRecommendationService {
                 && !assetTags.isEmpty();
         if (hasRichProfile) {
             score += 0.02;
+            metadataEvidence += 0.02;
             reasons.add("Has AI description and tags for stronger matching.");
         }
 
@@ -465,12 +1177,12 @@ public class AIRecommendationService {
             if (ageDays <= 30) {
                 score += 0.03;
                 if (!reasons.isEmpty()) {
-                    reasons.add("Recently uploaded, used as a freshness tie-breaker.");
+                    reasons.add("Recently added to your media library.");
                 }
             } else if (ageDays <= 90) {
                 score += 0.015;
                 if (!reasons.isEmpty()) {
-                    reasons.add("Recent enough to help break close matches.");
+                    reasons.add("Added recently to your media library.");
                 }
             }
         }
@@ -479,7 +1191,266 @@ public class AIRecommendationService {
             reasons.add("Ranked from available media metadata.");
         }
 
-        return new RankedAsset(asset, Math.max(0.0, Math.min(1.0, score)), reasons);
+        Map<String, Double> signalScores = new LinkedHashMap<>(
+                signalScoreMap(semanticScore, visualScore));
+        if (metadataEvidence > 0.0) {
+            signalScores.put("metadata", clamp(metadataEvidence / 0.35));
+        }
+        signalScores.put("freshness", freshnessScore(asset));
+        return new RankedAsset(asset, clamp(score), List.copyOf(reasons), Map.copyOf(signalScores));
+    }
+
+    private static RankedAsset rankAssetHybrid(
+            MediaAsset asset,
+            double semanticScore,
+            double visualScore,
+            double coverageScore,
+            MediaSuggestRequestDto dto,
+            Collection<TagSignal> assetTags,
+            UsageSignal usage,
+            List<MediaAsset> attachedAssets,
+            SubmissionMediaContext mediaContext) {
+        Set<String> candidateTerms = structuredAssetTerms(asset, assetTags);
+        Set<String> postTerms = normalizedTerms(dto);
+        Set<String> contextTerms = new LinkedHashSet<>();
+        if (mediaContext != null && mediaContext.getReadyAssetCount() > 0) {
+            addLooseWords(contextTerms, mediaContext.getContextText());
+        }
+
+        double contextScore = overlapScore(contextTerms, candidateTerms);
+        double metadataScore = overlapScore(postTerms, candidateTerms);
+
+        double freshnessScore = freshnessScore(asset);
+        double usageScore = usageDiversityScore(usage.count(), usage.lastUsedAt(), Instant.now());
+        double reuseSuitabilityScore = (freshnessScore + usageScore) / 2.0;
+
+        List<WeightedSignal> signals = new ArrayList<>();
+        addSignal(signals, semanticScore, 0.45, semanticScore > 0.0);
+        addSignal(signals, visualScore, 0.35, visualScore > 0.0);
+        addSignal(signals, coverageScore, 0.10, visualScore > 0.0 && !attachedAssets.isEmpty());
+        addSignal(signals, Math.max(metadataScore, contextScore), 0.05,
+                !postTerms.isEmpty() || !contextTerms.isEmpty());
+        addSignal(signals, reuseSuitabilityScore, 0.05, true);
+
+        double totalWeight = signals.stream().mapToDouble(WeightedSignal::weight).sum();
+        double weightedScore = signals.stream()
+                .mapToDouble(signal -> signal.value() * signal.weight())
+                .sum();
+        double score = totalWeight == 0.0 ? 0.0 : weightedScore / totalWeight;
+
+        List<String> reasons = new ArrayList<>();
+        addSimilarityReason(reasons, semanticScore, "semantic", "post context");
+        addSimilarityReason(reasons, visualScore, "visual", "selected media");
+        if (coverageScore >= 0.75 && attachedAssets.size() > 1) {
+            reasons.add("Matches most of the selected images.");
+        } else if (coverageScore >= 0.40 && attachedAssets.size() > 1) {
+            reasons.add("Matches part of the selected image set.");
+        }
+        if (contextScore >= 0.18) {
+            List<String> matches = matchingTerms(contextTerms, candidateTerms, 3);
+            reasons.add(matches.isEmpty()
+                    ? "Matches the selected media's event context."
+                    : "Matches event context: " + String.join(", ", matches) + ".");
+        }
+        if (metadataScore >= 0.25) {
+            reasons.add("Metadata aligns with the post details.");
+        }
+        if (usage.count() == 0) {
+            reasons.add("Adds variety because this asset has not been used in another submission.");
+        } else if (reuseSuitabilityScore >= 0.70) {
+            reasons.add("Recently added or not used often in previous submissions.");
+        }
+        if (reasons.isEmpty()) {
+            reasons.add("Ranked from available visual and media context signals.");
+        }
+
+        Map<String, Double> signalScores = new LinkedHashMap<>(
+                signalScoreMap(semanticScore, visualScore));
+        if (visualScore > 0.0 && !attachedAssets.isEmpty()) {
+            signalScores.put("coverage", clamp(coverageScore));
+        }
+        if (!postTerms.isEmpty() || !contextTerms.isEmpty()) {
+            signalScores.put("metadata", clamp(Math.max(metadataScore, contextScore)));
+        }
+        signalScores.put("freshness", clamp(freshnessScore));
+        signalScores.put("diversity", clamp(usageScore));
+        return new RankedAsset(asset, clamp(score), List.copyOf(reasons), Map.copyOf(signalScores));
+    }
+
+    private static Map<String, Double> signalScoreMap(double semanticScore, double visualScore) {
+        Map<String, Double> scores = new LinkedHashMap<>();
+        if (semanticScore > 0.0) scores.put("semantic", clamp(semanticScore));
+        if (visualScore > 0.0) scores.put("visual", clamp(visualScore));
+        return Map.copyOf(scores);
+    }
+
+    private static void addSignal(
+            List<WeightedSignal> signals, double value, double weight, boolean available) {
+        if (available) {
+            signals.add(new WeightedSignal(clamp(value), weight));
+        }
+    }
+
+    private static void addSimilarityReason(
+            List<String> reasons, double score, String signalName, String target) {
+        if ("semantic".equals(signalName)) {
+            if (score >= 0.75) {
+                reasons.add("Strong content match with the " + target + ".");
+            } else if (score >= 0.55) {
+                reasons.add("Good content match with the " + target + ".");
+            } else if (score >= 0.40) {
+                reasons.add("Shares some topics with the " + target + ".");
+            }
+            return;
+        }
+        if ("visual".equals(signalName)) {
+            if (score >= 0.75) {
+                reasons.add("Strong visual match with your " + target + ".");
+            } else if (score >= 0.55) {
+                reasons.add("Shares visual features with your " + target + ".");
+            } else if (score >= 0.40) {
+                reasons.add("Shares some visual features with your " + target + ".");
+            }
+            return;
+        }
+        if (score >= 0.75) {
+            reasons.add("Strong " + signalName + " similarity to the " + target + ".");
+        } else if (score >= 0.55) {
+            reasons.add("Good " + signalName + " similarity to the " + target + ".");
+        } else if (score >= 0.40) {
+            reasons.add("Some " + signalName + " overlap with the " + target + ".");
+        }
+    }
+
+    static double freshnessScore(MediaAsset asset) {
+        if ("evergreen".equals(normalize(asset.getTemporalClassification()))) return 1.0;
+        if (asset.getCreatedAt() == null) return 0.50;
+        long ageDays = Math.max(0, Duration.between(asset.getCreatedAt(), Instant.now()).toDays());
+        if (ageDays <= 30) return 1.0;
+        if (ageDays <= 90) return 0.75;
+        if (ageDays <= 365) return 0.45;
+        return 0.20;
+    }
+
+    static double usageDiversityScore(long usageCount, Instant lastUsedAt, Instant now) {
+        if (usageCount == 0) return 1.0;
+        long daysSinceUse = lastUsedAt == null
+                ? Long.MAX_VALUE
+                : Math.max(0, Duration.between(lastUsedAt, now).toDays());
+        if (daysSinceUse <= 7 && usageCount >= 3) return 0.20;
+        if (usageCount >= 10) return 0.35;
+        if (daysSinceUse <= 30 || usageCount >= 3) return 0.60;
+        return 0.85;
+    }
+
+    static boolean isTemporallyEligible(MediaAsset asset, Instant now) {
+        if (asset == null) return false;
+        if ("expired".equals(normalize(asset.getTemporalClassification()))) return false;
+        String expiration = normalize(asset.getPossibleExpiration());
+        if (expiration.isBlank()) return true;
+        try {
+            return Instant.parse(expiration).isAfter(now);
+        } catch (Exception ignored) {
+            try {
+                return LocalDate.parse(expiration).plusDays(1)
+                        .atStartOfDay(ZoneOffset.UTC).toInstant().isAfter(now);
+            } catch (Exception ignoredDate) {
+                // Free-form or uncertain legacy values remain eligible.
+                return true;
+            }
+        }
+    }
+
+    private static Set<String> structuredAssetTerms(MediaAsset asset, Collection<TagSignal> tags) {
+        Set<String> terms = normalizedAssetTerms(asset);
+        tags.stream().map(TagSignal::label).forEach(value -> addLooseWords(terms, value));
+        terms.addAll(visualTerms(asset));
+        addEventHypothesisTerms(terms, asset.getEventHypotheses());
+        return terms;
+    }
+
+    private static Set<String> visualTerms(MediaAsset asset) {
+        Set<String> terms = new LinkedHashSet<>();
+        addArrayTerms(terms, asset.getVisibleObjects());
+        addArrayTerms(terms, asset.getSpecificSubjects());
+        addArrayTerms(terms, asset.getObservedScenes());
+        addArrayTerms(terms, asset.getObservedActivities());
+        addArrayTerms(terms, asset.getEquipmentSignals());
+        addArrayTerms(terms, asset.getRecognitionSignals());
+        addArrayTerms(terms, asset.getCompositionSignals());
+        return terms;
+    }
+
+    private static void addArrayTerms(Set<String> terms, String[] values) {
+        if (values == null) return;
+        Arrays.stream(values).forEach(value -> addLooseWords(terms, value));
+    }
+
+    private static void addEventHypothesisTerms(Set<String> terms, String eventHypotheses) {
+        if (eventHypotheses == null || eventHypotheses.isBlank()) return;
+        try {
+            JsonNode values = OBJECT_MAPPER.readTree(eventHypotheses);
+            if (!values.isArray()) return;
+            values.forEach(value -> addLooseWords(terms,
+                    value.path("eventType").asText(value.path("event_type").asText(""))));
+        } catch (Exception ignored) {
+            // Legacy malformed metadata must not block recommendations.
+        }
+    }
+
+    private static double overlapScore(Set<String> left, Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) return 0.0;
+        long overlap = left.stream().filter(right::contains).count();
+        return clamp(overlap / Math.sqrt((double) left.size() * right.size()));
+    }
+
+    private static List<String> matchingTerms(Set<String> left, Set<String> right, int limit) {
+        return left.stream().filter(right::contains).sorted().limit(limit).toList();
+    }
+
+    private static List<RankedAsset> diversify(List<RankedAsset> ranked, int limit) {
+        if (ranked.size() <= 1) return ranked.stream().limit(limit).toList();
+        List<RankedAsset> remaining = new ArrayList<>(ranked);
+        List<RankedAsset> selected = new ArrayList<>();
+        while (!remaining.isEmpty() && selected.size() < limit) {
+            RankedAsset best = null;
+            double bestMmr = Double.NEGATIVE_INFINITY;
+            for (RankedAsset candidate : remaining) {
+                double maxSimilarity = selected.stream()
+                        .mapToDouble(chosen -> candidateSimilarity(candidate.asset(), chosen.asset()))
+                        .max()
+                        .orElse(0.0);
+                double mmr = (0.85 * candidate.score()) - (0.15 * maxSimilarity);
+                if (best == null || mmr > bestMmr
+                        || (Math.abs(mmr - bestMmr) < 0.000001
+                            && candidate.asset().getId().compareTo(best.asset().getId()) < 0)) {
+                    best = candidate;
+                    bestMmr = mmr;
+                }
+            }
+            selected.add(best);
+            remaining.remove(best);
+        }
+        return List.copyOf(selected);
+    }
+
+    private static double candidateSimilarity(MediaAsset left, MediaAsset right) {
+        if (left.getContentHash() != null && left.getContentHash().equals(right.getContentHash())) {
+            return 1.0;
+        }
+        Set<String> leftTerms = visualTerms(left);
+        Set<String> rightTerms = visualTerms(right);
+        Set<String> union = new LinkedHashSet<>(leftTerms);
+        union.addAll(rightTerms);
+        long intersection = leftTerms.stream().filter(rightTerms::contains).count();
+        double termSimilarity = union.isEmpty() ? 0.0 : (double) intersection / union.size();
+        double categorySimilarity = !normalize(left.getAiCategory()).isBlank()
+                && normalize(left.getAiCategory()).equals(normalize(right.getAiCategory())) ? 1.0 : 0.0;
+        return (0.75 * termSimilarity) + (0.25 * categorySimilarity);
+    }
+
+    private static double clamp(double value) {
+        return Math.max(0.0, Math.min(1.0, value));
     }
 
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
@@ -526,11 +1497,28 @@ public class AIRecommendationService {
         return result;
     }
 
-    private List<MediaSuggestResultDto> fallbackSuggestions(UUID institutionId, Set<UUID> attachedIds, MediaSuggestRequestDto dto) {
-        List<MediaAsset> candidates = mediaAssetRepository.findReadyByInstitution(institutionId)
+    private Map<UUID, UsageSignal> loadUsageSignalMap(List<UUID> assetIds) {
+        if (assetIds.isEmpty()) return Map.of();
+        Map<UUID, UsageSignal> result = new HashMap<>();
+        for (Object[] row : submissionMediaAssetRepository.findUsageStatsByMediaAssetIds(assetIds)) {
+            UUID assetId = toUuid(row[0]);
+            long count = row[1] instanceof Number number ? number.longValue() : 0L;
+            result.put(assetId, new UsageSignal(count, toInstant(row[2])));
+        }
+        return result;
+    }
+
+    private List<MediaSuggestResultDto> fallbackSuggestions(
+            UUID institutionId,
+            Set<UUID> attachedIds,
+            List<MediaAsset> selectedAssets,
+            MediaSuggestRequestDto dto) {
+        List<MediaAsset> candidates = mediaAssetRepository
+                .findVisibleReadyByInstitution(institutionId, PageRequest.of(0, 30))
                 .stream()
                 .filter(asset -> !attachedIds.contains(asset.getId()))
-                .limit(30)
+                .filter(asset -> isTemporallyEligible(asset, Instant.now()))
+                .filter(asset -> hasCompatibleMediaFormat(asset, selectedAssets))
                 .toList();
         if (candidates.isEmpty()) {
             return List.of();
@@ -546,11 +1534,29 @@ public class AIRecommendationService {
                 dto,
                 tagMap.getOrDefault(asset.getId(), List.of())
         ))
+                .map(result -> applyMediaFormatBoost(result, selectedAssets))
                 .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
-                .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
+                .map(result -> MediaSuggestResultDto.from(
+                        result.asset(), result.score(), result.reasons(),
+                        result.signalScores(), LEGACY_RANKING_VERSION))
                 .toList();
+    }
+
+    private List<MediaSuggestResultDto> fallbackOrEmpty(
+            UUID institutionId,
+            Set<UUID> attachedIds,
+            List<MediaAsset> selectedAssets,
+            MediaSuggestRequestDto dto) {
+        // In a visual-only request, an empty vector result commonly means the
+        // selected images are not attached yet or their embeddings are still processing. Returning generic
+        // metadata matches would stop the frontend's bounded visual retry and
+        // make those images appear to influence results when they did not.
+        if (!hasTextContext(dto)) {
+            return List.of();
+        }
+        return fallbackSuggestions(institutionId, attachedIds, selectedAssets, dto);
     }
 
     private static String selectedMediaContext(MediaAsset asset, Collection<TagSignal> tags) {
@@ -564,7 +1570,7 @@ public class AIRecommendationService {
 
     private static Set<String> normalizedTerms(MediaSuggestRequestDto dto) {
         Set<String> terms = new LinkedHashSet<>();
-        addTerm(terms, dto.getCategory());
+
         addAllTerms(terms, dto.getTags());
         addLooseWords(terms, dto.getEventTitle());
         addLooseWords(terms, dto.getCaption());
@@ -646,8 +1652,90 @@ public class AIRecommendationService {
         return UUID.fromString(String.valueOf(value));
     }
 
+    private static Instant toInstant(Object value) {
+        if (value instanceof Instant instant) return instant;
+        if (value instanceof OffsetDateTime dateTime) return dateTime.toInstant();
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toInstant();
+        return null;
+    }
+
     private record OptionalVector(String value) {
 
+    }
+
+    public enum MediaSuggestionOutcome {
+        READY,
+        PROCESSING,
+        EMBEDDING_FAILED,
+        NO_INDEXED_CANDIDATES,
+        NO_RELEVANT_MATCHES,
+        ERROR
+    }
+
+    public record MediaSuggestionBatch(
+            List<MediaSuggestResultDto> results,
+            boolean processing,
+            MediaSuggestionOutcome outcome) {
+
+        public MediaSuggestionBatch(List<MediaSuggestResultDto> results, boolean processing) {
+            this(
+                    results,
+                    processing,
+                    processing
+                            ? MediaSuggestionOutcome.PROCESSING
+                            : results.isEmpty()
+                                    ? MediaSuggestionOutcome.NO_RELEVANT_MATCHES
+                                    : MediaSuggestionOutcome.READY);
+        }
+
+    }
+
+    public enum MediaEvaluationStrategy {
+        IMAGE_ONLY,
+        SEMANTIC_ONLY,
+        HYBRID_V2,
+        RECIPROCAL_RANK_FUSION
+    }
+
+    public record MediaEvaluationCandidate(UUID assetId, UUID institutionId, double score) {
+    }
+
+    public record MediaEvaluationTimings(
+            long visualRetrievalMs,
+            long semanticRetrievalMs,
+            long totalSuggestionMs) {
+    }
+
+    public record MediaEvaluationSnapshot(
+            UUID submissionId,
+            UUID institutionId,
+            int selectedImageCount,
+            int candidateCount,
+            Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings,
+            MediaEvaluationTimings timings) {
+    }
+
+    private record EmbeddingReadiness(boolean processing, boolean failed) {
+        private static final EmbeddingReadiness READY = new EmbeddingReadiness(false, false);
+    }
+
+    private record CandidateSignals(
+            Map<UUID, Double> similarityScores,
+            Map<UUID, Double> coverageScores,
+            boolean failed) {
+        private static final CandidateSignals EMPTY =
+                new CandidateSignals(Map.of(), Map.of(), false);
+
+        private static CandidateSignals failure() {
+            return new CandidateSignals(Map.of(), Map.of(), true);
+        }
+    }
+
+    private record ScoreLoad(Map<UUID, Double> scores, boolean failed) {
+        private static final ScoreLoad EMPTY = new ScoreLoad(Map.of(), false);
+    }
+
+    private record QueryEmbeddingCacheEntry(String vector, long expiresAtMillis) {
     }
 
     private record TagSignal(String label, String source) {
@@ -657,7 +1745,26 @@ public class AIRecommendationService {
         }
     }
 
-    private record RankedAsset(MediaAsset asset, double score, List<String> reasons) {
+    private record RankedAsset(
+            MediaAsset asset,
+            double score,
+            List<String> reasons,
+            Map<String, Double> signalScores) {
 
+    }
+
+    private record WeightedSignal(double value, double weight) {
+
+    }
+
+    private enum MediaFormatFamily {
+        GRAPHIC,
+        PHOTO,
+        ARTWORK,
+        UNKNOWN
+    }
+
+    private record UsageSignal(long count, Instant lastUsedAt) {
+        private static final UsageSignal NEVER_USED = new UsageSignal(0, null);
     }
 }

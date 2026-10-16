@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { UserProfileResponse } from '../../../api/authApi'
 import type { User } from '../../../types/auth.types'
-import { getUserDisplayName, getUserInitials } from '../../../lib/userIdentity'
+import { getUserDisplayName, getUserInitials, getPendingPromotion } from '../../../lib/userIdentity'
 import ActionMenu from './ActionMenu'
 import { InlineSpinner, SkeletonRows } from './LoadingPrimitives'
 
@@ -21,7 +21,7 @@ interface InstitutionUsersCardProps {
   onEraseData?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
   /** Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
-  onCancelAdminPromotion?: (user: UserProfileResponse) => void
+  onCancelPromotion?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
@@ -33,6 +33,7 @@ interface InstitutionUsersCardProps {
   onAvatarUpload?: (user: UserProfileResponse, file: File) => void
   showFilterPills?: boolean
   userColumnLabel?: string
+  targetUserId?: string | null
   /** Render the title/count/description + headerAction row above the filter bar. */
   showHeader?: boolean
   /** Hide all per-row actions — renders the list as a read-only directory. */
@@ -56,7 +57,7 @@ export default function InstitutionUsersCard({
   onChangeRole,
   onEraseData,
   onRequestSuperAdminTransfer,
-  onCancelAdminPromotion,
+  onCancelPromotion,
   resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
@@ -70,10 +71,25 @@ export default function InstitutionUsersCard({
   userColumnLabel = 'User',
   showHeader = true,
   readOnly = false,
+  targetUserId = null,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+
+  const processedTargetIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (targetUserId && targetUserId !== processedTargetIdRef.current && users.length > 0) {
+      const targetUser = users.find((u) => u.id === targetUserId)
+      if (targetUser) {
+        setSearch(targetUser.email)
+        setRoleFilter('all')
+        setStatusFilter('all')
+        processedTargetIdRef.current = targetUserId
+      }
+    }
+  }, [targetUserId, users])
 
   const statusCounts = useMemo(() => ({
     all: users.length,
@@ -341,15 +357,22 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
-                        onCancelAdminPromotion && managedUser.adminPromotionPending
-                          ? {
-                              label: 'Cancel promotion',
-                              icon: 'ti ti-shield-x',
-                              onClick: () => onCancelAdminPromotion(managedUser),
-                              dangerous: true,
-                            }
+                          onCancelPromotion && getPendingPromotion(managedUser) &&
+                          (getPendingPromotion(managedUser)?.role === 'moderator' || currentUser?.adminOwner)
+                            ? {
+                                label: 'Cancel promotion',
+                                icon: 'ti ti-shield-x',
+                                onClick: () => onCancelPromotion(managedUser),
+                                dangerous: true,
+                              }
                           : null,
                       ].filter((item): item is NonNullable<typeof item> => item !== null)
+
+                  const hasTransferPending = Boolean(
+                    managedUser.superAdminTransferRequestedBy &&
+                    (!managedUser.superAdminTransferExpiresAt ||
+                      new Date(managedUser.superAdminTransferExpiresAt).getTime() > Date.now())
+                  )
 
                   return (
                     <tr
@@ -370,6 +393,15 @@ export default function InstitutionUsersCard({
                               {currentUser?.email.toLowerCase() === managedUser.email.toLowerCase() && (
                                 <span className="um-you-pill">You</span>
                               )}
+                              {managedUser.adminOwner && (
+                                <span className="um-owner-pill" title="Network Admin Owner">Owner</span>
+                              )}
+                              {hasTransferPending && (
+                                <span className="um-transfer-pill" title="Awaiting acceptance of Admin Owner transfer">
+                                  <i className="ti ti-shield-up" aria-hidden="true"></i>
+                                  Transfer Pending
+                                </span>
+                              )}
                               {managedUser.purgedAt && (
                                 <span className="um-erased-pill">Erased</span>
                               )}
@@ -385,7 +417,7 @@ export default function InstitutionUsersCard({
                           <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
                             {formatRoleLabel(managedUser.role)}
                           </span>
-                          {managedUser.adminPromotionPending && (
+                          {getPendingPromotion(managedUser) && (
                             <span className="um-badge um-badge-promotion-pending" title="Awaiting the invitee's confirmation">
                               Promotion pending
                             </span>
@@ -618,7 +650,8 @@ function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: Use
   return Boolean(
     currentUser &&
       currentUser.role === 'admin' &&
-      (targetRole === 'moderator' || targetRole === 'admin') &&
+      currentUser.adminOwner &&
+      targetRole === 'admin' &&
       managedUser.accountState.toLowerCase() === 'active' &&
       currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
   )

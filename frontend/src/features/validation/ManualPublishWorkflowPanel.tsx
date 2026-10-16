@@ -147,8 +147,8 @@ export default function ManualPublishWorkflowPanel({
     onClose();
   }
 
-  const images = detail?.mediaAssets.filter((a) => isImageType(a.fileType)) ?? [];
-  const videos = detail?.mediaAssets.filter((a) => !isImageType(a.fileType)) ?? [];
+  const images = detail?.mediaAssets?.filter((a) => isImageType(a.fileType)) ?? [];
+  const videos = detail?.mediaAssets?.filter((a) => !isImageType(a.fileType)) ?? [];
   const confirmDisabled = busy || loading || urlInvalid(postUrl);
 
   const contributorName = detail

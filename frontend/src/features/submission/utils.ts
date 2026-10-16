@@ -9,7 +9,6 @@ import type {
 } from "../../api/submissionApi";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { SubmissionMediaItem } from "../../types/media";
-import type { User } from "../../types/auth.types";
 import {
   DEFAULT_INSTITUTION_CODE,
   DEFAULT_INSTITUTION_NAME,
@@ -24,12 +23,12 @@ export function isDraftStatus(status: SubmissionStatus) {
 }
 
 /**
- * Statuses that require the contributor to act: a reviewer sent the post back
- * for changes, or rejected it outright. Surfaced as its own "Action Needed"
- * queue tab so these don't hide among plain drafts / submitted posts.
+ * A reviewer sent the post back for changes. Surfaced as its own "Action
+ * Needed" queue tab so it doesn't hide among plain drafts / submitted posts.
+ * Rejected posts have their own "Rejected" tab — nothing is required of them.
  */
 export function isActionNeededStatus(status: SubmissionStatus) {
-  return status === "needs_revision" || status === "rejected";
+  return status === "needs_revision";
 }
 
 export function isPublishedStatus(status: SubmissionStatus) {
@@ -41,15 +40,15 @@ export function isPublishFailedStatus(status: SubmissionStatus) {
 }
 
 /** The "My Submissions" tab a status belongs to (excludes the "all" tab). */
-export type QueueBucket = "drafts" | "action-needed" | "submitted" | "published" | "failed";
+export type QueueBucket = "drafts" | "action-needed" | "rejected" | "submitted" | "published" | "failed";
 
 /**
  * Single source of truth for which queue tab a submission falls under. Every
- * status maps to exactly one bucket — order matters: literal `draft` before the
- * action-needed check (which also owns `needs_revision`).
+ * status maps to exactly one bucket (mirrors the backend's statusesForBucket).
  */
 export function queueBucket(status: SubmissionStatus): QueueBucket {
   if (status === "draft") return "drafts";
+  if (status === "rejected") return "rejected";
   if (isActionNeededStatus(status)) return "action-needed";
   if (isPublishedStatus(status)) return "published";
   if (isPublishFailedStatus(status)) return "failed";
@@ -132,6 +131,7 @@ export function savedAssetToPickerItem(asset: SavedMediaAsset): SubmissionMediaI
     previewUrl: asset.storageUrl,
     mediaType: isVideo ? "video" : "image",
     fileName: asset.fileName,
+    albumName: asset.albumName ?? null,
   };
 }
 
@@ -143,8 +143,7 @@ export function toPayload(form: FormState, scheduledAt?: string): SubmissionPayl
     caption: form.caption.trim(),
     description: "",
     scheduledAt,
-    category: "",
-    templateId: form.fastTrack ? "" : form.selectedTemplateId ?? "",
+    templateId: form.selectedTemplateId ?? "",
     fastTrack: form.fastTrack,
     liveEventName: form.fastTrack ? form.liveEventName.trim() : "",
     tags: [],
@@ -162,6 +161,24 @@ export function pickerMediaKey(item: SubmissionMediaItem) {
 export function extractHashtags(caption: string) {
   const matches = caption.match(/#[A-Za-z0-9_]+/g) ?? [];
   return [...new Set(matches)];
+}
+
+/**
+ * The stored tags that publishing appends after the caption, as "#Tag": tags
+ * the caption doesn't already contain (case-insensitive), each once. Mirrors
+ * FacebookPublisherService.buildPostMessage so a preview shows exactly what
+ * gets posted.
+ */
+export function tagsAppendedToCaption(tags: string[], caption: string) {
+  const seen = new Set(extractHashtags(caption).map((tag) => tag.toLowerCase()));
+  const appended: string[] = [];
+  for (const raw of tags) {
+    const tag = `#${raw.trim().replace(/\s/g, "").replace(/^#+/, "")}`;
+    if (tag.length <= 1 || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    appended.push(tag);
+  }
+  return appended;
 }
 
 export function normalizeHashtagInput(value: string) {
@@ -446,6 +463,7 @@ export function getReadinessChecklist(
   lookups: SubmissionLookups,
   guardRails: GuardRailResult | null,
   guardRailsLoading: boolean,
+  isAlreadySubmitted?: boolean,
 ) {
   const fileCount = form.files.length + form.savedAssets.length;
   const mediaTags = effectiveMediaTags(form);
@@ -458,7 +476,7 @@ export function getReadinessChecklist(
   const guardRailsEnforced = lookups.guardrailsEnforced;
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
   const futureSlot = !scheduledDate || scheduledDate > new Date();
-  const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime);
+  const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour);
   // A Standard post always needs a future scheduled slot. The guard-rail switch
   // only relaxes the *rules* on that slot — off means any interval, any time of
   // day (no ±30-min spacing, daily cap, lead time, or 8 AM–8 PM window).
@@ -531,7 +549,7 @@ export function getReadinessChecklist(
             : !futureSlot
               ? "Schedule can't be in the past"
               : guardRailsEnforced && !publishWindow
-                ? "Publish time must be 8:00 AM - 8:00 PM"
+                ? `Publish time must be ${lookups.postingWindowStartHour}:00 - ${lookups.postingWindowEndHour}:00`
                 : guardRailsEnforced && guardRails?.blocked
                   ? "Resolve blocked publishing slot"
                   : formatDateTime(scheduledAt),
@@ -575,10 +593,12 @@ export function getReadinessChecklist(
       title: "Template used",
       target: "template",
       pass: form.fastTrack || Boolean(form.selectedTemplateId),
-      sub: form.fastTrack
-        ? "Skipped for Fast-Track"
-        : form.selectedTemplateId
-          ? "Template selected"
+      // Still auto-passes for Live posts: templates are available there too,
+      // but a live event shouldn't be nagged to use one.
+      sub: form.selectedTemplateId
+        ? "Template selected"
+        : form.fastTrack
+          ? "Optional for live events"
           : "Optional baseline structure",
     },
   ];
@@ -590,20 +610,35 @@ export function getReadinessChecklist(
       + (recommendedComplete / recommended.length) * 25,
   );
 
+  const isSubmitted = isAlreadySubmitted ?? (
+    Boolean(form.id) &&
+    form.status !== "draft" &&
+    form.status !== "needs_revision"
+  );
+  const isRejected = form.status === "rejected" && isSubmitted;
+
+  let grade = "Incomplete";
+  let description = "Complete the required items before sending for approval.";
+
+  if (isRejected) {
+    grade = "Rejected";
+    description = "This submission was reviewed and rejected.";
+  } else if (isSubmitted) {
+    grade = "Submitted";
+    description = "Required checks passed. Post has been submitted.";
+  } else if (requiredComplete === required.length) {
+    grade = "Ready to submit";
+    description = "Required checks pass. Recommended items can still improve the post.";
+  }
+
   return {
     score,
     required,
     recommended,
     requiredComplete,
     recommendedComplete,
-    grade:
-      requiredComplete === required.length
-        ? "Ready to submit"
-        : "Incomplete",
-    description:
-      requiredComplete === required.length
-        ? "Required checks pass. Recommended items can still improve the post."
-        : "Complete the required items before sending for approval.",
+    grade,
+    description,
   };
 }
 
@@ -633,8 +668,8 @@ export function getPreviewValidation(
     missingItems.push("Schedule must be set in the future.");
   }
   if (guardRailsEnforced && form.scheduledTime) {
-    if (!isWithinPublishWindow(form.scheduledTime)) {
-      missingItems.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
+      missingItems.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (oversizedFile) {
@@ -659,8 +694,8 @@ export function getPreviewValidation(
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
   if (guardRailsEnforced && form.scheduledTime) {
-    if (!isWithinPublishWindow(form.scheduledTime)) {
-      blockingErrors.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
+      blockingErrors.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (oversizedFile) {
@@ -675,11 +710,11 @@ export function getPreviewValidation(
   return { missingItems, blockingErrors };
 }
 
-export function isWithinPublishWindow(timeValue: string) {
+export function isWithinPublishWindow(timeValue: string, startHour: number, endHour: number) {
   const [h] = timeValue.split(":").map(Number);
   const m = Number(timeValue.split(":")[1]) || 0;
   const totalMin = h * 60 + m;
-  return totalMin >= 8 * 60 && totalMin <= 20 * 60;
+  return totalMin >= startHour * 60 && totalMin <= endHour * 60;
 }
 
 export function captionTone(caption: string) {
@@ -819,12 +854,6 @@ export function formatTimeInput(value: string) {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-export function formatRole(role: User["role"]) {
-  if (role === "admin") return "Admin";
-  if (role === "moderator") return "Moderator";
-  return "Contributor";
-}
-
 export function isAllowedFile(file: File, allowedFileTypes: string[]) {
   if (allowedFileTypes.length === 0) return true;
   const extension = normalizeFileType(
@@ -842,3 +871,12 @@ export function stepLabel(step: ProgressStep) {
   if (step === "details") return "Post Details";
   return "Preferred Schedule";
 }
+
+/** Same thresholds as ReadinessRing's colors: ≥80 good, ≥60 fair, else low. */
+export function readinessTone(score: number): "good" | "fair" | "low" {
+  return score >= 80 ? "good" : score >= 60 ? "fair" : "low";
+}
+
+
+
+

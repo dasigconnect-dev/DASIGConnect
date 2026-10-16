@@ -88,7 +88,7 @@ DASIGConnect follows a **three-tier client-server architecture**:
                  │ HTTPS / SSE
 ┌────────────────▼────────────────┐
 │  Application Tier               │
-│  Spring Boot REST API — Render  │
+│  Spring Boot REST API — Railway │
 │  (JWT auth, RBAC, tenant scope, │
 │   state machine, bg scheduler)  │
 └────────────────┬────────────────┘
@@ -126,7 +126,7 @@ Media uploads never pass through the backend: the browser requests a presigned U
 | Email | Spring Mail |
 | Background Jobs | Spring Scheduler |
 | Config | `spring-dotenv` (auto-loads `.env`) |
-| Deployment | Render |
+| Deployment | Railway |
 
 ### Frontend (`/frontend`) — React 19 / TypeScript / Vite
 | Component | Technology |
@@ -187,7 +187,8 @@ DASIGConnect/
 - Java 21+
 - Node.js 18+
 - Maven (or use `./mvnw`)
-- A Supabase project (PostgreSQL + Storage)
+- A Supabase project for PostgreSQL + pgvector
+- A Cloudflare R2 bucket for media storage
 
 ### Backend
 
@@ -252,12 +253,13 @@ FACEBOOK_PAGE_ID=<your-page-id>
 
 | Layer | Platform | Config |
 |---|---|---|
-| Backend | Render | `backend/render.yaml` |
+| Backend | Railway | `backend/railway.toml` |
 | Frontend | Vercel | Auto-detect Vite |
-| Database | Supabase | PostgreSQL + pgvector + Storage |
+| Database | Supabase | PostgreSQL + pgvector |
+| Object Storage | Cloudflare R2 | S3-compatible media storage |
 
-**Render build command:** `mvn clean package -DskipTests`  
-**Render start command:** `java -jar target/backend-0.0.1-SNAPSHOT.jar`
+**Railway build command:** `mvn clean package -DskipTests`
+**Railway start command:** `java -jar target/backend-0.0.1-SNAPSHOT.jar`
 
 > **Facebook API note:** During development, the Meta app runs in **Development mode** — published posts are only visible to users with developer/admin roles on the registered app. Transitioning to full public visibility requires Meta Business Verification by the DASIG organization.
 
@@ -265,7 +267,7 @@ FACEBOOK_PAGE_ID=<your-page-id>
 
 ## User Roles
 
-`Validator` was renamed to `Moderator` and made network-wide (no institution binding) — do not confuse this with the old per-institution Validator role from earlier project drafts.
+`Validator` was renamed to `Moderator` and made network-wide (no institution binding). Older planning documents may still contain the superseded `Validator` label; the current role name is `Moderator`.
 
 | Role | Scope | Capabilities |
 |---|---|---|
@@ -279,13 +281,13 @@ Analytics is available to all three roles (role-scoped, not Administrator-exclus
 
 ## Development Modules
 
-Status below reflects the current state of the `dev` branch and living, code-verified use-case docs under [`docs/md/`](docs/md/) — see [`CLAUDE.md`](CLAUDE.md)'s "Use Case Status" section for the authoritative, per-use-case breakdown (including two overlapping UC-numbering series inherited from different project drafts).
+Status below reflects the current state of the `dev` branch and the living, code-verified use-case documents under [`docs/md/`](docs/md/). The authoritative requirements numbering is the UC-1.1–UC-3.6 series represented by those documents. Older planning and implementation notes may contain superseded UC labels; those are historical references only.
 
 | Module | Status | Key Use Cases |
 |---|---|---|
 | **Module 1** — Accounts, Institutions, Sessions & Drafting | Implemented | UC-1.1–1.4 Account/Session Management · UC-1.5 Post Drafting · UC-1.6 AI & Text Tools · UC-1.7 Media Attachment · UC-1.8 Engagement Helpers · UC-1.9 Draft Submission · UC-1.10 Moderator Management |
-| **Module 2** — Content Workflow, Media Library & Governance | Implemented | UC-2.1 Library/Albums · UC-2.2 Semantic Search · UC-2.3 Notifications / Media History · UC-2.4 Analytics / Approval Workflow · UC-2.5 Watermarking |
-| **Module 3** — Calendar, Publishing & Exception Handling | Implemented | UC-3.1 Master Calendar · UC-3.2 Automated Publishing / AI Captions · UC-3.3 Reminders & Alerts / Media Suggestions · UC-3.4 Analytics / Manual Fallback · UC-3.5 System Health / Exception Handling · UC-3.6 Audit Log Review |
+| **Module 2** — Content Workflow, Media Library & Governance | Implemented | UC-2.1 Library Uploads & Albums · UC-2.2 Semantic Search & Filtering · UC-2.3 Media History & Asset Lifecycle · UC-2.4 Approval Workflow · UC-2.5 Automated Watermarking |
+| **Module 3** — Calendar, Publishing & Exception Handling | Implemented | UC-3.1 Master Calendar Visibility · UC-3.2 Automated Facebook Post Publishing · UC-3.3 Automated Reminders & Alerts · UC-3.4 Social Engagement Analytics · UC-3.5 System Health Analytics · UC-3.6 Audit Log Review |
 
 **Methodology:** Agile / Scrum — 2-week sprints with DASIG stakeholder sprint reviews.
 

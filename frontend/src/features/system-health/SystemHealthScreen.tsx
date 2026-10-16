@@ -1015,6 +1015,15 @@ function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";
   if (item.key === "missed_review_rate") return item.value <= 10 ? "Target: ≤ 10% (Met)" : "Target: ≤ 10% (Over)";
+  
+  if (item.key === "media_ai_queue_depth") return item.value <= 50 ? "Target: ≤ 50 (Met)" : "Target: ≤ 50 (Over)";
+  if (item.key === "media_ai_queue_completion_rate") return item.value >= 95 ? "Target: ≥ 95% (Met)" : "Target: ≥ 95% (Below)";
+  if (item.key === "media_ai_voyage_failure_rate") return item.value <= 10 ? "Target: ≤ 10% (Met)" : "Target: ≤ 10% (Over)";
+  if (item.key === "media_ai_embedding_coverage") return item.value >= 90 ? "Target: ≥ 90% (Met)" : "Target: ≥ 90% (Below)";
+  if (item.key === "media_ai_suggestion_no_result_rate") return "Search Accuracy Benchmark";
+  if (item.key === "media_ai_suggestion_acceptance_rate" || item.key === "media_ai_suggestion_dismissal_rate") return "Adoption Benchmark";
+  if (item.key === "media_ai_shadow_top_change_rate") return "Algorithm A/B Test";
+  
   return "Operational Benchmark";
 }
 
@@ -1357,6 +1366,22 @@ function metricIcon(key: string) {
       return "ti ti-bolt";
     case "missed_review_rate":
       return "ti ti-calendar-x";
+    case "media_ai_queue_depth":
+      return "ti ti-layers-linked";
+    case "media_ai_queue_completion_rate":
+      return "ti ti-list-check";
+    case "media_ai_voyage_failure_rate":
+      return "ti ti-plug-x";
+    case "media_ai_embedding_coverage":
+      return "ti ti-vector";
+    case "media_ai_suggestion_no_result_rate":
+      return "ti ti-search-off";
+    case "media_ai_suggestion_acceptance_rate":
+      return "ti ti-thumb-up";
+    case "media_ai_suggestion_dismissal_rate":
+      return "ti ti-thumb-down";
+    case "media_ai_shadow_top_change_rate":
+      return "ti ti-arrows-shuffle";
     default:
       return "ti ti-chart-bar";
   }

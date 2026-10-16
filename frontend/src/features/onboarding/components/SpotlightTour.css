@@ -1,8 +1,9 @@
+/* Layers sit above every app overlay, including the AI caption dialog (99999). */
 /* Spotlight Tour Backdrop & Blur */
 .spotlight-tour-overlay {
   position: fixed;
   inset: 0;
-  z-index: 99990;
+  z-index: 100010;
   pointer-events: auto;
   transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -17,13 +18,22 @@
   transition: opacity 0.2s ease;
 }
 
+/* View-only tours: swallow clicks on the highlighted element. */
+.spotlight-target-shield {
+  position: fixed;
+  z-index: 100011;
+  background: transparent;
+  cursor: default;
+  pointer-events: auto;
+}
+
 /* Glowing Highlight Ring over the active element */
 .spotlight-target-highlight {
   position: fixed;
   pointer-events: none;
   border-radius: 10px;
   box-shadow: 0 0 0 3px #3b82f6, 0 0 25px rgba(59, 130, 246, 0.5), inset 0 0 15px rgba(59, 130, 246, 0.2);
-  z-index: 99991;
+  z-index: 100011;
   animation: spotlight-pulse 2.2s infinite ease-in-out;
   transition: opacity 0.2s ease, box-shadow 0.2s ease;
 }
@@ -40,7 +50,7 @@
 /* Floating Agentic Guide Card (Crisp White Theme) */
 .spotlight-card {
   position: fixed;
-  z-index: 99992;
+  z-index: 100012;
   box-sizing: border-box;
   width: min(390px, calc(100vw - 32px));
   max-height: calc(100vh - 24px);

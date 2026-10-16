@@ -31,6 +31,9 @@ class GuardRailServiceTest {
     @Mock
     private SubmissionRepository submissionRepository;
 
+    @Mock
+    private GuardRailSettingsService guardRailSettingsService;
+
     @InjectMocks
     private GuardRailService guardRailService;
 
@@ -45,6 +48,13 @@ class GuardRailServiceTest {
         lenient().when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(0L);
         lenient().when(submissionRepository.countUnpublishedByInstitution(any())).thenReturn(0L);
         lenient().when(slotReservationRepository.findActiveInWindow(any(), any())).thenReturn(List.of());
+        lenient().when(guardRailSettingsService.postingWindowStartHour()).thenReturn(0);
+        lenient().when(guardRailSettingsService.postingWindowEndHour()).thenReturn(24);
+        lenient().when(guardRailSettingsService.conflictBufferMinutes()).thenReturn(30);
+        lenient().when(guardRailSettingsService.minimumLeadTimeHours()).thenReturn(2);
+        lenient().when(guardRailSettingsService.maximumLeadTimeDays()).thenReturn(30);
+        lenient().when(guardRailSettingsService.perInstitutionActiveQuota()).thenReturn(3);
+        lenient().when(guardRailSettingsService.dailyVolumeCap()).thenReturn(6);
     }
 
     // ── GR-H1 ────────────────────────────────────────────────────────────────

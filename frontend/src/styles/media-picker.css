@@ -128,8 +128,9 @@
   scroll-snap-type: x mandatory;
 }
 
-.sms-strip::-webkit-scrollbar { height: 4px; }
-.sms-strip::-webkit-scrollbar-thumb { background: var(--mp-border); border-radius: 2px; }
+.sms-strip::-webkit-scrollbar { height: 6px; }
+.sms-strip::-webkit-scrollbar-track { background: #eff6ff; border-radius: 999px; }
+.sms-strip::-webkit-scrollbar-thumb { background: #1877f2; border-radius: 999px; }
 
 .sms-item {
   position: relative;
@@ -527,11 +528,6 @@
   border-color: var(--mp-blue);
 }
 
-.mlt-count {
-  font-size: 12px;
-  color: var(--mp-muted);
-  margin-bottom: 8px;
-}
 
 .mlt-error,
 .mlt-empty {
@@ -584,18 +580,52 @@
   background: var(--mp-border);
 }
 
-/* Action bar shared between mlt- and ast- */
-.mlt-action-bar,
-.ast-action-bar {
-  position: sticky;
-  bottom: 0;
+/* Selection toolbar, above the grid in both tabs: the result count (library)
+   or "Top N matches" (AI) until something is selected, then
+   "N selected · Clear · Add Selected". Fixed height so selecting doesn't
+   shift the grid. (It used to be a bar after the grid / "Load more".) */
+.mlt-selection-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: var(--mp-surface);
-  border-top: 1px solid var(--mp-border);
-  margin: 8px -12px -12px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  padding: 0 0 0 2px;
+  font-size: 12px;
+  color: var(--mp-muted);
+}
+.mlt-selection-bar.has-selection,
+.ast-results-header.has-selection {
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--mp-blue-bdr);
+  border-radius: var(--mp-r-sm);
+  background: var(--mp-blue-dim);
+}
+.mlt-selection-bar .mlt-action-count,
+.mlt-selection-bar button,
+.ast-results-header.has-selection .ast-action-count,
+.ast-results-header.has-selection button {
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .mlt-selection-bar.has-selection,
+  .ast-results-header.has-selection {
+    gap: 6px;
+    padding-left: 10px;
+  }
+  .mlt-selection-bar .mlt-action-clear,
+  .ast-results-header .ast-action-clear {
+    padding: 5px 10px;
+  }
+  .mlt-selection-bar .mlt-action-add,
+  .ast-results-header .ast-action-add {
+    padding: 6px 12px;
+  }
+}
+.mlt-selection-bar:not(.has-selection) .mlt-action-count {
+  font-weight: 400;
+  color: var(--mp-muted);
+  font-size: 12px;
 }
 
 .mlt-action-count,
@@ -798,11 +828,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
 }
 
 .ast-results-label {
   font-size: 12px;
   color: var(--mp-muted);
+}
+
+.ast-results-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ast-results-method {
+  max-width: 680px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--mp-text-2);
 }
 
 .ast-regenerate-btn {
@@ -837,26 +883,30 @@
   overflow-y: auto;
   max-height: 460px;
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: #1877f2 #eff6ff;
 }
 .mag-scroll-wrap:hover {
-  scrollbar-color: var(--mp-border) transparent;
+  scrollbar-color: #1565d8 #eff6ff;
 }
 .mag-scroll-wrap::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+.mag-scroll-wrap::-webkit-scrollbar-track {
+  background: #eff6ff;
+  border-radius: 999px;
 }
 .mag-scroll-wrap::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 2px;
+  background: #1877f2;
+  border-radius: 999px;
   transition: background 0.2s;
 }
 .mag-scroll-wrap:hover::-webkit-scrollbar-thumb {
-  background: var(--mp-border);
+  background: #1565d8;
 }
 
 .mag-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 8px;
 }
 
@@ -881,6 +931,11 @@
 .mac-card:hover:not(:disabled) {
   border-color: var(--mp-blue-bdr, #bfdbfe);
   box-shadow: 0 1px 6px rgba(24,119,242,0.12);
+}
+
+.mac-card:focus-visible {
+  outline: 3px solid rgba(24, 119, 242, 0.28);
+  outline-offset: 2px;
 }
 
 .mac-card--selected {
@@ -950,17 +1005,39 @@
   z-index: 3;
 }
 
+.mac-format {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  max-width: 58%;
+  padding: 2px 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 3;
+}
+
 .mac-match-tooltip {
   position: absolute;
+  top: 5px;
   left: 6px;
   right: 6px;
-  bottom: 6px;
+  bottom: 5px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 8px;
+  gap: 4px;
+  justify-content: flex-end;
+  padding: 10px;
+  overflow-y: auto;
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.97);
   color: #fff;
   opacity: 0;
   transform: translateY(4px);
@@ -977,16 +1054,21 @@
 }
 
 .mac-match-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
+.mac-match-score {
+  font-weight: 600;
+  color: rgba(255,255,255,0.82);
+}
+
 .mac-match-reason {
-  font-size: 10px;
-  line-height: 1.25;
-  color: rgba(255,255,255,0.86);
+  font-size: 11px;
+  line-height: 1.4;
+  color: #fff;
 }
 
 .mac-name {
@@ -996,6 +1078,32 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mac-reason-preview {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 6px;
+  color: var(--mp-text-2);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.mac-reason-preview i {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--mp-blue);
+  font-size: 12px;
+}
+
+.mac-reason-preview span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .mac-category {
@@ -1057,6 +1165,20 @@
   .skeleton-line {
     animation: none;
   }
+
+  .mac-match-tooltip {
+    transition: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .mag-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ast-results-header {
+    align-items: flex-start;
+  }
 }
 
 .umt-errors {
@@ -1074,12 +1196,4 @@
 
 .umt-errors p {
   margin: 0;
-}
-
-.mp-auto-suggestions {
-  margin: 14px 0;
-  padding: 14px;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-  background: #f8fbff;
 }

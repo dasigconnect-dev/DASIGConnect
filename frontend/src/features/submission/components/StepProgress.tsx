@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ProgressStep } from "../types";
 import { stepLabel } from "../utils";
 
@@ -73,11 +74,20 @@ export function StepPanelActions({
   hasMedia,
   isDetailsComplete,
   onStepChange,
+  finalAction,
+  onPreview,
+  previewActive = false,
+  previewDisabled = false,
 }: {
   activeStep: ProgressStep;
   hasMedia: boolean;
   isDetailsComplete: boolean;
   onStepChange: (step: ProgressStep) => void;
+  /** Rendered in place of Next on the last step (the phone bottom bar passes Submit). */
+  finalAction?: ReactNode;
+  onPreview?: () => void;
+  previewActive?: boolean;
+  previewDisabled?: boolean;
 }) {
   const order: ProgressStep[] = ["media", "details", "schedule"];
   const index = order.indexOf(activeStep);
@@ -97,31 +107,42 @@ export function StepPanelActions({
 
   return (
     <div className="sub-step-panel-actions">
-      <button
-        type="button"
-        className="sub-step-panel-btn secondary"
-        onClick={() => previous && onStepChange(previous)}
-        disabled={!previous}
-      >
-        <i className="ti ti-arrow-left"></i> Previous
-      </button>
+      {onPreview && (
+        <button
+          type="button"
+          className={`sub-step-panel-btn sub-step-panel-preview${previewActive ? " is-active" : ""}`}
+          onClick={onPreview}
+          disabled={previewDisabled}
+          title={previewActive ? "Back to editing details" : "Preview how followers see this post on Facebook"}
+          aria-label={previewActive ? "Back to editing" : "Preview on Facebook"}
+        >
+          <i className={previewActive ? "ti ti-arrow-left" : "ti ti-brand-facebook"}></i>
+          <span>{previewActive ? "Edit" : "Preview"}</span>
+        </button>
+      )}
+      {previous && (
+        <button
+          type="button"
+          className="sub-step-panel-btn secondary"
+          onClick={() => onStepChange(previous)}
+        >
+          <i className="ti ti-arrow-left"></i> Previous
+        </button>
+      )}
       {next ? (
         <button
           type="button"
           className={`sub-step-panel-btn ${nextIsLocked ? "locked" : "primary"}`}
           onClick={() => onStepChange(next)}
-          title={nextLockedTitle}
+          title={nextLockedTitle ?? `Go to ${stepLabel(next)}`}
+          aria-label={nextLockedTitle ? `Next: ${nextLockedTitle}` : `Next: ${stepLabel(next)}`}
         >
-          {nextIsLocked ? (
-            <>
-              <i className="ti ti-lock"></i> {next === "details" ? "Add Media First" : "Complete Details First"}
-            </>
-          ) : (
-            <>
-              Next: {stepLabel(next)} <i className="ti ti-arrow-right"></i>
-            </>
-          )}
+          {nextIsLocked && <i className="ti ti-lock"></i>}
+          Next
+          {!nextIsLocked && <i className="ti ti-arrow-right"></i>}
         </button>
+      ) : finalAction ? (
+        finalAction
       ) : (
         <span className="sub-step-panel-ready">
           <i className="ti ti-check"></i> Final step

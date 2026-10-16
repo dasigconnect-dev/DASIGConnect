@@ -328,7 +328,6 @@ export default function UploadModal({
     try {
       let albumId: string | null | undefined;
       let albumName: string;
-      let autoMatchAlbum = false;
       let institutionId: string | null;
 
       if (usingCurrentAlbum && currentAlbum) {
@@ -338,7 +337,6 @@ export default function UploadModal({
       } else if (resolvedExistingAlbum) {
         albumId = resolvedExistingAlbum.id;
         albumName = resolvedExistingAlbum.name;
-        autoMatchAlbum = autoMatched;
         institutionId = resolvedExistingAlbum.institutionId;
       } else {
         if (!effectiveInstId) {
@@ -354,7 +352,7 @@ export default function UploadModal({
         institutionId = effectiveInstId;
       }
 
-      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags, institutionId };
+      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum: false, tags, institutionId };
       const finished = await uploadFromIndex(0, metadata, controller.signal);
       if (!finished) return;
       setProgress(100);

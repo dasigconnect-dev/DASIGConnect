@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions } from "../../api/authApi";
@@ -30,7 +31,6 @@ import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
-import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
@@ -42,6 +42,7 @@ import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
+import InfoTip from "../../components/ui/InfoTip";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
@@ -51,11 +52,14 @@ import { RevisionFeedbackBanner, RejectionFeedbackBanner } from "./components/Re
 import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
 import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import type { TourStep } from "../onboarding/types";
 import {
-  submissionListTourSteps,
   submissionComposerTourSteps,
+  COMPOSER_TOUR_VIEWS,
+  type ComposerTourPanel,
   saveDraftTourSteps,
 } from "../onboarding/tours/submissionTour";
+import { hasSeenTour } from "../onboarding/tourStorage";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -70,19 +74,15 @@ import {
   defaultMediaTags,
   effectiveMediaTags,
   extractHashtags,
-  formatDate,
-  formatRole,
   formatTimeInput,
   getDirtySignature,
   getErrorMessage,
   getOrderedLocalFiles,
   getPreviewValidation,
   getReadinessChecklist,
-  getSubmissionStatusIcon,
   isConflictError,
   isDefaultInstitution,
   isDirtyDraft,
-  matchesQueueSearch,
   mediaCaptionsFromSavedAssets,
   mediaSkipWatermarkFromSavedAssets,
   normalizeHashtagInput,
@@ -91,7 +91,6 @@ import {
   pruneMediaCaptions,
   pruneMediaFlags,
   queueBucket,
-  type QueueBucket,
   removeHashtag,
   resolveSavedMediaCaptions,
   resolveSavedMediaOrder,
@@ -101,9 +100,9 @@ import {
   skipWatermarksForSavedIds,
   sortFilesByOrder,
   sortSavedAssetsByOrder,
+  readinessTone,
   toPayload,
   trimToCharLimit,
-  upsertSubmission,
 } from "./utils";
 import {
   CheckItem,
@@ -112,21 +111,25 @@ import {
   Field,
   GuardSection,
   QueueLoadingState,
-  QueueState,
   ReadinessRing,
   ReadinessSkeleton,
   SectionHead,
 } from "./components/SharedPrimitives";
+import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useSubmissionMediaAutosave } from "./hooks/useSubmissionMediaAutosave";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
-import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
 
 const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsPicker"));
 const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDialog"));
 const AiCaptionSuggestion = lazy(() => import("./components/AiCaptionSuggestion"));
 const FancyTextTool = lazy(() => import("./components/FancyTextTool"));
+import CheckWritingButton from "../../components/proofread/CheckWritingButton";
+import ProofreadResult from "../../components/proofread/ProofreadResult";
+import { useProofread } from "../../hooks/useProofread";
 const SubmissionReadOnlyBody = lazy(() => import("./components/SubmissionReadOnlyView"));
+const TopPostTemplateModal = lazy(() => import("./components/TopPostTemplateModal"));
 const EngagementRecommendationsPanel = lazy(() =>
   import("./components/EngagementRecommendationsPanel").then((module) => ({
     default: module.EngagementRecommendationsPanel,
@@ -172,7 +175,6 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
     id: template.id,
     name: template.name,
     target: template.target,
-    category: template.category,
     tags: template.tags ?? [],
     caption: template.caption,
     custom: true,
@@ -200,28 +202,25 @@ function uploadFileSignature(file: Pick<File, "name" | "size">) {
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const isMySubmissionsPage = location.pathname === "/submissions";
-  const isComposerRoute = !isMySubmissionsPage;
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { submissions, setSubmissions, loading, refreshing, error, refresh } =
-    useSubmissions(user);
+  const [filter, setFilter] = useState<QueueFilter>(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    const valid: QueueFilter[] = ["drafts", "action-needed", "rejected", "submitted", "published", "failed", "all"];
+    if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
+    return "all";
+  });
+  // Cache-only read of the My Submissions list (never fetches here): used to
+  // pre-fill a draft while its detail loads and to resume a draft. The list
+  // screen itself is SubmissionListScreen.
+  const { submissions, loading } = useSubmissions(user, filter, "", false);
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups(user, isComposerRoute);
+  } = useSubmissionLookups(user, true);
   const toast = useToast();
 
-  const {
-    startTour: startSubmissionTour,
-    tourProps: submissionTourProps,
-  } = useScreenTour({
-    screenId: "submissions-list",
-    steps: submissionListTourSteps,
-    autoStartDelayMs: 700,
-    canStart: isMySubmissionsPage && !loading,
-  });
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -232,19 +231,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const albumNameRef = useRef<HTMLInputElement | null>(null);
   const mediaTagsInputRef = useRef<HTMLInputElement | null>(null);
   const prefilledRef = useRef(false);
-  const filterParamConsumedRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
   const cleanSignatureRef = useRef(getDirtySignature(initialForm));
   const shouldPromptBeforeLeaveRef = useRef(false);
   const browserBackGuardRef = useRef(false);
   const uploadBatchControllerRef = useRef<AbortController | null>(null);
-  const [filter, setFilter] = useState<QueueFilter>(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
-    if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
-    return "all";
-  });
-  const [queueSearch, setQueueSearch] = useState("");
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -260,6 +251,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [topPostTemplateOpen, setTopPostTemplateOpen] = useState(false);
   const [templateDeleteId, setTemplateDeleteId] = useState<string | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] =
@@ -328,7 +320,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     });
   }
 
-  const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
@@ -350,7 +341,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
       response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
     ),
-    enabled: isComposerRoute && isAdminComposer,
+    enabled: isAdminComposer,
     staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -369,7 +360,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
       (response.data ?? []).map(apiTemplateToComposerTemplate),
     ),
-    enabled: isComposerRoute,
+    enabled: true,
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -379,7 +370,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       listMediaAlbums(selectedInstitutionId, signal).then((response) =>
         (response.data ?? []).map((album) => album.name),
       ),
-    enabled: isComposerRoute && Boolean(selectedInstitutionId),
+    enabled: Boolean(selectedInstitutionId),
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -391,7 +382,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
   const templateErrorNotifiedRef = useRef(false);
   const albumErrorNotifiedRef = useRef<string | null>(null);
-  const submissionsRefreshErrorNotifiedRef = useRef(false);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -401,36 +391,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
 
-  const queued = useMemo(() => {
-    const base =
-      filter === "all"
-        ? submissions
-        : submissions.filter((item) => queueBucket(item.status) === filter);
-    return base.filter((item) => matchesQueueSearch(item, queueSearch));
-  }, [filter, queueSearch, submissions]);
-
-  const {
-    visibleItems: visibleQueued,
-    hasMore: hasMoreQueued,
-    totalCount: totalQueuedCount,
-    sentinelRef: queuedSentinelRef,
-  } = useIncrementalPagination(queued, {
-    pageSize: 8,
-    initialSize: 8,
-    resetDeps: [filter, queueSearch],
-  });
-  // One pass over the list for every tab count.
-  const counts = useMemo(() => {
-    const acc: Record<QueueBucket, number> = {
-      drafts: 0,
-      "action-needed": 0,
-      submitted: 0,
-      published: 0,
-      failed: 0,
-    };
-    for (const item of submissions) acc[queueBucket(item.status)] += 1;
-    return acc;
-  }, [submissions]);
 
   const scheduledAt = useMemo(() => {
     if (form.fastTrack) return undefined;
@@ -440,10 +400,47 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return date.toISOString();
   }, [form.fastTrack, form.scheduledDate, form.scheduledTime]);
 
+  const isEditableSubmission =
+    form.status === "draft" ||
+    form.status === "needs_revision" ||
+    (form.status === "rejected" && isEditingRejected);
+  const canSubmitCurrentSubmission = isEditableSubmission;
+  const isReadOnlySubmission = !isEditableSubmission;
+
   const readiness = useMemo(
-    () => getReadinessChecklist(form, scheduledAt, lookups, guardRails, guardRailsLoading),
-    [form, guardRails, guardRailsLoading, lookups, scheduledAt],
+    () => getReadinessChecklist(form, scheduledAt, lookups, guardRails, guardRailsLoading, isReadOnlySubmission),
+    [form, guardRails, guardRailsLoading, isReadOnlySubmission, lookups, scheduledAt],
   );
+  // At ≤900px the layout stacks; instead of pushing Readiness below the form,
+  // the top bar shows a colored score chip that opens it as a bottom sheet.
+  const isCompactLayout = useMediaQuery("(max-width: 900px)");
+  const [readinessSheetOpen, setReadinessSheetOpen] = useState(false);
+  const readinessSheetVisible = isCompactLayout && readinessSheetOpen;
+  // Post Templates panel: opened from the caption's "Templates" button (or the
+  // empty-caption starter) on the Post Details step only — templates are a
+  // caption tool, so there's no always-on sidebar. Slides in from the right on
+  // desktop and is a bottom sheet at ≤900px (CSS); portalled to <body>.
+  const [templatesPanelOpen, setTemplatesPanelOpen] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState<"all" | "builtin" | "mine">("all");
+  const templatesPanelCloseRef = useRef<HTMLButtonElement | null>(null);
+  const readinessSheetCloseRef = useRef<HTMLButtonElement | null>(null);
+  const readinessChipRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!readinessSheetVisible) return;
+    const chip = readinessChipRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    readinessSheetCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReadinessSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      chip?.focus();
+    };
+  }, [readinessSheetVisible]);
   const recommendedWarnings = useMemo(
     () => readiness.recommended.filter((item) => !item.pass),
     [readiness.recommended],
@@ -456,6 +453,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () => [...postTemplates, ...customTemplates],
     [customTemplates],
   );
+  const selectedTemplateName = form.selectedTemplateId
+    ? composerTemplates.find((template) => template.id === form.selectedTemplateId)?.name ?? null
+    : null;
   const captionMediaItem = useMemo(
     () => pickerItems.find((item) => pickerMediaKey(item) === captionMediaKey),
     [captionMediaKey, pickerItems],
@@ -475,14 +475,56 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     previewValidation.blockingErrors.length > 0
       ? previewValidation.blockingErrors[0]
       : undefined;
-  const isEditableSubmission =
-    form.status === "draft" ||
-    form.status === "needs_revision" ||
-    (form.status === "rejected" && isEditingRejected);
-  const canSubmitCurrentSubmission = isEditableSubmission;
-  const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
+  const templatesPanelVisible =
+    templatesPanelOpen && activeStep === "details" && centerMode === "edit" && !isReadOnlySubmission;
+  useEffect(() => {
+    if (!templatesPanelVisible) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    templatesPanelCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A modal opened from the panel (save/delete/top posts) handles its own Escape.
+      if (event.key === "Escape" && !document.querySelector(".sub-modal-overlay")) {
+        setTemplatesPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      opener?.focus();
+    };
+  }, [templatesPanelVisible]);
+
+  // The composer guide is view-only: each step switches to the wizard step /
+  // opens the panel it talks about (even steps 2-3 before media is added),
+  // and the guide's click shield keeps the user from changing anything. The
+  // step the user was on is restored and every panel closed when it ends.
+  const [composerTourPanel, setComposerTourPanel] = useState<ComposerTourPanel | null>(null);
+  const composerTourReturnStepRef = useRef<ProgressStep | null>(null);
+  function handleComposerTourStep(step: TourStep | null) {
+    const view = step?.id ? COMPOSER_TOUR_VIEWS[step.id] : undefined;
+    if (!view) {
+      if (composerTourReturnStepRef.current) {
+        setActiveStep(composerTourReturnStepRef.current);
+        composerTourReturnStepRef.current = null;
+      }
+      setComposerTourPanel(null);
+      setTemplatesPanelOpen(false);
+      setCaptionPromptOpen(false);
+      setReadinessSheetOpen(false);
+      return;
+    }
+    if (!composerTourReturnStepRef.current) composerTourReturnStepRef.current = activeStep;
+    setActiveStep(view.step);
+    setComposerTourPanel(view.panel ?? null);
+    setTemplatesPanelOpen(view.panel === "templates");
+    setCaptionPromptOpen(view.panel === "ai");
+    setReadinessSheetOpen(view.panel === "readiness" && isCompactLayout);
+  }
 
   const {
     startTour: startComposerTour,
@@ -491,7 +533,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     screenId: "submission-composer",
     steps: submissionComposerTourSteps,
     autoStartDelayMs: 800,
-    canStart: isComposerRoute && !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+    canStart: !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+    onStepChange: handleComposerTourStep,
   });
   const isDirty = useMemo(
     () =>
@@ -501,8 +544,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form, isReadOnlySubmission],
   );
   const shouldPromptBeforeLeave = isDirty;
+  const mediaAutosave = useSubmissionMediaAutosave({
+    submissionId: form.id,
+    enabled:
+      Boolean(form.id) &&
+      isEditableSubmission &&
+      (form.files.length > 0 || form.pendingAssetIds.length > 0 || form.removedAssetIds.length > 0),
+    items: pickerItems,
+    removedAssetIds: form.removedAssetIds,
+    mediaCaptions: form.mediaCaptions,
+    skipWatermarks: form.mediaSkipWatermark,
+    onReconciled: handleMediaAutosaveReconciled,
+    onError: handleMediaAutosaveError,
+  });
   const busy =
-    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia || mediaAutosave.blocking;
+  const canDeleteCurrentSubmission = Boolean(
+    form.id && (form.status === "draft" || form.status === "rejected"),
+  );
 
   const {
     tourProps: saveDraftTourProps,
@@ -510,7 +569,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     screenId: "save-draft-prompt",
     steps: saveDraftTourSteps,
     autoStartDelayMs: 400,
-    canStart: isComposerRoute && isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
+    canStart:
+      isDirty &&
+      !busy &&
+      !isReadOnlySubmission &&
+      !composerTourProps.isOpen &&
+      hasSeenTour("submission-composer"),
   });
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
@@ -548,7 +612,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function syncSubmissionCaches(next: SubmissionSummary) {
-    setSubmissions((current) => upsertSubmission(current, next));
     const detailParams = submissionDetailParams(next);
     queryClient.setQueryData<SubmissionSummary>(
       queryKeys.submissions.editorDetail(detailParams),
@@ -561,13 +624,85 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaAssets: next.mediaAssets ?? [],
       },
     );
+    clearSubmissionPageCaches();
   }
 
   function removeSubmissionCaches(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
-    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
     const detailParams = submissionDetailParams(submission);
     queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
     queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
+    clearSubmissionPageCaches();
+  }
+
+  function clearSubmissionPageCaches() {
+    queryClient.removeQueries({
+      queryKey: ["submissions"],
+      predicate: (query) => {
+        const params = query.queryKey[1];
+        return typeof params === "object" && params !== null && "view" in params && params.view === "page";
+      },
+    });
+  }
+
+  function handleMediaAutosaveReconciled({
+    summary,
+    items,
+  }: {
+    summary: SubmissionSummary;
+    items: SubmissionMediaItem[];
+    uploadAssetIds: ReadonlyMap<string, string>;
+  }) {
+    const assetsById = new Map((summary.mediaAssets ?? []).map((asset) => [asset.id, asset]));
+    const nextSavedAssets = items
+      .map((item) => item.assetId ? assetsById.get(item.assetId) : undefined)
+      .filter((asset): asset is SavedMediaAsset => Boolean(asset));
+    const serverIds = new Set((summary.mediaAssets ?? []).map((asset) => asset.id));
+    const nextFiles = items.flatMap((item) => item.file ? [item.file] : []);
+    const nextPendingAssetIds = items
+      .map((item) => item.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId && !serverIds.has(assetId)));
+    const previousItemsByClientId = new Map(pickerItems.map((item) => [item.clientId, item]));
+
+    setForm((current) => {
+      const nextOrder = items.map(pickerMediaKey);
+      const nextCaptions: Record<string, string> = {};
+      const nextSkipWatermark: Record<string, boolean> = {};
+      for (const item of items) {
+        const nextKey = pickerMediaKey(item);
+        const previousItem = previousItemsByClientId.get(item.clientId);
+        const previousKey = previousItem ? pickerMediaKey(previousItem) : nextKey;
+        const savedAsset = item.assetId ? assetsById.get(item.assetId) : undefined;
+        nextCaptions[nextKey] = current.mediaCaptions[previousKey]
+          ?? current.mediaCaptions[nextKey]
+          ?? savedAsset?.caption
+          ?? "";
+        nextSkipWatermark[nextKey] = current.mediaSkipWatermark[previousKey]
+          ?? current.mediaSkipWatermark[nextKey]
+          ?? Boolean(savedAsset?.skipWatermark);
+      }
+      return {
+        ...current,
+        status: summary.status,
+        files: nextFiles,
+        savedAssets: nextSavedAssets,
+        mediaOrder: nextOrder,
+        mediaCaptions: nextCaptions,
+        mediaSkipWatermark: nextSkipWatermark,
+        pendingAssetIds: nextPendingAssetIds,
+        removedAssetIds: current.removedAssetIds.filter((assetId) => serverIds.has(assetId)),
+      };
+    });
+    setPickerItems(items);
+    syncSubmissionCaches(summary);
+    clearAssetIdParam();
+    setMediaUploadFailed(false);
+  }
+
+  function handleMediaAutosaveError(error: unknown) {
+    setMediaUploadFailed(true);
+    toast.warning(
+      getErrorMessage(error, "Media could not be saved automatically. Use Save Draft to retry."),
+    );
   }
 
   useEffect(() => () => {
@@ -587,26 +722,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [institutions, isAdminComposer]);
 
   useEffect(() => {
-    if (!isComposerRoute || !templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
     templateErrorNotifiedRef.current = true;
     toast.error("Could not load saved templates.");
-  }, [isComposerRoute, templatesQuery.isError, toast]);
+  }, [templatesQuery.isError, toast]);
+
 
   useEffect(() => {
-    if (!error || submissions.length === 0) {
-      if (!error) submissionsRefreshErrorNotifiedRef.current = false;
-      return;
-    }
-    if (submissionsRefreshErrorNotifiedRef.current) return;
-    submissionsRefreshErrorNotifiedRef.current = true;
-    toast.error(error);
-  }, [error, submissions.length, toast]);
-
-  useEffect(() => {
-    if (!isComposerRoute || !selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
     albumErrorNotifiedRef.current = selectedInstitutionId;
     toast.error("Could not load media albums.");
-  }, [albumNamesQuery.isError, isComposerRoute, selectedInstitutionId, toast]);
+  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -758,6 +884,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form.files, form.savedAssets],
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
+  const proofread = useProofread(form.id);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -800,20 +927,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     // id — otherwise the check would flag the user's own new reservation.
   }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
 
-  // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
-  useEffect(() => {
-    if (filterParamConsumedRef.current) return;
-    if (!searchParams.get("tab")) return;
-    filterParamConsumedRef.current = true;
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("tab");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [searchParams, setSearchParams]);
 
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
   useEffect(() => {
@@ -1161,7 +1274,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ...current,
       selectedTemplateId: template.id,
       caption: template.caption,
-      category: "",
       tags: [],
     }));
     setSaveState("idle");
@@ -1209,7 +1321,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         target: form.eventTitle.trim()
           ? `Saved from ${form.eventTitle.trim()}`
           : "Saved from submission",
-        category: form.category || "Custom",
         tags: savedTags.length > 0 ? savedTags : ["Custom"],
         caption: form.caption,
         sourceSubmissionId: form.id,
@@ -1227,6 +1338,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     } finally {
       setSavingTemplate(false);
     }
+  }
+
+  // UC-1.5 alternate flow: an AI-drafted template was reviewed and saved.
+  // Added to the list but not applied — applying replaces the current caption.
+  function handleTopPostTemplateSaved(saved: ApiPostTemplate) {
+    const template = apiTemplateToComposerTemplate(saved);
+    queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) => [template, ...current]);
+    templateErrorNotifiedRef.current = false;
+    setTopPostTemplateOpen(false);
+    toast.success(`"${template.name}" saved. Pick it from the template list to use it.`);
   }
 
   function requestDeleteCustomTemplate(templateId: string) {
@@ -1451,17 +1572,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     requestLeave(exitSubmission);
   }
 
-  async function refreshQueue() {
-    if (refreshingQueue) return;
-    setRefreshingQueue(true);
-    try {
-      await refresh();
-    } catch {
-      // The query error state preserves cached results and drives the existing toast feedback.
-    } finally {
-      setRefreshingQueue(false);
-    }
-  }
 
   async function applySubmission(summary: SubmissionSummary) {
     setHydratingId(summary.id);
@@ -1488,7 +1598,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         eventDate: submission.eventDate || "",
         caption: submission.caption || "",
         description: "",
-        category: "",
         scheduledDate: submission.scheduledAt
           ? submission.scheduledAt.slice(0, 10)
           : "",
@@ -1661,10 +1770,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     if (!isDirty || busy || fancyTextPreviewActive) return;
-    // Never auto-create a draft. The first save must be explicit (Save Draft /
-    // Submit / advancing to the Media step); autosave only persists edits to a
-    // draft that already exists.
-    if (!form.id) return;
+    // Selecting media is enough to create the initial draft. The media picker
+    // depends on persisted asset IDs for visual AI suggestions, so requiring an
+    // explicit first save would leave a newly selected image unusable there.
+    if (!form.id && !hasMedia) return;
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
@@ -1672,7 +1781,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [busy, fancyTextPreviewActive, form, isAdminComposer, isDirty, scheduledAt]);
+  }, [busy, fancyTextPreviewActive, form, hasMedia, isAdminComposer, isDirty, scheduledAt]);
 
   async function handleSave() {
     await saveDraft();
@@ -1752,7 +1861,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           // The draft (and any files that uploaded before the failure — real
           // STAGED rows) exist server-side. Re-read rather than guess from
           // draftResponse, which predates those uploads.
-          void refresh();
+          clearSubmissionPageCaches();
           setMediaUploadFailed(true);
           setActiveStep("media");
           return;
@@ -1791,7 +1900,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setIsEditingRejected(false);
       setModal("success");
       toast.success("Submission sent for approval.");
-      void refresh();
+      clearSubmissionPageCaches();
     } catch (err: unknown) {
       const message = getErrorMessage(err, "Submission failed.");
       // A4 — another submission claimed this slot between the last save and
@@ -1902,7 +2011,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleDelete() {
-    if (isReadOnlySubmission || busy) return;
+    if (!canDeleteCurrentSubmission || busy) return;
     setDeleting(true);
     if (!form.id) {
       setModal(null);
@@ -1918,10 +2027,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: form.institutionId || user.institutionId || "",
       });
       setModal(null);
-      toast.info("Draft deleted.");
+      toast.info(form.status === "rejected" ? "Submission deleted." : "Draft deleted.");
       exitSubmission();
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, "Draft could not be deleted."));
+      toast.error(getErrorMessage(err, form.status === "rejected"
+        ? "Submission could not be deleted."
+        : "Draft could not be deleted."));
     } finally {
       setDeleting(false);
     }
@@ -1946,7 +2057,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setFilter("drafts");
       setModal(null);
       toast.success("Submission withdrawn to draft.");
-      void refresh();
+      clearSubmissionPageCaches();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Submission could not be withdrawn."));
     } finally {
@@ -1971,6 +2082,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
+    mediaAutosave.updateDesiredItems(items);
     setAddressedRevisionFields((prev) => new Set(prev).add("media"));
     setPickerItems(items);
     if (captionMediaKey && !items.some((item) => pickerMediaKey(item) === captionMediaKey)) {
@@ -2113,256 +2225,187 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, 0);
   }
 
-  if (isMySubmissionsPage) {
+  function renderTemplateCards(templates: ComposerTemplate[], onPicked?: () => void) {
     return (
-      <div className="submission-screen sub-list-shell-page">
-        <main className="sub-list-page">
-          <section className="sub-list-head">
-            <div>
-              <h1 className="sub-list-title">My Submissions</h1>
-              <p className="sub-list-subtitle">
-                View drafts, submitted posts, and published content before opening the composer.
-              </p>
-            </div>
-            <div className="sub-list-actions">
-              <button
-                className="sub-btn-ghost"
-                type="button"
-                onClick={() => startSubmissionTour(true)}
-                title="Show interactive feature guide"
-                aria-label="Show feature guide"
-              >
-                <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-                <span>Guide</span>
-              </button>
-              <button
-                className="sub-btn-ghost"
-                type="button"
-                onClick={() => void refreshQueue()}
-                disabled={refreshingQueue || loading || refreshing}
-                title="Refresh submissions list"
-              >
-                <i className={`ti ti-refresh${refreshingQueue || loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
-                <span>Refresh</span>
-              </button>
-              <button
-                className="sub-list-new"
-                type="button"
-                onClick={() => navigate("/submissions/new")}
-              >
-                <i className="ti ti-plus"></i>
-                New Submission
-              </button>
-            </div>
-          </section>
-
-          <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
-            <div className="sub-registry-toolbar">
-              <div className="sub-status-tabs" role="group" aria-label="Filter submissions by status">
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "all" ? " is-active" : ""}`}
-                  onClick={() => setFilter("all")}
-                  aria-pressed={filter === "all"}
+      <div className="sub-sidebar-template-list">
+        {templates.map((template) => (
+          <button
+            key={template.id}
+            type="button"
+            className={`sub-sidebar-template-card ${
+              form.selectedTemplateId === template.id ? "active" : ""
+            }`}
+            disabled={isReadOnlySubmission || !hasMedia}
+            title={!hasMedia ? "Add media first before choosing a template." : undefined}
+            onClick={() => {
+              applyTemplate(template.id);
+              if (hasMedia) onPicked?.();
+            }}
+          >
+            <span className="sub-sidebar-template-main">
+              <span className="sub-sidebar-template-icon" aria-hidden="true">
+                <i className={templateIcons[template.id] ?? "ti ti-template"} />
+              </span>
+              <span className="sub-sidebar-template-copy">
+                <span className="sub-sidebar-template-name">{template.name}</span>
+                <span className="sub-sidebar-template-target">{template.target}</span>
+              </span>
+              {template.custom && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="sub-sidebar-template-delete"
+                  aria-label={`Delete ${template.name} template`}
+                  title="Delete template"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    requestDeleteCustomTemplate(template.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestDeleteCustomTemplate(template.id);
+                  }}
                 >
-                  All
-                  <span className="sub-status-tab-count">{loading ? "-" : submissions.length}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "drafts" ? " is-active" : ""}`}
-                  onClick={() => setFilter("drafts")}
-                  aria-pressed={filter === "drafts"}
-                >
-                  Drafts
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.drafts}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "action-needed" ? " is-active" : ""}${!loading && counts["action-needed"] > 0 ? " has-alert" : ""}`}
-                  onClick={() => setFilter("action-needed")}
-                  aria-pressed={filter === "action-needed"}
-                >
-                  Action Needed
-                  <span className="sub-status-tab-count">{loading ? "-" : counts["action-needed"]}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "submitted" ? " is-active" : ""}`}
-                  onClick={() => setFilter("submitted")}
-                  aria-pressed={filter === "submitted"}
-                >
-                  Submitted
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.submitted}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "published" ? " is-active" : ""}`}
-                  onClick={() => setFilter("published")}
-                  aria-pressed={filter === "published"}
-                >
-                  Published
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.published}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "failed" ? " is-active" : ""}`}
-                  onClick={() => setFilter("failed")}
-                  aria-pressed={filter === "failed"}
-                >
-                  Publish Failed
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.failed}</span>
-                </button>
-              </div>
-
-              <div className="sub-search-wrap">
-                <i className="ti ti-search sub-search-icon" aria-hidden="true"></i>
-                <input
-                  type="search"
-                  className="sub-search-input"
-                  value={queueSearch}
-                  onChange={(event) => setQueueSearch(event.target.value)}
-                  placeholder="Search submissions..."
-                  aria-label="Search submissions"
-                />
-              </div>
-            </div>
-          </div>
-
-          <section className="sub-list-results" aria-label="My submissions">
-            {loading ? (
-              <QueueLoadingState />
-            ) : error && submissions.length === 0 ? (
-              <QueueState
-                icon="ti-database-off"
-                title="Unable to load submissions"
-                description="Check your session and backend connection, then refresh the page."
-              />
-            ) : queued.length === 0 ? (
-              <QueueState
-                icon="ti-folder-open"
-                title="No submissions found"
-                description="Try another filter or create a new submission."
-              />
-            ) : (
-              <>
-                {visibleQueued.map((item) => {
-                  const thumbnail = item.mediaAssets?.[0] ?? item.previewMediaAsset ?? undefined;
-                  const captionPreview = item.caption || "";
-                  return (
-                    <article
-                      className="sub-fb-post-card"
-                      key={item.id}
-                      onClick={() => navigate(`/submissions/${item.id}`)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/submissions/${item.id}`);
-                        }
-                      }}
-                    >
-                      {/* Header: FB Brand Avatar + Page Info + Status Badge */}
-                      <div className="sub-fb-card-head">
-                        <div className="sub-fb-avatar" aria-hidden="true">
-                          <i className="ti ti-brand-facebook"></i>
-                        </div>
-                        <div className="sub-fb-author">
-                          <div className="sub-fb-author-name">
-                            {item.institutionName || user.inst || "DASIGCONNECT"}
-                          </div>
-                          <div className="sub-fb-author-meta">
-                            <span>{formatDate(item.eventDate)}</span>
-                            <span className="sub-fb-dot" aria-hidden="true">•</span>
-                            <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
-                          </div>
-                        </div>
-                        <div className="sub-fb-status-wrap">
-                          <span className={`sub-qi-badge status-${item.status}`}>
-                            <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
-                            {statusLabels[item.status]}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Post Content: Event Title & Caption */}
-                      <div className="sub-fb-card-content">
-                        {item.eventTitle && <h2 className="sub-fb-event-title">{item.eventTitle}</h2>}
-                        {captionPreview ? (
-                          <p className="sub-fb-caption-text">{captionPreview}</p>
-                        ) : (
-                          <p className="sub-fb-caption-text sub-fb-empty-text">No caption provided.</p>
-                        )}
-                      </div>
-
-                      {/* Media Container with Circular Loader */}
-                      <SubmissionCardMedia
-                        thumbnail={thumbnail}
-                        mediaCount={item.mediaCount}
-                        detailsLoaded={
-                          item.previewMediaAsset !== undefined || item.mediaAssets !== undefined
-                        }
-                      />
-
-                      {/* Reactions & Engagement Row */}
-                      <div className="sub-fb-reactions-bar">
-                        <div className="sub-fb-reactions-icons">
-                          <span className="sub-fb-react-icon fb-like-icon" title="Like">
-                            <i className="ti ti-thumb-up-filled"></i>
-                          </span>
-                          <span className="sub-fb-react-icon fb-heart-icon" title="Love">
-                            <i className="ti ti-heart-filled"></i>
-                          </span>
-                          <span className="sub-fb-reactions-text">
-                            {(item.mediaCount ?? 0)} media · {item.eventTitle ? "1 Post" : "Draft"}
-                          </span>
-                        </div>
-                        <div className="sub-fb-open-action">
-                          <span>Open details</span>
-                          <i className="ti ti-chevron-right"></i>
-                        </div>
-                      </div>
-
-                      {/* Facebook Interactive Bar */}
-                      <div className="sub-fb-actions-bar" aria-hidden="true">
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-thumb-up"></i>
-                          <span>Like</span>
-                        </div>
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-message-circle"></i>
-                          <span>Comment</span>
-                        </div>
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-share-3"></i>
-                          <span>Share</span>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-
-                {hasMoreQueued && (
-                  <div ref={queuedSentinelRef} className="sub-load-more-sentinel">
-                    <div className="sub-load-more-spinner" />
-                    <span>Loading more submissions...</span>
-                  </div>
-                )}
-
-                {!hasMoreQueued && totalQueuedCount > 8 && (
-                  <div className="sub-list-end-indicator">
-                    <span>Showing all {totalQueuedCount} submissions</span>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-        </main>
-        <SpotlightTour {...submissionTourProps} />
+                  <i className="ti ti-trash" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+            <span className="sub-sidebar-template-preview">
+              {template.caption}
+            </span>
+            <span className="sub-sidebar-template-tags">
+              {template.tags.slice(0, 3).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </span>
+          </button>
+        ))}
       </div>
     );
   }
+
+  function renderTemplatesPanel() {
+    const close = () => setTemplatesPanelOpen(false);
+    const builtInTemplates = composerTemplates.filter((template) => !template.custom);
+    const myTemplates = composerTemplates.filter((template) => template.custom);
+    const shown =
+      templateFilter === "builtin"
+        ? builtInTemplates
+        : templateFilter === "mine"
+          ? myTemplates
+          : composerTemplates;
+    const filters: { id: typeof templateFilter; label: string; count: number }[] = [
+      { id: "all", label: "All", count: composerTemplates.length },
+      { id: "builtin", label: "Built-in", count: builtInTemplates.length },
+      { id: "mine", label: "My templates", count: myTemplates.length },
+    ];
+    return (
+      <div className="sub-tpl-root">
+        <div className="sub-tpl-backdrop" aria-hidden="true" onClick={close} />
+        <div
+          className="sub-tpl-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sub-tpl-title"
+        >
+          <div className="sub-tpl-head">
+            <span className="sub-tpl-grip" aria-hidden="true" />
+            <div className="sub-tpl-heading">
+              <h2 id="sub-tpl-title" className="sub-tpl-title">Post Templates</h2>
+              <p className="sub-tpl-sub">
+                {selectedTemplateName ? (
+                  <>
+                    Using <strong>{selectedTemplateName}</strong>
+                    <button type="button" className="sub-tpl-clear" onClick={clearTemplate}>
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  "Pick a structure to pre-fill your caption and tags."
+                )}
+              </p>
+            </div>
+            <button
+              ref={templatesPanelCloseRef}
+              type="button"
+              className="sub-tpl-close"
+              onClick={close}
+              aria-label="Close post templates"
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="sub-tpl-actions">
+            <button
+              type="button"
+              className="sub-tpl-action is-ai"
+              onClick={() => setTopPostTemplateOpen(true)}
+              title="Draft a template from the Page's best-performing posts"
+            >
+              <i className="ti ti-sparkles" aria-hidden="true" />
+              Generate from Top Posts
+            </button>
+            <button
+              type="button"
+              className="sub-tpl-action"
+              disabled={savingTemplate || !form.caption.trim()}
+              onClick={openSaveTemplateModal}
+              title={
+                form.caption.trim()
+                  ? "Save the caption you've written as a reusable template"
+                  : "Write a caption first, then save it as a template."
+              }
+            >
+              <i className="ti ti-plus" aria-hidden="true" />
+              Save current caption
+            </button>
+          </div>
+
+          <div className="sub-tpl-filters" role="group" aria-label="Filter templates">
+            {filters.map((filterOption) => (
+              <button
+                key={filterOption.id}
+                type="button"
+                className={`sub-tpl-filter${templateFilter === filterOption.id ? " is-active" : ""}`}
+                aria-pressed={templateFilter === filterOption.id}
+                onClick={() => setTemplateFilter(filterOption.id)}
+              >
+                {filterOption.label}
+                <span className="sub-tpl-filter-count">{filterOption.count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="sub-tpl-body">
+            {templatesLoading && (
+              <div className="sub-sidebar-template-loading">
+                <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+                Loading saved templates
+              </div>
+            )}
+            {shown.length > 0 ? (
+              renderTemplateCards(shown, close)
+            ) : (
+              !templatesLoading && (
+                <div className="sub-tpl-empty">
+                  <i className="ti ti-template" aria-hidden="true" />
+                  <strong>No saved templates yet</strong>
+                  <span>
+                    Write a caption you'd reuse, then choose <em>Save current caption</em>, or
+                    let AI draft one with <em>Generate from Top Posts</em>.
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   if (
     routeSubmissionId &&
@@ -2380,7 +2423,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               aria-label="Back to My Submissions"
             >
               <i className="ti ti-arrow-left"></i>
-              <span>Back to My Submissions</span>
+              <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
             </button>
           </div>
         </nav>
@@ -2390,6 +2434,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       </div>
     );
   }
+
+  const submitButton = (
+    <button
+      className="sub-guard-submit-btn"
+      type="button"
+      onClick={() => setModal("submit")}
+      disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
+      title={
+        hasUnaddressedRevisions
+          ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
+          : previewValidation.blockingErrors[0]
+      }
+    >
+      {submitting ? (
+        <i className="ti ti-loader-2 sub-spin"></i>
+      ) : (
+        <i className="ti ti-send"></i>
+      )}
+      {isNeedsRevision
+        ? "Submit for Revision"
+        : form.status === "rejected"
+          ? "Resubmit for Review"
+          : "Submit for Approval"}
+    </button>
+  );
 
   return (
     <div className="submission-screen">
@@ -2405,11 +2474,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             aria-label="Back to My Submissions"
           >
             <i className="ti ti-arrow-left"></i>
-            <span>Back to My Submissions</span>
+            <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
           </button>
         </div>
         <div className="sub-nav-right">
-          {(isDirty || saveState === "saving" || saveState === "saved") && (
+          {/* Draft save status only means something while the post is still editable. */}
+          {!isReadOnlySubmission && (isDirty || saveState === "saving" || saveState === "saved") && (
             <div
               className={`sub-nav-save-status ${
                 saveState === "saving"
@@ -2445,19 +2516,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </span>
             </div>
           )}
-          <button
-            type="button"
-            className="sub-btn-ghost"
-            style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
-            onClick={() => startComposerTour(true)}
-            title="How to use the composer"
-            aria-label="How to use the composer"
-          >
-            <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-            <span>Guide</span>
-          </button>
-          <div className="sub-nav-chip">{formatRole(user.role)}</div>
-          <div className="sub-nav-avatar">{user.initials}</div>
+          {isCompactLayout && (
+            <button
+              ref={readinessChipRef}
+              type="button"
+              className={`sub-readiness-chip is-${
+                lookupsLoading || hydratingId ? "idle" : readinessTone(readiness.score)
+              }`}
+              onClick={() => setReadinessSheetOpen(true)}
+              disabled={Boolean(lookupsLoading || hydratingId)}
+              aria-haspopup="dialog"
+              aria-expanded={readinessSheetVisible}
+              aria-label={`Readiness ${readiness.score} of 100. Open readiness checklist.`}
+              title="Readiness checklist"
+            >
+              <i className="ti ti-shield-check" aria-hidden="true" />
+              <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
+            </button>
+          )}
+          {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
+          {!isReadOnlySubmission && (
+            <button
+              type="button"
+              className="sub-btn-ghost"
+              style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              onClick={() => startComposerTour(true)}
+              title="How to use the composer"
+              aria-label="How to use the composer"
+            >
+              <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+              <span>Guide</span>
+            </button>
+          )}
         </div>
       </nav>
 
@@ -2468,108 +2558,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       )}
 
       <div className={`sub-workspace${isReadOnlySubmission ? " is-readonly" : ""}`}>
-        {!isReadOnlySubmission && (
-        <aside className="sub-sidebar sub-template-sidebar">
-          {!form.fastTrack && (
-            <section className="sub-sidebar-templates" aria-label="Post templates">
-              <div className="sub-sidebar-template-head">
-                <div>
-                  <div className="sub-sidebar-section-title">Post Templates</div>
-                  <div className="sub-sidebar-section-subtitle">
-                    {hasMedia
-                      ? "Insert a baseline caption structure."
-                      : "Add media first to unlock templates."}
-                  </div>
-                </div>
-                {form.selectedTemplateId && (
-                  <div className="sub-sidebar-template-actions">
-                    <button
-                      className="sub-sidebar-template-clear"
-                      type="button"
-                      disabled={isReadOnlySubmission}
-                      onClick={clearTemplate}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </div>
-              {templatesLoading && (
-                <div className="sub-sidebar-template-loading">
-                  <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
-                  Loading saved templates
-                </div>
-              )}
-              <div className="sub-sidebar-template-list">
-                {composerTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={`sub-sidebar-template-card ${
-                      form.selectedTemplateId === template.id ? "active" : ""
-                    }`}
-                    disabled={isReadOnlySubmission || !hasMedia}
-                    title={!hasMedia ? "Add media first before choosing a template." : undefined}
-                    onClick={() => applyTemplate(template.id)}
-                  >
-                    <span className="sub-sidebar-template-main">
-                      <span className="sub-sidebar-template-icon" aria-hidden="true">
-                        <i className={templateIcons[template.id] ?? "ti ti-template"} />
-                      </span>
-                      <span className="sub-sidebar-template-copy">
-                        <span className="sub-sidebar-template-name">{template.name}</span>
-                        <span className="sub-sidebar-template-target">{template.target}</span>
-                      </span>
-                      {template.custom && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                      className="sub-sidebar-template-delete"
-                          aria-label={`Delete ${template.name} template`}
-                          title="Delete template"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestDeleteCustomTemplate(template.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            requestDeleteCustomTemplate(template.id);
-                          }}
-                        >
-                          <i className="ti ti-trash" aria-hidden="true" />
-                        </span>
-                      )}
-                    </span>
-                    <span className="sub-sidebar-template-preview">
-                      {template.caption}
-                    </span>
-                    <span className="sub-sidebar-template-tags">
-                      {template.tags.slice(0, 3).map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="sub-sidebar-template-footer">
-                <button
-                  className="sub-sidebar-template-save"
-                  type="button"
-                  disabled={isReadOnlySubmission || savingTemplate || !form.caption.trim()}
-                  title={!form.caption.trim() ? "Add a caption before saving as a template." : undefined}
-                  onClick={openSaveTemplateModal}
-                >
-                  <i className="ti ti-plus" aria-hidden="true" />
-                  Save as Template
-                </button>
-              </div>
-            </section>
-          )}
-        </aside>
-        )}
-
         <main className={`sub-form-canvas${isReadOnlySubmission ? " sub-ro" : ""}`}>
           <div className="sub-form-page-head">
             <div>
@@ -2635,7 +2623,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-x"></i> Cancel Editing
                 </button>
               )}
-              {form.status === "draft" && (
+              {canDeleteCurrentSubmission && (
                 <button
                   className="sub-btn-ghost danger"
                   type="button"
@@ -2681,6 +2669,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {isReadOnlySubmission && form.status === "rejected" && (
               <div className="sub-form-page-actions">
+                <button
+                  className="sub-btn-ghost danger"
+                  type="button"
+                  onClick={() => setModal("delete")}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>} Delete
+                </button>
                 <button
                   className="sub-btn-primary"
                   type="button"
@@ -2732,7 +2728,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 onMediaIndexChange={setActiveMediaIndex}
                 rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
                 revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
-                onEditRejected={handleStartEditRejected}
               />
             </Suspense>
           ) : (
@@ -2774,7 +2769,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-edit"
               tone="blue"
               title="Post Details"
-              subtitle="Use backend field names for the saved submission draft."
+              subtitle="Tell people what the event is and when it happens. Fields marked * are required."
             />
             {isAdminComposer && (
               <Field label="Posting As" count="" tone="" action={undefined}>
@@ -2794,9 +2789,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 )}
               </Field>
             )}
-            <div className="sub-field-row">
+            <div className="sub-field-row" id="composer-event-fields">
               <Field
                 label="Event Title"
+                required={!isReadOnlySubmission}
                 revisionComment={parsedRevision.fields.eventTitle}
                 isPulsing={eventTitlePulsing}
                 isDone={addressedRevisionFields.has("eventTitle")}
@@ -2806,6 +2802,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   ref={eventTitleRef}
                   className="sub-finput"
                   readOnly={isReadOnlySubmission}
+                  aria-required={!isReadOnlySubmission}
+                  placeholder="e.g. CIT-U Innovation Summit 2026"
                   value={form.eventTitle}
                   onChange={(event) =>
                     updateField("eventTitle", event.target.value)
@@ -2815,6 +2813,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div ref={eventDateRef}>
                 <Field
                   label="Event Date"
+                  required={!isReadOnlySubmission}
                   revisionComment={parsedRevision.fields.eventDate}
                   isPulsing={eventDatePulsing}
                   isDone={addressedRevisionFields.has("eventDate")}
@@ -2832,6 +2831,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
             <Field
               label="Caption"
+              required={!isReadOnlySubmission}
               revisionComment={parsedRevision.fields.caption}
               isPulsing={captionPulsing}
               isDone={addressedRevisionFields.has("caption")}
@@ -2839,17 +2839,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    <Suspense fallback={null}>
-                      <FancyTextTool
-                        caption={form.caption}
-                        selection={captionSelection}
-                        disabled={isReadOnlySubmission}
-                        onReplaceSelection={updateCaptionSelection}
-                        onPreviewSelection={updateCaptionSelection}
-                        onRestoreSelection={restoreCaptionSelection}
-                        onPreviewStateChange={setFancyTextPreviewActive}
-                      />
-                    </Suspense>
                     {canUseAiCaption && (
                       <AiCaptionButton
                         state={aiCaption.state}
@@ -2859,6 +2848,41 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                         onSuggest={() => setCaptionPromptOpen(true)}
                       />
                     )}
+                    <button
+                      type="button"
+                      className={`sub-caption-templates-btn${form.selectedTemplateId ? " is-applied" : ""}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={templatesPanelVisible}
+                      title={
+                        selectedTemplateName
+                          ? `Template: ${selectedTemplateName}`
+                          : "Browse post templates"
+                      }
+                      onClick={() => {
+                        setReadinessSheetOpen(false);
+                        setTemplatesPanelOpen(true);
+                      }}
+                    >
+                      <i className="ti ti-template" aria-hidden="true" />
+                      Templates
+                    </button>
+                    <Suspense fallback={null}>
+                      <FancyTextTool
+                        caption={form.caption}
+                        selection={captionSelection}
+                        disabled={isReadOnlySubmission}
+                        onReplaceSelection={updateCaptionSelection}
+                        onPreviewSelection={updateCaptionSelection}
+                        onRestoreSelection={restoreCaptionSelection}
+                        onPreviewStateChange={setFancyTextPreviewActive}
+                        forceOpen={composerTourPanel === "fancy"}
+                      />
+                    </Suspense>
+                    <CheckWritingButton
+                      state={proofread.state}
+                      disabled={!form.caption.trim()}
+                      onCheck={() => void proofread.check(form.caption)}
+                    />
                   </div>
                 ) : undefined
               }
@@ -2882,7 +2906,53 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
                   {Array.from(form.caption).length} / {CAPTION_CHAR_LIMIT} characters
                 </span>
+                {/* Empty-caption starter: the moment templates and AI are most
+                    useful. Disappears as soon as the caption has text. */}
+                {!isReadOnlySubmission &&
+                  !form.caption.trim() &&
+                  aiCaption.state !== "loading" &&
+                  !aiCaption.variants && (
+                    <div className="sub-caption-starter">
+                      <span className="sub-caption-starter-label">Need a head start?</span>
+                      <div className="sub-caption-starter-actions">
+                        <button
+                          type="button"
+                          className="sub-caption-starter-btn"
+                          onClick={() => {
+                            setReadinessSheetOpen(false);
+                            setTemplatesPanelOpen(true);
+                          }}
+                        >
+                          <i className="ti ti-template" aria-hidden="true" />
+                          Start from a template
+                        </button>
+                        {canUseAiCaption && (
+                          <button
+                            type="button"
+                            className="sub-caption-starter-btn is-ai"
+                            disabled={
+                              aiCaption.state === "rate-limited" ||
+                              aiCaption.state === "error-unavailable"
+                            }
+                            onClick={() => setCaptionPromptOpen(true)}
+                          >
+                            <i className="ti ti-sparkles" aria-hidden="true" />
+                            Let AI draft it
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
               </div>
+              {!isReadOnlySubmission && (
+                <ProofreadResult
+                  state={proofread.state}
+                  issues={proofread.issues}
+                  text={form.caption}
+                  onApply={(issue) => updateCaption(proofread.apply(form.caption, issue))}
+                  onDismiss={proofread.dismiss}
+                />
+              )}
               {canUseAiCaption && aiCaption.variants && (
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                   <AiCaptionSuggestion
@@ -2981,7 +3051,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-photo-up"
               tone="blue"
               title="Add Media"
-              subtitle="Upload files, pick from your library, or let AI suggest relevant assets."
+              subtitle="Upload files, pick from your library, or let AI suggest relevant assets. At least one photo or video is required."
               revisionComment={parsedRevision.fields.media}
               isDone={addressedRevisionFields.has("media")}
               onToggleDone={() => toggleRevisionFieldDone("media")}
@@ -2993,12 +3063,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 submissionId={form.id}
                 eventTitle={form.eventTitle}
                 caption={form.caption}
-                category=""
                 tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
+                attachedAssetIds={form.savedAssets.map((asset) => asset.id)}
                 disabled={!isEditableSubmission}
                 onItemClick={openMediaCaption}
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
-                institutionId={selectedInstitutionId}
+                institutionId={isAdminComposer ? undefined : selectedInstitutionId}
                 networkView={isAdminComposer}
                 institutions={institutions}
               />
@@ -3031,12 +3101,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               title="Organize & Schedule"
               subtitle={
                 form.fastTrack
-                  ? "Assign the media album, add media tags, and submit as urgent live-event content."
-                  : "Assign the media album, add media tags, then choose the preferred publishing slot."
+                  ? "Pick an album, add tags, and send it as an urgent live event."
+                  : "Pick an album, add tags, and choose when to post."
               }
             />
+            <div id="composer-album-tags">
             <Field
               label="Album Assignment"
+              required={!isReadOnlySubmission}
               tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details. Auto-Match saves this draft first if it hasn't been saved yet."
             >
                 <AlbumCombobox
@@ -3084,9 +3156,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-plus" aria-hidden /> Add
                 </button>
               </div>
-              <div className="sub-finput-hint">
-                Add relevant keywords to help categorize and search for this media content later.
-              </div>
               <div className="sub-tag-row">
                 {effectiveMediaTags(form).length > 0 ? (
                   effectiveMediaTags(form).map((tag) => (
@@ -3105,15 +3174,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 )}
               </div>
             </Field>
+            </div>
 
             {!isReadOnlySubmission && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
                   Publishing Mode
-                  <i
-                    className="ti ti-info-circle"
-                    title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
-                    style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                  <InfoTip
+                    label="Publishing Mode"
+                    text="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
                   />
                 </div>
 
@@ -3148,32 +3217,40 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {!form.fastTrack && (
               <>
-            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
-              <EngagementRecommendationsPanel
-                loading={engagementLoading}
-                recommendations={engagementRecommendations}
-                selectedAt={scheduledAt}
-                onSelect={applyEngagementSlot}
-              />
-            </Suspense>
-            <div className="sub-field-row">
-              <Field label="Preferred Date">
-                <CalendarDateField
-                  value={form.scheduledDate}
-                  readOnly={isReadOnlySubmission || form.fastTrack}
-                  placeholder="Select preferred date"
-                  minValue={dateToInputValue(new Date())}
-                  onChange={(value) => updateField("scheduledDate", value)}
+            {/* One "When to post" group: suggested-time chips fill the Date /
+                Time pickers below them (the chips' explanation is behind ⓘ). */}
+            <div id="composer-when-to-post">
+            <Field label="When to Post" required={!isReadOnlySubmission}>
+              <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                <EngagementRecommendationsPanel
+                  loading={engagementLoading}
+                  recommendations={engagementRecommendations}
+                  selectedAt={scheduledAt}
+                  onSelect={applyEngagementSlot}
                 />
-              </Field>
-              <Field label="Preferred Time">
-                <TimePickerField
-                  value={form.scheduledTime}
-                  readOnly={isReadOnlySubmission || form.fastTrack}
-                  placeholder="Select preferred time"
-                  onChange={(value) => updateField("scheduledTime", value)}
-                />
-              </Field>
+              </Suspense>
+              <div className="sub-field-row sub-when-fields">
+                <Field label="Date">
+                  <CalendarDateField
+                    value={form.scheduledDate}
+                    readOnly={isReadOnlySubmission || form.fastTrack}
+                    placeholder="Pick a date"
+                    minValue={dateToInputValue(new Date())}
+                    onChange={(value) => updateField("scheduledDate", value)}
+                  />
+                </Field>
+                <Field label="Time">
+                  <TimePickerField
+                    value={form.scheduledTime}
+                    readOnly={isReadOnlySubmission || form.fastTrack}
+                    placeholder="Pick a time"
+                    startHour={lookups.postingWindowStartHour}
+                    endHour={lookups.postingWindowEndHour}
+                    onChange={(value) => updateField("scheduledTime", value)}
+                  />
+                </Field>
+              </div>
+            </Field>
             </div>
             {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
               && guardRails?.softWarnings[0] && (
@@ -3189,7 +3266,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
           </section>
 
-          {!isReadOnlySubmission && (
+          {!isReadOnlySubmission && !isCompactLayout && (
             <StepPanelActions
               activeStep={activeStep}
               hasMedia={hasMedia}
@@ -3201,8 +3278,34 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           )}
         </main>
 
-        <aside className="sub-guard-panel">
-          <div className="sub-guard-scroll">
+        <aside className={`sub-guard-panel${readinessSheetVisible ? " is-sheet-open" : ""}`}>
+          {readinessSheetVisible && (
+            <div
+              className="sub-guard-sheet-backdrop"
+              aria-hidden="true"
+              onClick={() => setReadinessSheetOpen(false)}
+            />
+          )}
+          <div
+            className="sub-guard-scroll"
+            role={readinessSheetVisible ? "dialog" : undefined}
+            aria-modal={readinessSheetVisible ? true : undefined}
+            aria-label={readinessSheetVisible ? "Readiness checklist" : undefined}
+          >
+            {isCompactLayout && (
+              <div className="sub-guard-sheet-bar">
+                <span className="sub-guard-sheet-grip" aria-hidden="true" />
+                <button
+                  ref={readinessSheetCloseRef}
+                  type="button"
+                  className="sub-guard-sheet-close"
+                  onClick={() => setReadinessSheetOpen(false)}
+                  aria-label="Close readiness checklist"
+                >
+                  <i className="ti ti-x" aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {lookupsLoading || hydratingId ? (
               <ReadinessSkeleton />
             ) : (
@@ -3229,7 +3332,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
+                  onClick={
+                    isReadOnlySubmission
+                      ? undefined
+                      : () => {
+                          setReadinessSheetOpen(false);
+                          handleReadinessJump(item.target);
+                        }
+                  }
                 />
               ))}
             </GuardSection>
@@ -3246,7 +3356,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
+                  onClick={
+                    isReadOnlySubmission
+                      ? undefined
+                      : () => {
+                          setReadinessSheetOpen(false);
+                          handleReadinessJump(item.target);
+                        }
+                  }
                 />
               ))}
             </GuardSection>
@@ -3263,43 +3380,58 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </span>
               </div>
             )}
-            <button
-              className="sub-guard-submit-btn"
-              type="button"
-              onClick={() => setModal("submit")}
-              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
-              title={
-                hasUnaddressedRevisions
-                  ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
-                  : previewValidation.blockingErrors[0]
-              }
-            >
-              {submitting ? (
-                <i className="ti ti-loader-2 sub-spin"></i>
-              ) : (
-                <i className="ti ti-send"></i>
-              )}
-              {isNeedsRevision
-                ? "Submit for Revision"
-                : form.status === "rejected"
-                  ? "Resubmit for Review"
-                  : "Submit for Approval"}
-            </button>
-            {isDirty && (
-              <button
-                className="sub-guard-save-btn"
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={busy || Boolean(hydratingId)}
-              >
-                {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
-              </button>
+            {isCompactLayout ? (
+              // ≤900px: the sticky bottom bar is the step navigation —
+              // Preview / Previous / Next, with Submit taking Next's place on the last
+              // step. Save Draft stays in the page header (#btn-save-draft).
+              <StepPanelActions
+                activeStep={activeStep}
+                hasMedia={hasMedia}
+                isDetailsComplete={isDetailsComplete}
+                onStepChange={handleStepNav}
+                finalAction={submitButton}
+                onPreview={() => {
+                  if (centerMode === "preview") {
+                    handleEditPreviewDetails();
+                  } else {
+                    setCenterMode("preview");
+                  }
+                }}
+                previewActive={centerMode === "preview"}
+                previewDisabled={busy || Boolean(hydratingId)}
+              />
+            ) : (
+              <>
+                {submitButton}
+                {isDirty && (
+                  <button
+                    className="sub-guard-save-btn"
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={busy || Boolean(hydratingId)}
+                  >
+                    {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                  </button>
+                )}
+              </>
             )}
               </>
             )}
           </div>
         </aside>
       </div>
+
+      {templatesPanelVisible && createPortal(renderTemplatesPanel(), document.body)}
+
+      {topPostTemplateOpen && (
+        <Suspense fallback={null}>
+          <TopPostTemplateModal
+            institutionId={selectedInstitutionId || null}
+            onClose={() => setTopPostTemplateOpen(false)}
+            onSaved={handleTopPostTemplateSaved}
+          />
+        </Suspense>
+      )}
 
       {templateSaveOpen && (
         <div
@@ -3510,10 +3642,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <ConfirmModal
           icon="ti-trash"
           tone="danger"
-          title="Delete this draft?"
-          description="This will delete the current draft from the submission queue."
+          title={form.status === "rejected" ? "Delete this rejected submission?" : "Delete this draft?"}
+          description={
+            form.status === "rejected"
+              ? "This will permanently delete this rejected submission from your submissions."
+              : "This will delete the current draft from the submission queue."
+          }
           cancelLabel="Cancel"
-          confirmLabel={deleting ? "Deleting..." : "Delete Draft"}
+          confirmLabel={
+            deleting
+              ? "Deleting..."
+              : form.status === "rejected"
+                ? "Delete Submission"
+                : "Delete Draft"
+          }
           loading={deleting}
           disabled={busy}
           onCancel={() => setModal(null)}
@@ -3621,8 +3763,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           setRevisionModalOpen(false);
         }}
       />
-      <SpotlightTour {...composerTourProps} />
+      <SpotlightTour {...composerTourProps} viewOnly />
       <SpotlightTour {...saveDraftTourProps} />
     </div>
   );
 }
+

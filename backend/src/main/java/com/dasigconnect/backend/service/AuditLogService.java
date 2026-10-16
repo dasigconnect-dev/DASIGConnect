@@ -455,7 +455,9 @@ public class AuditLogService {
             case USER -> {
                 User u = lookups.users().get(resourceId);
                 if (u != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/moderator-management");
+                    boolean isAdmin = u.getRole() != null && "ADMIN".equalsIgnoreCase(u.getRole().name());
+                    String basePath = isAdmin ? "/admin/admin-management" : "/admin/user-management";
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, basePath + "?id=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
@@ -463,14 +465,14 @@ public class AuditLogService {
                 MediaAsset m = lookups.mediaAssets().get(resourceId);
                 if (m != null) {
                     String label = m.getFileName() != null ? m.getFileName() : "Media Asset #" + resourceId.toString().substring(0, 8);
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), label, true, "/media-repository");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), label, true, "/media-repository?asset=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
             case INSTITUTION -> {
                 Institution inst = lookups.institutions().get(resourceId);
                 if (inst != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/admin/institution-management");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/institution-management?id=" + resourceId);
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
@@ -507,6 +509,8 @@ public class AuditLogService {
                 "Submitted for review";
             case "SUBMISSION_WITHDRAWN" ->
                 "Submission withdrawn to draft";
+            case "SUBMISSION_DELETED" ->
+                "Submission deleted";
             case "SUBMISSION_APPROVED", "APPROVED", "approved" ->
                 "Approved & scheduled";
             case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" ->
@@ -534,6 +538,8 @@ public class AuditLogService {
                 "Guard rail overridden (calendar reschedule)";
             case "MANUAL_PUBLISH_RETRY_OVERRIDE" ->
                 "Guard rail overridden (failed-post retry)";
+            case "LATE_PUBLISH_OVERRIDE" ->
+                "Approved after its slot — published now";
             case "GUARD_RAIL_CONFIG_UPDATED" ->
                 "Guard rail settings changed";
             // ── Manual publishing ──
@@ -781,6 +787,11 @@ public class AuditLogService {
                 yield "Bypassed a guard rail to schedule " + what + (to != null ? " for " + to : "")
                 + (rule != null && !rule.isBlank() ? " (" + rule + ")" : "")
                 + (reason != null ? " — reason: " + reason : "");
+            }
+            case "LATE_PUBLISH_OVERRIDE" -> {
+                String from = fmtSlot(m.get("originalSlot"));
+                yield "Approved " + what + " after its publish slot" + (from != null ? " (" + from + ")" : "")
+                + " had passed and published it immediately";
             }
             case "SUBMISSION_PUBLISHED" ->
                 "Published " + what + " to the DASIG Facebook Page"

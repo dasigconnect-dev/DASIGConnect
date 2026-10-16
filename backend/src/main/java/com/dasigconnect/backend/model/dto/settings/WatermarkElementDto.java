@@ -26,7 +26,7 @@ public class WatermarkElementDto {
     private String imageUrl;
 
     // Shape specific
-    private String shapeType; // "rectangle" | "line"
+    private String shapeType; // "rectangle" | "line" | "gradient"
     private String fillColor;
     private String strokeColor;
 

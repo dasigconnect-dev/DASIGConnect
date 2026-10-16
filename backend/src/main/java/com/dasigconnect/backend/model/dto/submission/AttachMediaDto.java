@@ -19,6 +19,9 @@ public class AttachMediaDto {
     @Positive(message = "fileSizeBytes must be positive")
     private Long fileSizeBytes;
 
+    @jakarta.validation.constraints.PositiveOrZero
+    private Long r2UploadDurationMs;
+
     /**
      * Optional target album name for a media asset uploaded during review —
      * resolved / created the same way as the contributor's album assignment.
@@ -41,4 +44,7 @@ public class AttachMediaDto {
 
     public Long getFileSizeBytes() { return fileSizeBytes; }
     public void setFileSizeBytes(Long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
+
+    public Long getR2UploadDurationMs() { return r2UploadDurationMs; }
+    public void setR2UploadDurationMs(Long r2UploadDurationMs) { this.r2UploadDurationMs = r2UploadDurationMs; }
 }

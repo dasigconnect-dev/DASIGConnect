@@ -12,23 +12,24 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.resolution.FailedPublicationDto;
+import com.dasigconnect.backend.model.dto.resolution.FailedPublicationPageDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishDetailDto;
 import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
-import com.dasigconnect.backend.model.entity.PublicationAttempt;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
-import com.dasigconnect.backend.repository.PublicationAttemptRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.ManualPublishingService;
+import com.dasigconnect.backend.service.ResolutionService;
 
 import jakarta.validation.Valid;
 
@@ -44,33 +45,33 @@ import jakarta.validation.Valid;
 public class ResolutionController {
 
     private final SubmissionRepository submissionRepository;
-    private final PublicationAttemptRepository publicationAttemptRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final ManualPublishingService manualPublishingService;
+    private final ResolutionService resolutionService;
 
     public ResolutionController(
             SubmissionRepository submissionRepository,
-            PublicationAttemptRepository publicationAttemptRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
-            ManualPublishingService manualPublishingService) {
+            ManualPublishingService manualPublishingService,
+            ResolutionService resolutionService) {
         this.submissionRepository = submissionRepository;
-        this.publicationAttemptRepository = publicationAttemptRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.manualPublishingService = manualPublishingService;
+        this.resolutionService = resolutionService;
     }
 
     @GetMapping("/failures")
     public ResponseEntity<ApiResponse<List<FailedPublicationDto>>> listFailures() {
-        List<Submission> failures = submissionRepository.findPublishFailures();
-        List<FailedPublicationDto> dtos = failures.stream()
-                .map(s -> {
-                    PublicationAttempt last = publicationAttemptRepository
-                            .findTopBySubmissionIdOrderByAttemptedAtDesc(s.getId())
-                            .orElse(null);
-                    return FailedPublicationDto.from(s, last);
-                })
-                .toList();
-        return ResponseEntity.ok(ApiResponse.success(dtos));
+        return ResponseEntity.ok(ApiResponse.success(resolutionService.getFailures()));
+    }
+
+    @GetMapping("/failures/page")
+    public ResponseEntity<ApiResponse<FailedPublicationPageDto>> listFailurePage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "") String search) {
+        return ResponseEntity.ok(ApiResponse.success(
+                resolutionService.getFailurePage(page, pageSize, search)));
     }
 
     /** Returns the full post-content detail needed for the manual publishing panel. */

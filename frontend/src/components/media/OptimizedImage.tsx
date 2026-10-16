@@ -4,7 +4,12 @@ type ResizeMode = "cover" | "contain" | "fill";
 
 interface OptimizedImageProps
   extends Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "srcSet" | "width" | "height"> {
-  src: string;
+  /**
+   * Null/empty when the media no longer exists — e.g. the API returns
+   * `storageUrl: null` for a deleted asset ("[Asset Deleted]"). A placeholder
+   * is rendered instead of crashing the page.
+   */
+  src: string | null | undefined;
   width: number;
   height: number;
   candidateWidths?: number[];
@@ -18,7 +23,7 @@ const SUPABASE_PUBLIC_OBJECT_SEGMENT = "/storage/v1/object/public/";
 const SUPABASE_PUBLIC_RENDER_SEGMENT = "/storage/v1/render/image/public/";
 
 export function buildOptimizedImageUrl(
-  src: string,
+  src: string | null | undefined,
   {
     width,
     height,
@@ -31,7 +36,7 @@ export function buildOptimizedImageUrl(
     resize?: ResizeMode;
   },
 ) {
-  if (!src.includes(SUPABASE_PUBLIC_OBJECT_SEGMENT)) return null;
+  if (!src || !src.includes(SUPABASE_PUBLIC_OBJECT_SEGMENT)) return null;
 
   try {
     const url = new URL(src);
@@ -88,6 +93,20 @@ export default function OptimizedImage({
       .filter(Boolean);
     return variants.length > 0 ? variants.join(", ") : undefined;
   }, [candidateWidths, height, quality, resize, src, transform, useOriginal, width]);
+
+  if (!src) {
+    return (
+      <span
+        className={`optimized-image-missing ${imgProps.className ?? ""}`.trim()}
+        role="img"
+        aria-label={imgProps.alt ? `${imgProps.alt} (unavailable)` : "Media unavailable"}
+        style={{ aspectRatio: `${width} / ${height}`, ...style }}
+      >
+        <i className="ti ti-photo-off" aria-hidden />
+        <span>Media unavailable</span>
+      </span>
+    );
+  }
 
   const optimizedSrc =
     transform && !useOriginal

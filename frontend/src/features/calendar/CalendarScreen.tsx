@@ -57,13 +57,17 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
 
-  const isCalendarBusy = loading || isTransitioning;
+  const isCalendarBusy = (loading && events.length === 0) || isTransitioning;
 
   const beginCalendarTransition = () => {
     setIsTransitioning(true);
     if (transitionTimeoutRef.current) {
       window.clearTimeout(transitionTimeoutRef.current);
     }
+    // Safety auto-clear: guarantees transition never hangs even if FullCalendar datesSet doesn't fire
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      setIsTransitioning(false);
+    }, 250);
   };
 
   const endCalendarTransition = () => {
@@ -72,10 +76,11 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     }
     transitionTimeoutRef.current = window.setTimeout(() => {
       setIsTransitioning(false);
-    }, 180);
+    }, 60);
   };
 
   function switchView(nextView: CalendarViewMode) {
+    if (calendarView === nextView) return;
     beginCalendarTransition();
     calendarRef.current?.getApi().changeView(nextView);
   }

@@ -22,6 +22,16 @@ export interface FailedPublication {
   unresolvedPhotoIds: string | null;
 }
 
+export interface FailedPublicationPage {
+  items: FailedPublication[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  failureCount: number;
+}
+
 export interface ManualPublishMediaItem {
   id: string;
   storageUrl: string;
@@ -57,8 +67,11 @@ export interface RetryWithNewSchedulePayload {
   overrideReason?: string;
 }
 
-export function getResolutionFailures(signal?: AbortSignal) {
-  return api.get<FailedPublication[]>("/resolution/failures", { signal });
+export function getResolutionFailurePage(
+  params: { page: number; pageSize: number; search?: string },
+  signal?: AbortSignal,
+) {
+  return api.get<FailedPublicationPage>("/resolution/failures/page", { params, signal });
 }
 
 export function getResolutionDetail(id: string, signal?: AbortSignal) {

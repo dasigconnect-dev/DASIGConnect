@@ -28,6 +28,7 @@ export interface SavedMediaAsset {
   skipWatermark?: boolean;
   /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
   status?: string;
+  processingVersion?: string | null;
   /** Media Library album this asset is filed under (null while STAGED). */
   albumId?: string | null;
   albumName?: string | null;
@@ -61,19 +62,60 @@ export interface SubmissionSummary {
   updatedAt?: string;
   mediaCount?: number;
   previewMediaAsset?: SubmissionMediaPreview | null;
-  category?: string;
+
   templateId?: string | null;
   fastTrack?: boolean;
+  priorityFlag?: boolean;
   liveEventName?: string | null;
   tags?: string[];
   albumName?: string | null;
   mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
+  mediaProcessing?: {
+    total: number;
+    ready: number;
+    processing: number;
+    failed: number;
+  };
   requiresManualPublishing?: boolean;
   /** Reviewer's reason, present when status is "rejected". */
   rejectionReason?: string | null;
   /** Reviewer's notes, present when status is "needs_revision". */
   validatorRemarks?: string | null;
+}
+
+export type SubmissionQueueBucket =
+  | "all"
+  | "drafts"
+  | "action-needed"
+  | "rejected"
+  | "under-review"
+  | "scheduled"
+  | "submitted"
+  | "published"
+  | "failed"
+  | "failed-or-rejected";
+
+export interface SubmissionBucketCounts {
+  all: number;
+  drafts: number;
+  "action-needed": number;
+  rejected: number;
+  submitted: number;
+  "under-review": number;
+  scheduled: number;
+  published: number;
+  failed: number;
+}
+
+export interface SubmissionPage {
+  items: SubmissionSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  counts: SubmissionBucketCounts;
 }
 
 export interface SubmissionPayload {
@@ -83,7 +125,7 @@ export interface SubmissionPayload {
   caption: string;
   description: string;
   scheduledAt?: string;
-  category?: string;
+
   templateId?: string | null;
   fastTrack?: boolean;
   liveEventName?: string | null;
@@ -105,10 +147,12 @@ export interface SubmissionLookups {
   availableTags: string[];
   /**
    * Network-wide scheduling guard-rail switch (Page Settings). When false the
-   * composer treats a preferred schedule and the 8:00 AM–8:00 PM publish window
+   * composer treats a preferred schedule and the Administrator-configured publish window
    * as non-blocking; a future date is still required if one is set.
    */
   guardrailsEnforced: boolean;
+  postingWindowStartHour: number;
+  postingWindowEndHour: number;
 }
 
 export interface GuardRailViolation {
@@ -140,8 +184,24 @@ export interface EngagementRecommendations {
   slots: EngagementRecommendedSlot[];
 }
 
-export function listSubmissions(signal?: AbortSignal) {
-  return api.get<SubmissionSummary[]>("/submissions", { signal });
+export function listSubmissionPage(
+  params: {
+    page?: number;
+    pageSize?: number;
+    bucket?: SubmissionQueueBucket;
+    search?: string;
+  },
+  signal?: AbortSignal,
+) {
+  return api.get<SubmissionPage>("/submissions/page", {
+    params: {
+      page: params.page ?? 0,
+      pageSize: params.pageSize ?? 20,
+      bucket: params.bucket ?? "all",
+      search: params.search?.trim() ?? "",
+    },
+    signal,
+  });
 }
 
 export function getSubmission(id: string, signal?: AbortSignal) {
@@ -173,22 +233,23 @@ export function reorderSubmissionMedia(
   mediaAssetIds: string[],
   mediaCaptions?: Record<string, string>,
   skipWatermarks?: Record<string, boolean>,
+  signal?: AbortSignal,
 ) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
     mediaCaptions,
     skipWatermarks,
-  });
+  }, { signal });
 }
 
-export function attachAsset(id: string, mediaAssetId: string) {
+export function attachAsset(id: string, mediaAssetId: string, signal?: AbortSignal) {
   return api.post<SubmissionSummary>(`/submissions/${id}/assets`, {
     mediaAssetId,
-  });
+  }, { signal });
 }
 
-export function detachAsset(id: string, mediaAssetId: string) {
-  return api.delete(`/submissions/${id}/assets/${mediaAssetId}`);
+export function detachAsset(id: string, mediaAssetId: string, signal?: AbortSignal) {
+  return api.delete(`/submissions/${id}/assets/${mediaAssetId}`, { signal });
 }
 
 export async function uploadSubmissionMedia(id: string, files: File[], signal?: AbortSignal) {
@@ -205,6 +266,7 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
       },
       { signal },
     );
+    const uploadStartedAt = performance.now();
     const upload = await fetchWithDeadline(signedUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -215,12 +277,14 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
       const msg = await upload.text().catch(() => "");
       throw new Error(msg || "Media upload to storage failed.");
     }
+    const r2UploadDurationMs = Math.round(performance.now() - uploadStartedAt);
     responses.push(
       await api.post(`/submissions/${id}/media`, {
         storageUrl: publicUrl,
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        r2UploadDurationMs,
       }, { signal }),
     );
   }
@@ -267,3 +331,4 @@ function normalizeFileType(fileType: string) {
 function safeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
+

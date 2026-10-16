@@ -83,11 +83,10 @@ export interface UserProfileResponse {
   adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
-  /** Set while an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
-  adminPromotionRequestedBy?: string | null;
-  adminPromotionExpiresAt?: string | null;
-  /** True when adminPromotionRequestedBy/ExpiresAt describe a still-live (unexpired) promotion. */
-  adminPromotionPending?: boolean;
+  /** True when an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
+  pendingPromotionRole?: 'admin' | 'moderator' | null;
+  pendingPromotionRequestedBy?: string | null;
+  pendingPromotionExpiresAt?: string | null;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -177,6 +176,13 @@ export interface PageSettingsResponse {
   institutionId: string | null;
   /** Network-wide scheduling guard-rail switch. Only meaningful / editable on the no-institution row. */
   guardrailsEnforced: boolean;
+  postingWindowStartHour: number;
+  postingWindowEndHour: number;
+  conflictBufferMinutes: number;
+  minimumLeadTimeHours: number;
+  maximumLeadTimeDays: number;
+  perInstitutionActiveQuota: number;
+  dailyVolumeCap: number;
   updatedAt: string | null;
 }
 
@@ -192,7 +198,16 @@ export function getPageSettings(institutionId?: string | null, signal?: AbortSig
 // (/settings/watermark); the Facebook Page ID/token used for publishing is
 // managed in System Health -> Tokens, not here.
 export function updatePageSettings(
-  data: { guardrailsEnforced?: boolean },
+  data: { 
+    guardrailsEnforced?: boolean; 
+    postingWindowStartHour?: number; 
+    postingWindowEndHour?: number;
+    conflictBufferMinutes?: number;
+    minimumLeadTimeHours?: number;
+    maximumLeadTimeDays?: number;
+    perInstitutionActiveQuota?: number;
+    dailyVolumeCap?: number;
+  },
   institutionId?: string | null,
 ) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
@@ -418,18 +433,18 @@ export function confirmAdminTransfer() {
   return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
 }
 
-/** The invitee accepts their own pending Administrator promotion (UC-1.1). */
-export function confirmAdminPromotion() {
+/** The invitee accepts their own pending promotion. */
+export function confirmPromotion() {
   return api.post<UserProfileResponse>("/users/promotion/confirm");
 }
 
-/** The invitee declines their own pending Administrator promotion, freeing the reserved slot. */
-export function declineAdminPromotion() {
+/** The invitee declines their own pending promotion, freeing the reserved slot. */
+export function declinePromotion() {
   return api.post<UserProfileResponse>("/users/promotion/decline");
 }
 
-/** Admin-Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
-export function cancelAdminPromotion(userId: string) {
+/** Rescinds a pending promotion before the invitee has responded. */
+export function cancelPromotion(userId: string) {
   return api.delete<UserProfileResponse>(`/users/${userId}/promotion`);
 }
 
@@ -443,3 +458,4 @@ export interface InvitationResponse {
   emailDelivered: boolean;
   invitationUrl: string;
 }
+

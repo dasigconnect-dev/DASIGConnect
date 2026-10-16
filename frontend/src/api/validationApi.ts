@@ -35,7 +35,7 @@ export interface EditSubmissionPayload {
   eventDate?: string;
   caption?: string;
   description?: string;
-  category?: string;
+
   tags?: string[];
   scheduledAt?: string;
   /** Admin only: reason for bypassing a hard guard rail on the new slot (audited). */
@@ -52,18 +52,81 @@ export interface RejectionPayload {
   notes?: string;
 }
 
+/**
+ * Reasons a reviewer can reject with (BR-VAL-03) — why the post is declined
+ * as submitted; anything that only needs fixing goes through Request Revision.
+ * Must match ValidationService.REJECTION_REASON_LABELS.
+ */
 export type RejectionReasonCode =
-  | "INCOMPLETE_CONTENT"
   | "INAPPROPRIATE_CONTENT"
-  | "WRONG_FORMAT"
+  | "OUT_OF_SCOPE"
   | "DUPLICATE_EVENT"
+  | "NO_LONGER_RELEVANT"
+  | "RIGHTS_OR_PRIVACY"
   | "WRONG_INSTITUTION"
   | "OTHER";
 
-export function getValidationQueue(options?: { history?: boolean; signal?: AbortSignal }) {
-  return api.get<SubmissionSummary[]>("/validation/queue", {
-    params: options?.history ? { history: true } : undefined,
-    signal: options?.signal,
+export type ValidationQueueView =
+  | "all"
+  | "pending"
+  | "in_review"
+  | "needs_revision"
+  | "scheduled"
+  | "published"
+  | "rejected";
+
+export type ValidationQueueSort = "publish_slot" | "submitted";
+
+export interface ValidationQueueCounts {
+  all: number;
+  pending: number;
+  in_review: number;
+  needs_revision: number;
+  scheduled: number;
+  published: number;
+  rejected: number;
+}
+
+export interface ValidationQueuePage {
+  items: SubmissionSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  counts: ValidationQueueCounts;
+}
+
+export interface ValidationDashboardSummary {
+  awaitingReview: number;
+  approvedThisMonth: number;
+  rejectedThisMonth: number;
+  contributorCount: number;
+}
+
+export function getValidationDashboardSummary(signal?: AbortSignal) {
+  return api.get<ValidationDashboardSummary>("/validation/dashboard-summary", { signal });
+}
+
+export function getValidationQueuePage(
+  params: {
+    view: ValidationQueueView;
+    sort: ValidationQueueSort;
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  },
+  signal?: AbortSignal,
+) {
+  return api.get<ValidationQueuePage>("/validation/queue/page", {
+    params: {
+      view: params.view,
+      sort: params.sort,
+      page: params.page ?? 0,
+      pageSize: params.pageSize ?? 20,
+      search: params.search?.trim() ?? "",
+    },
+    signal,
   });
 }
 
@@ -79,8 +142,16 @@ export function releaseReviewLock(submissionId: string) {
   return api.delete<void>(`/validation/${submissionId}/lock`);
 }
 
-export function approveSubmission(submissionId: string) {
-  return api.post<void>(`/validation/${submissionId}/approve`);
+/**
+ * Approves a submission. A Scheduled post whose slot has passed is refused
+ * (409) unless an Admin passes `publishNow`, which moves the slot to now.
+ */
+export function approveSubmission(submissionId: string, publishNow = false) {
+  return api.post<void>(
+    `/validation/${submissionId}/approve`,
+    undefined,
+    publishNow ? { params: { publishNow: true } } : undefined,
+  );
 }
 
 export function editSubmission(

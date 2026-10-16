@@ -65,6 +65,7 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  r2UploadDurationMs?: number;
   contentHash?: string;
   allowDuplicate?: boolean;
   institutionId?: string | null;
@@ -121,6 +122,7 @@ export interface MediaAssetSearchParams {
   albumId?: string | null;
   query?: string;
   mediaType?: "image" | "video";
+  sort?: string;
   page?: number;
   pageSize?: number;
 }
@@ -188,14 +190,21 @@ export function listMediaAssets(
 export function semanticSearchMediaAssets(
   query: string,
   institutionId?: string | null,
+  page = 1,
+  pageSize = 25,
   signal?: AbortSignal,
-) {
+): Promise<MediaAssetPage> {
   return api
     .get<MediaAssetPageResponse>("/media-assets/search", {
-      params: { query, ...(institutionId ? { institutionId } : {}) },
+      params: { query, ...(institutionId ? { institutionId } : {}), page, pageSize },
       signal,
     })
-    .then((response) => (response.data.items ?? []).map(rawToAsset));
+    .then((response) => ({
+      items: (response.data.items ?? []).map(rawToAsset),
+      totalCount: response.data.totalCount ?? 0,
+      page: response.data.page ?? page,
+      pageSize: response.data.pageSize ?? pageSize,
+    }));
 }
 
 export async function searchMediaAssets(
@@ -208,6 +217,7 @@ export async function searchMediaAssets(
     albumId: params.albumId ?? undefined,
     query: params.query || undefined,
     mediaType: params.mediaType || undefined,
+    sort: params.sort || undefined,
     page: params.page ?? 1,
     pageSize: params.pageSize ?? 24,
   };
@@ -393,11 +403,6 @@ export function updateMediaAssetAlbum(id: string, albumId: string | null) {
 export function renameMediaAsset(id: string, title: string) {
   return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/title`, { title })
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
-}
-
-/** UC-2.2 A2: records that this browser session browsed Network View. Never throws — best-effort. */
-export function logNetworkViewAccess() {
-  return api.post<void>("/media-assets/network-view/log").catch(() => {});
 }
 
 export interface TrashAsset {

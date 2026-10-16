@@ -15,6 +15,8 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -38,8 +40,10 @@ import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
 import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionBucketCountsDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionPageDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -81,12 +85,17 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class SubmissionService {
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
+
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
     private static final int MAX_MEDIA_PER_SUBMISSION = 10;
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
     // Matches the frontend composer's CAPTION_CHAR_LIMIT (code-point count).
     private static final int MAX_CAPTION_CHARS = 3000;
+    private static final int DEFAULT_SUBMISSION_PAGE_SIZE = 20;
+    private static final int MAX_SUBMISSION_PAGE_SIZE = 50;
 
     // UC-3.1: a Moderator's calendar reschedule power is deliberately bounded —
     // Admin is exempt from both limits (final override authority already).
@@ -106,6 +115,7 @@ public class SubmissionService {
     private final EmailDeliveryService emailDeliveryService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -131,7 +141,8 @@ public class SubmissionService {
             AssetTagRepository assetTagRepository,
             MediaAlbumRepository mediaAlbumRepository,
             ApplicationEventPublisher eventPublisher,
-            GuardRailSettingsService guardRailSettings) {
+            GuardRailSettingsService guardRailSettings,
+            MediaProcessingQueueService mediaProcessingQueueService) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -147,6 +158,7 @@ public class SubmissionService {
         this.assetTagRepository = assetTagRepository;
         this.mediaAlbumRepository = mediaAlbumRepository;
         this.eventPublisher = eventPublisher;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
         this.guardRailSettings = guardRailSettings;
     }
 
@@ -189,7 +201,7 @@ public class SubmissionService {
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
-        submission.setCategory(dto.getCategory());
+
         submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
         submission.setMediaTags(joinTags(dto.getMediaTags()));
         submission.setTemplateId(dto.getTemplateId() == null || dto.getTemplateId().isBlank()
@@ -198,8 +210,7 @@ public class SubmissionService {
         submission.setFastTrack(dto.isFastTrack());
         submission.setLiveEventName(normalizeOptional(dto.getLiveEventName()));
         if (submission.isFastTrack()) {
-            submission.setCategory(null);
-            submission.setTemplateId(null);
+
             submission.setDescription(null);
         }
         if (dto.getTags() != null && !dto.getTags().isEmpty()) {
@@ -332,9 +343,7 @@ public class SubmissionService {
         if (dto.getDescription() != null) {
             submission.setDescription(dto.getDescription());
         }
-        if (dto.getCategory() != null) {
-            submission.setCategory(dto.getCategory());
-        }
+
         if (dto.getTemplateId() != null) {
             submission.setTemplateId(dto.getTemplateId().isBlank() ? null : dto.getTemplateId());
         }
@@ -348,8 +357,7 @@ public class SubmissionService {
             submission.setFastTrack(dto.getFastTrack());
             if (dto.getFastTrack()) {
                 submission.setScheduledAt(null);
-                submission.setCategory(null);
-                submission.setTemplateId(null);
+
                 submission.setDescription(null);
                 submission.setTags(null);
                 slotReservationService.release(submissionId);
@@ -364,8 +372,7 @@ public class SubmissionService {
             submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
         }
         if (submission.isFastTrack()) {
-            submission.setCategory(null);
-            submission.setTemplateId(null);
+
             submission.setDescription(null);
             submission.setTags(null);
         }
@@ -420,17 +427,18 @@ public class SubmissionService {
     }
 
     /**
-     * Deletes a DRAFT submission and removes its slot reservations. Only the
-     * owning contributor may delete. Only DRAFT status is deletable. Media that
-     * was uploaded solely for this draft and is now orphaned is permanently
-     * purged (row + storage object); assets picked from the library or ever
-     * used beyond draft status stay put.
+     * Deletes a DRAFT or REJECTED submission and removes its slot reservations.
+     * Only the owning contributor may delete. Media that was uploaded solely for
+     * this draft and is now orphaned is permanently purged (row + storage
+     * object); assets picked from the library or ever used beyond draft status
+     * stay put.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
-        if (submission.getStatus() != SubmissionStatus.draft) {
+        if (submission.getStatus() != SubmissionStatus.draft
+                && submission.getStatus() != SubmissionStatus.rejected) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
+                    "Only DRAFT or REJECTED submissions can be deleted. Current status: " + submission.getStatus());
         }
         List<MediaAsset> attached
                 = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
@@ -440,9 +448,20 @@ public class SubmissionService {
             purgeOrphanedDraftUpload(asset.getId(), "draft " + submissionId + " deleted");
         }
         slotReservationService.deleteAllForSubmission(submissionId);
+        // Review rows (validation_logs, review_locks, override_requests) are removed
+        // by ON DELETE CASCADE (V103); the decisions themselves stay in the audit
+        // log, and so does this deletion — the audit log has no FK to submissions.
+        Map<String, Object> auditDetails = new HashMap<>();
+        auditDetails.put("status", submission.getStatus().name());
+        if (submission.getEventTitle() != null) auditDetails.put("eventTitle", submission.getEventTitle());
+        auditLogService.record(
+                entityManager.getReference(User.class, user.userId()),
+                "SUBMISSION_DELETED", null, null,
+                submissionId,
+                auditDetails);
         submissionRepository.delete(submission);
-        log.info("Submission {} deleted by user {} ({} orphan-checked media)",
-                submissionId, user.userId(), attached.size());
+        log.info("Submission {} ({}) deleted by user {} ({} orphan-checked media)",
+                submissionId, submission.getStatus(), user.userId(), attached.size());
     }
 
     /**
@@ -503,6 +522,7 @@ public class SubmissionService {
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository
                 .findMediaAssetsBySubmissionId(submissionId);
         List<MediaAsset> dirty = new java.util.ArrayList<>();
+        List<UUID> processingAssetIds = new java.util.ArrayList<>();
         // Resolved (and, if needed, created) lazily — an all-library-picks post
         // must not spawn an empty album.
         MediaAlbum submissionAlbum = null;
@@ -512,6 +532,9 @@ public class SubmissionService {
             if (asset.getStatus() == MediaAssetStatus.STAGED) {
                 asset.setInstitution(submission.getInstitution());
                 asset.setStatus(MediaAssetStatus.PROCESSING);
+                if (asset.getFileType() != null && asset.getFileType().isImage()) {
+                    processingAssetIds.add(asset.getId());
+                }
                 changed = true;
             }
             // A real library pick always has an album (UC-2.1 invariant), so an
@@ -535,6 +558,7 @@ public class SubmissionService {
         if (!dirty.isEmpty()) {
             mediaAssetRepository.saveAll(dirty);
         }
+        processingAssetIds.forEach(mediaProcessingQueueService::enqueueAfterCommit);
 
         refreshManualPublishingFlag(submission);
 
@@ -636,6 +660,51 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
         List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
+        return buildSubmissionSummaries(submissions);
+    }
+
+    /**
+     * Returns one bounded page for My Submissions while preserving the existing
+     * status buckets and search fields used by the frontend.
+     */
+    @Transactional(readOnly = true)
+    public SubmissionPageDto listPage(
+            JwtUserDetails user,
+            int page,
+            int pageSize,
+            String bucket,
+            String search) {
+        int safePage = Math.max(page, 0);
+        int safePageSize = pageSize <= 0
+                ? DEFAULT_SUBMISSION_PAGE_SIZE
+                : Math.min(pageSize, MAX_SUBMISSION_PAGE_SIZE);
+        List<SubmissionStatus> statuses = statusesForBucket(bucket);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+        List<SubmissionStatus> matchingStatuses = statusesMatchingSearch(normalizedSearch);
+
+        Page<Submission> result = submissionRepository.findSubmissionPage(
+                user.userId(),
+                statuses,
+                normalizedSearch,
+                !matchingStatuses.isEmpty(),
+                matchingStatuses.isEmpty() ? List.of(SubmissionStatus.draft) : matchingStatuses,
+                PageRequest.of(safePage, safePageSize));
+
+        List<SubmissionSummaryDto> items = buildSubmissionSummaries(result.getContent());
+        SubmissionBucketCountsDto counts = buildBucketCounts(
+                submissionRepository.countStatusesByContributorId(user.userId()));
+
+        return new SubmissionPageDto(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext(),
+                counts);
+    }
+
+    private List<SubmissionSummaryDto> buildSubmissionSummaries(List<Submission> submissions) {
 
         if (submissions.isEmpty()) {
             return List.of();
@@ -659,6 +728,111 @@ public class SubmissionService {
                         mediaCounts.getOrDefault(s.getId(), 0L),
                         previews.get(s.getId())))
                 .toList();
+    }
+
+    private List<SubmissionStatus> statusesForBucket(String bucket) {
+        String normalized = bucket == null ? "all" : bucket.trim().toLowerCase();
+        return switch (normalized) {
+            case "all" -> List.of(SubmissionStatus.values());
+            case "drafts" -> List.of(SubmissionStatus.draft);
+            case "action-needed" -> List.of(SubmissionStatus.needs_revision);
+            case "rejected" -> List.of(SubmissionStatus.rejected);
+            case "under-review" -> List.of(SubmissionStatus.pending, SubmissionStatus.in_review);
+            case "scheduled" -> List.of(SubmissionStatus.scheduled);
+            case "failed-or-rejected" -> List.of(
+                    SubmissionStatus.publish_failed,
+                    SubmissionStatus.direct_post_failed,
+                    SubmissionStatus.rejected);
+            case "submitted" -> List.of(
+                    SubmissionStatus.pending,
+                    SubmissionStatus.in_review,
+                    SubmissionStatus.missed_review,
+                    SubmissionStatus.scheduled,
+                    SubmissionStatus.publishing,
+                    SubmissionStatus.direct_post_scheduled,
+                    SubmissionStatus.direct_post_publishing);
+            case "published" -> List.of(
+                    SubmissionStatus.published,
+                    SubmissionStatus.published_manual,
+                    SubmissionStatus.admin_direct_post);
+            case "failed" -> List.of(
+                    SubmissionStatus.publish_failed,
+                    SubmissionStatus.direct_post_failed);
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported submission bucket: " + bucket);
+        };
+    }
+
+    private List<SubmissionStatus> statusesMatchingSearch(String search) {
+        if (search.isEmpty()) {
+            return List.of();
+        }
+        return List.of(SubmissionStatus.values()).stream()
+                .filter(status -> submissionStatusLabel(status).contains(search))
+                .toList();
+    }
+
+    private String submissionStatusLabel(SubmissionStatus status) {
+        return switch (status) {
+            case draft -> "draft";
+            case pending -> "pending approval";
+            case in_review -> "under review";
+            case needs_revision -> "needs revision";
+            case missed_review -> "missed review";
+            case scheduled -> "scheduled";
+            case publishing -> "publishing";
+            case publish_failed -> "publish failed";
+            case published, published_manual -> "published";
+            case admin_direct_post -> "direct post";
+            case direct_post_scheduled -> "direct post scheduled";
+            case direct_post_publishing -> "direct post publishing";
+            case direct_post_failed -> "direct post failed";
+            case rejected -> "rejected";
+        };
+    }
+
+    private SubmissionBucketCountsDto buildBucketCounts(
+            List<SubmissionRepository.SubmissionStatusCount> statusCounts) {
+        long drafts = 0;
+        long actionNeeded = 0;
+        long rejected = 0;
+        long submitted = 0;
+        long underReview = 0;
+        long scheduled = 0;
+        long published = 0;
+        long failed = 0;
+
+        for (SubmissionRepository.SubmissionStatusCount row : statusCounts) {
+            long count = row.getCount();
+            switch (row.getStatus()) {
+                case draft -> drafts += count;
+                case needs_revision -> actionNeeded += count;
+                case rejected -> rejected += count;
+                case published, published_manual, admin_direct_post -> published += count;
+                case publish_failed, direct_post_failed -> failed += count;
+                case pending, in_review -> {
+                    submitted += count;
+                    underReview += count;
+                }
+                case scheduled -> {
+                    submitted += count;
+                    scheduled += count;
+                }
+                default -> submitted += count;
+            }
+        }
+
+        return new SubmissionBucketCountsDto(
+                drafts + actionNeeded + rejected + submitted + published + failed,
+                drafts,
+                actionNeeded,
+                rejected,
+                submitted,
+                underReview,
+                scheduled,
+                published,
+                failed);
     }
 
     /**
@@ -697,6 +871,7 @@ public class SubmissionService {
      * by ValidationService.
      */
     SubmissionResponseDto attachUploadedMediaTo(Submission submission, AttachMediaDto dto, JwtUserDetails user) {
+        long registrationStartedAt = System.nanoTime();
         UUID submissionId = submission.getId();
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
         if (currentCount >= MAX_MEDIA_PER_SUBMISSION) {
@@ -724,6 +899,22 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        if (mediaAiTelemetry != null) {
+            if (dto.getR2UploadDurationMs() != null) {
+                mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
+                        null, submissionId, 1, 0, 0);
+            }
+            mediaAiTelemetry.record("DB_REGISTRATION",
+                    MediaAiTelemetryService.elapsedMillis(registrationStartedAt), "SUCCESS",
+                    null, submissionId, 1, 0, 0);
+        }
+        if (fileType.isImage()) {
+            if (stage) {
+                mediaProcessingQueueService.enqueueDraftAnalysisAfterCommit(asset.getId());
+            } else {
+                mediaProcessingQueueService.enqueueAfterCommit(asset.getId());
+            }
+        }
         applySubmissionMediaTags(asset, submission.getMediaTags());
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
@@ -743,6 +934,7 @@ public class SubmissionService {
         if (joinedTags == null || joinedTags.isBlank()) {
             return;
         }
+        boolean changed = false;
         for (String raw : joinedTags.split(",")) {
             String label = raw.trim();
             if (label.isEmpty() || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
@@ -753,6 +945,11 @@ public class SubmissionService {
             tag.setLabel(label);
             tag.setSource("manual");
             assetTagRepository.save(tag);
+            changed = true;
+        }
+        if (changed) {
+            mediaAssetRepository.incrementSemanticRevision(asset.getId());
+            mediaProcessingQueueService.semanticMetadataChangedAfterCommit(asset.getId());
         }
     }
 
@@ -828,9 +1025,14 @@ public class SubmissionService {
         if (asset.getInstitution() == null) {
             throw new MediaAssetNotFoundException(mediaAssetId);
         }
-        // Contributors stay institution-scoped. Network-wide reviewers/admins may
-        // reuse vetted library assets across institutions.
-        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(submission.getInstitution().getId())) {
+        // Contributors may use assets from their own institution or from the
+        // shared default library. Network-wide reviewers/admins may reuse vetted
+        // library assets across institutions.
+        UUID assetInstitutionId = asset.getInstitution().getId();
+        UUID submissionInstitutionId = submission.getInstitution().getId();
+        if (!isNetworkRole(user)
+                && !assetInstitutionId.equals(submissionInstitutionId)
+                && !assetInstitutionId.equals(sharedInstitutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Media asset does not belong to this submission's institution.");
         }
@@ -846,6 +1048,11 @@ public class SubmissionService {
         }
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
+        if (asset.getFileType() != null && asset.getFileType().isImage()) {
+            // Older library assets may predate visual embeddings. The image-only
+            // job is idempotent and reuses an existing current-model vector.
+            mediaProcessingQueueService.enqueueImageOnlyAfterCommit(asset.getId());
+        }
         refreshManualPublishingFlag(submission);
 
         Map<String, Object> reuseMetadata = new LinkedHashMap<>();
@@ -879,6 +1086,7 @@ public class SubmissionService {
 
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submissionId);
         refreshManualPublishingFlag(submission);
         log.info("Asset {} detached from submission {}", mediaAssetId, submissionId);
 
@@ -998,6 +1206,7 @@ public class SubmissionService {
             }
         }
         submissionMediaAssetRepository.saveAll(links);
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submissionId);
 
         log.info("Reordered media for submission {}", submissionId);
         return buildResponse(submission);
@@ -1145,6 +1354,12 @@ public class SubmissionService {
         return user.institutionId();
     }
 
+    private UUID sharedInstitutionId() {
+        return institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()
+                .map(Institution::getId)
+                .orElse(null);
+    }
+
     private void assertEditableStatus(Submission submission) {
         if (!isEditableStatus(submission)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -1187,6 +1402,7 @@ public class SubmissionService {
         link.setMediaAsset(asset);
         link.setDisplayOrder(currentCount);
         submissionMediaAssetRepository.save(link);
+        mediaProcessingQueueService.enqueueSubmissionContextAfterCommit(submission.getId());
     }
 
     private MediaFileType validateMediaFile(String rawFileType, Long fileSizeBytes) {

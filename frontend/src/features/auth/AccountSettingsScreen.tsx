@@ -1,5 +1,6 @@
 import "../../styles/dasig-loader.css";
 import "../../styles/settings.css";
+import "../../styles/user-management.css";
 import {
   Component,
   lazy,
@@ -31,6 +32,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 import { currentProfileQueryOptions } from "../../hooks/useCurrentProfile";
+import ConfirmDialog from "../user-management/components/ConfirmDialog";
 import {
   getTourPreferences,
   toggleToursEnabled,
@@ -133,6 +135,13 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
+  const [postingWindowStartHour, setPostingWindowStartHour] = useState(8);
+  const [postingWindowEndHour, setPostingWindowEndHour] = useState(20);
+  const [conflictBufferMinutes, setConflictBufferMinutes] = useState(30);
+  const [minimumLeadTimeHours, setMinimumLeadTimeHours] = useState(2);
+  const [maximumLeadTimeDays, setMaximumLeadTimeDays] = useState(30);
+  const [perInstitutionActiveQuota, setPerInstitutionActiveQuota] = useState(3);
+  const [dailyVolumeCap, setDailyVolumeCap] = useState(6);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -142,6 +151,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
 
   // Onboarding / Feature Guides State
   const [toursEnabled, setToursEnabled] = useState(() => getTourPreferences().enabled);
@@ -299,6 +309,13 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   useEffect(() => {
     if (pageSettingsQuery.data && !pageSettingsHydratedRef.current) {
       setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
+      setPostingWindowStartHour(pageSettingsQuery.data.data.postingWindowStartHour ?? 8);
+      setPostingWindowEndHour(pageSettingsQuery.data.data.postingWindowEndHour ?? 20);
+      setConflictBufferMinutes(pageSettingsQuery.data.data.conflictBufferMinutes ?? 30);
+      setMinimumLeadTimeHours(pageSettingsQuery.data.data.minimumLeadTimeHours ?? 2);
+      setMaximumLeadTimeDays(pageSettingsQuery.data.data.maximumLeadTimeDays ?? 30);
+      setPerInstitutionActiveQuota(pageSettingsQuery.data.data.perInstitutionActiveQuota ?? 3);
+      setDailyVolumeCap(pageSettingsQuery.data.data.dailyVolumeCap ?? 6);
       pageSettingsHydratedRef.current = true;
     }
 
@@ -392,10 +409,53 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   }
 
   async function saveGuardrails() {
+    if (guardrailsEnforced) {
+      if (!Number.isInteger(postingWindowStartHour) || postingWindowStartHour < 0 || postingWindowStartHour > 23) {
+        return toast.error("Start hour must be a whole number between 0 and 23.");
+      }
+      if (!Number.isInteger(postingWindowEndHour) || postingWindowEndHour < 0 || postingWindowEndHour > 23) {
+        return toast.error("End hour must be a whole number between 0 and 23.");
+      }
+      if (postingWindowStartHour >= postingWindowEndHour) {
+        return toast.error("Start hour must be strictly before the end hour.");
+      }
+      if (!Number.isInteger(conflictBufferMinutes) || conflictBufferMinutes < 0) {
+        return toast.error("Conflict buffer must be a positive number of minutes.");
+      }
+      if (!Number.isInteger(minimumLeadTimeHours) || minimumLeadTimeHours < 0) {
+        return toast.error("Minimum lead time must be a positive number of hours.");
+      }
+      if (!Number.isInteger(maximumLeadTimeDays) || maximumLeadTimeDays <= 0) {
+        return toast.error("Maximum lead time must be a positive number of days.");
+      }
+      if (!Number.isInteger(perInstitutionActiveQuota) || perInstitutionActiveQuota <= 0) {
+        return toast.error("Per-institution active quota must be a positive number.");
+      }
+      if (!Number.isInteger(dailyVolumeCap) || dailyVolumeCap <= 0) {
+        return toast.error("Daily volume cap must be a positive number.");
+      }
+    }
+
     setSaving("guardrails");
     try {
-      const { data } = await updatePageSettings({ guardrailsEnforced }, pageInstitutionId);
+      const { data } = await updatePageSettings({
+        guardrailsEnforced,
+        postingWindowStartHour,
+        postingWindowEndHour,
+        conflictBufferMinutes,
+        minimumLeadTimeHours,
+        maximumLeadTimeDays,
+        perInstitutionActiveQuota,
+        dailyVolumeCap,
+      }, pageInstitutionId);
       setGuardrailsEnforced(data.guardrailsEnforced ?? true);
+      setPostingWindowStartHour(data.postingWindowStartHour ?? 8);
+      setPostingWindowEndHour(data.postingWindowEndHour ?? 20);
+      setConflictBufferMinutes(data.conflictBufferMinutes ?? 30);
+      setMinimumLeadTimeHours(data.minimumLeadTimeHours ?? 2);
+      setMaximumLeadTimeDays(data.maximumLeadTimeDays ?? 30);
+      setPerInstitutionActiveQuota(data.perInstitutionActiveQuota ?? 3);
+      setDailyVolumeCap(data.dailyVolumeCap ?? 6);
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -451,8 +511,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
-  async function handleDisconnectMessenger() {
-    if (!window.confirm("Are you sure you want to disconnect Facebook Messenger alerts?")) return;
+  function handleDisconnectMessenger() {
+    setDisconnectConfirmOpen(true);
+  }
+
+  async function confirmDisconnectMessenger() {
+    setDisconnectConfirmOpen(false);
     setSaving("messenger");
     try {
       await disconnectMessenger();
@@ -897,7 +961,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
               >
               <div className="settings-card-body settings-password-grid">
                 <div className="settings-field">
-                  <label htmlFor="settings-current-password">Current password</label>
+                  <div className="settings-field-head">
+                    <label htmlFor="settings-current-password">Current password</label>
+                    {resetLinkSent ? (
+                      <span className="settings-field-hint is-success settings-forgot-pw-btn">
+                        <i className="ti ti-mail-check" /> Reset link sent
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="settings-field-action-btn settings-forgot-pw-btn"
+                        disabled={resetLinkSending}
+                        onClick={() => void handleSendResetLink()}
+                      >
+                        <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
+                        {resetLinkSending ? "Sending…" : "Forgot your password?"}
+                      </button>
+                    )}
+                  </div>
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-current-password"
@@ -922,21 +1003,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showCurrentPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
-                  {resetLinkSent ? (
-                    <span className="settings-field-hint is-success settings-forgot-pw-btn">
-                      <i className="ti ti-mail-check" /> Reset link sent to {user.email}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="settings-field-action-btn settings-forgot-pw-btn"
-                      disabled={resetLinkSending}
-                      onClick={() => void handleSendResetLink()}
-                    >
-                      <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
-                      {resetLinkSending ? "Sending…" : "Forgot your password?"}
-                    </button>
-                  )}
                 </div>
                 <div className="settings-field">
                   <label htmlFor="settings-new-password">New password</label>
@@ -1071,6 +1137,137 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     checked={guardrailsEnforced}
                     onChange={setGuardrailsEnforced}
                   />
+                  <div
+                    className="settings-studio-summary-box"
+                    style={{
+                      marginTop: "16px",
+                      opacity: guardrailsEnforced ? 1 : 0.6,
+                      pointerEvents: guardrailsEnforced ? "auto" : "none",
+                      display: "block",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span className="settings-summary-stat-label">Posting Window</span>
+                      <span className={`settings-summary-stat-badge ${guardrailsEnforced ? "is-active" : "is-inactive"}`}>
+                        {guardrailsEnforced ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="settings-field-hint" style={{ marginBottom: "16px", marginTop: 0 }}>
+                      Submissions can only be scheduled between these hours (local time).
+                    </p>
+                    <div style={{ display: "flex", gap: "16px", alignItems: "flex-end" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-window-start" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Start Hour (0-23)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-window-start"
+                            type="number"
+                            min="0"
+                            max="23"
+                            className="settings-input"
+                            value={postingWindowStartHour}
+                            onChange={(e) => setPostingWindowStartHour(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <span style={{ paddingBottom: "10px", color: "var(--d-muted)", fontWeight: 500 }}>to</span>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-window-end" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>End Hour (0-23)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-window-end"
+                            type="number"
+                            min="0"
+                            max="23"
+                            className="settings-input"
+                            value={postingWindowEndHour}
+                            onChange={(e) => setPostingWindowEndHour(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px", marginTop: "16px", marginBottom: "12px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-conflict-buffer" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Minimum spacing between posts (minutes)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-conflict-buffer"
+                            type="number"
+                            min="0"
+                            className="settings-input"
+                            value={conflictBufferMinutes}
+                            onChange={(e) => setConflictBufferMinutes(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-min-lead-time" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Minimum advance notice for scheduling (hours)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-min-lead-time"
+                            type="number"
+                            min="0"
+                            className="settings-input"
+                            value={minimumLeadTimeHours}
+                            onChange={(e) => setMinimumLeadTimeHours(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-max-lead-time" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Maximum advance notice for scheduling (days)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-max-lead-time"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={maximumLeadTimeDays}
+                            onChange={(e) => setMaximumLeadTimeDays(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-quota" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Per-institution active post quota</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-quota"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={perInstitutionActiveQuota}
+                            onChange={(e) => setPerInstitutionActiveQuota(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label htmlFor="settings-daily-cap" style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--d-muted)" }}>Daily volume cap (network-wide)</label>
+                        <div className="settings-input-wrapper">
+                          <input
+                            id="settings-daily-cap"
+                            type="number"
+                            min="1"
+                            className="settings-input"
+                            value={dailyVolumeCap}
+                            onChange={(e) => setDailyVolumeCap(Number(e.target.value))}
+                            disabled={!guardrailsEnforced}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <SettingsFooter
                   label="Save"
@@ -1083,6 +1280,16 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           )}
         </div>
       </div>
+      {disconnectConfirmOpen && (
+        <ConfirmDialog
+          title="Disconnect Facebook Messenger?"
+          message="Facebook Messenger alerts will stop for this account. You can reconnect Messenger again from Account Settings."
+          confirmLabel={saving === "messenger" ? "Disconnecting..." : "Disconnect"}
+          dangerous
+          onConfirm={() => void confirmDisconnectMessenger()}
+          onCancel={() => setDisconnectConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 }

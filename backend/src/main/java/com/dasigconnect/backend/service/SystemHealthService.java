@@ -71,6 +71,7 @@ public class SystemHealthService {
     private final TokenManagementService tokenManagementService;
     private final MediaStorageService mediaStorage;
     private final PublishSuccessRateRepository publishSuccessRateRepository;
+    private final MediaAiTelemetryService mediaAiTelemetryService;
     private final HttpClient httpClient;
     private final long databaseLimitBytes;
     private final long mediaLimitBytes;
@@ -87,6 +88,7 @@ public class SystemHealthService {
             TokenManagementService tokenManagementService,
             MediaStorageService mediaStorage,
             PublishSuccessRateRepository publishSuccessRateRepository,
+            MediaAiTelemetryService mediaAiTelemetryService,
             // Defaults track the current free tiers: Supabase Postgres 500 MB,
             // Cloudflare R2 10 GB-month (storage billed only past that).
             @Value("${app.system-health.database-limit-bytes:500000000}") long databaseLimitBytes,
@@ -102,6 +104,7 @@ public class SystemHealthService {
         this.tokenManagementService = tokenManagementService;
         this.mediaStorage = mediaStorage;
         this.publishSuccessRateRepository = publishSuccessRateRepository;
+        this.mediaAiTelemetryService = mediaAiTelemetryService;
         this.databaseLimitBytes = databaseLimitBytes;
         this.mediaLimitBytes = mediaLimitBytes;
         this.storageWarningThreshold = storageWarningThreshold;
@@ -225,13 +228,15 @@ public class SystemHealthService {
 
     public List<OperationalMetricDto> operationalMetrics() {
         Instant start = Instant.now().minus(30, ChronoUnit.DAYS);
-        return List.of(
+        List<OperationalMetricDto> metrics = new ArrayList<>(List.of(
                 approvalTurnaround(start),
                 editAndApproveRate(start),
                 manualFallbackResolutionRate(start),
                 publishSuccessRate(start),
                 liveEventFastTrackVolume(start),
-                missedReviewRate(start));
+                missedReviewRate(start)));
+        metrics.addAll(mediaAiTelemetryService.operationalMetrics(30));
+        return List.copyOf(metrics);
     }
 
     public String exportSnapshotCsv() {

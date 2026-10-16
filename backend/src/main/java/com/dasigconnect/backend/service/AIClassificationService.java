@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.MediaClassificationClient;
 import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
 import com.dasigconnect.backend.model.entity.AssetTag;
@@ -10,6 +10,8 @@ import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -22,14 +24,15 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Classifies media assets using Claude Vision and generates Voyage AI embeddings (UC-3.3).
+ * Classifies media assets using Gemini and generates Voyage AI embeddings (UC-3.3).
  *
  * Transaction discipline: each repository call runs in its own short implicit transaction.
- * No DB connection is held across external API calls (Claude or Voyage AI).
+ * No DB connection is held across external API calls (Gemini or Voyage AI).
  * All methods are @Async — failures are logged and swallowed so upload is never blocked.
  */
 @Service
@@ -37,40 +40,172 @@ public class AIClassificationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIClassificationService.class);
     private static final int MAX_AI_TAGS_TO_STORE = 30;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final DateTimeFormatter UPLOAD_MONTH_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM").withZone(ZoneOffset.UTC);
 
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final AssetTagRepository assetTagRepository;
-    private final ClaudeVisionClient claudeVisionClient;
+    private final MediaClassificationClient classificationClient;
     private final VoyageAIClient voyageAIClient;
+    private final MediaImageEmbeddingService mediaImageEmbeddingService;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MediaAiTelemetryService mediaAiTelemetry;
 
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
                                    AssetTagRepository assetTagRepository,
-                                   ClaudeVisionClient claudeVisionClient,
-                                   VoyageAIClient voyageAIClient) {
+                                   MediaClassificationClient classificationClient,
+                                   VoyageAIClient voyageAIClient,
+                                   MediaImageEmbeddingService mediaImageEmbeddingService,
+                                   MediaProcessingQueueService mediaProcessingQueueService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
-        this.claudeVisionClient = claudeVisionClient;
+        this.classificationClient = classificationClient;
         this.voyageAIClient = voyageAIClient;
+        this.mediaImageEmbeddingService = mediaImageEmbeddingService;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
+    }
+
+    /**
+     * Runs the durable worker pipeline synchronously. Persisted stages are
+     * reused on retry so successful provider calls are not repeated.
+     */
+    public boolean processAsset(UUID assetId, String storageUrl) {
+        return processAsset(assetId, storageUrl, null);
+    }
+
+    public boolean processAsset(UUID assetId, String storageUrl, String requiredProcessingVersion) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
+        if (asset == null) return false;
+
+        if (asset.getFileType() != null && !asset.getFileType().isImage()) {
+            if (mediaAssetEmbeddingRepository
+                    .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isPresent()) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+                return true;
+            }
+            List<String> tagLabels = assetTagRepository
+                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                    .stream()
+                    .map(AssetTag::getLabel)
+                    .toList();
+            String embeddingText = buildEmbeddingText(asset, tagLabels);
+            if (embeddingText.isBlank() || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+            return true;
+        }
+
+        MediaClassificationDto result = null;
+        boolean requiresStructuredRefresh = requiredProcessingVersion != null
+                && !requiredProcessingVersion.equals(asset.getAiProcessingVersion());
+        boolean classifiedByCurrentModel = asset.getAiClassifiedAt() != null
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel());
+        if (!classifiedByCurrentModel || requiresStructuredRefresh) {
+            long classificationStartedAt = System.nanoTime();
+            try {
+                result = classificationClient.classifyMedia(List.of(storageUrl));
+                persistClassification(assetId, result);
+                persistSuggestedTags(assetId, result.suggestedTags());
+                recordProviderStage("GEMINI_CLASSIFICATION", assetId,
+                        classificationStartedAt, "SUCCESS");
+            } catch (Exception error) {
+                recordProviderStage("GEMINI_CLASSIFICATION", assetId,
+                        classificationStartedAt, "FAILURE");
+                log.warn("AI classification failed for asset {}: {}", assetId, error.getMessage());
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+        } else {
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, System.nanoTime(), "REUSED", 0, 1);
+        }
+
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return false;
+        }
+
+        boolean needsSemanticEmbedding = result != null || mediaAssetEmbeddingRepository
+                .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty();
+        if (needsSemanticEmbedding) {
+            MediaClassificationDto classification = result;
+            List<String> tagLabels = assetTagRepository
+                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                    .stream()
+                    .map(AssetTag::getLabel)
+                    .toList();
+            String embeddingText = mediaAssetRepository.findActiveById(assetId)
+                    .map(current -> classification == null
+                            ? buildEmbeddingText(current, tagLabels)
+                            : buildEmbeddingText(current, classification, tagLabels))
+                    .orElse("");
+            if (embeddingText.isBlank() || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+        } else {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId,
+                    System.nanoTime(), "REUSED", 0, 1);
+        }
+
+        mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+        return true;
+    }
+
+    /**
+     * Adds optional Gemini metadata without controlling retrieval readiness.
+     * A failure is returned to the durable queue for retry, but never changes
+     * the media asset status or removes already stored Voyage vectors.
+     */
+    public boolean enrichAsset(UUID assetId, String storageUrl) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
+        if (asset == null || asset.getFileType() == null || !asset.getFileType().isImage()) {
+            return true;
+        }
+        if (asset.getAiClassifiedAt() != null
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel())) {
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId,
+                    System.nanoTime(), "REUSED", 0, 1);
+            return true;
+        }
+
+        long startedAt = System.nanoTime();
+        try {
+            MediaClassificationDto result = classificationClient.classifyMedia(List.of(storageUrl));
+            persistClassification(assetId, result);
+            persistSuggestedTags(assetId, result.suggestedTags());
+            mediaAssetRepository.incrementSemanticRevision(assetId);
+            mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, startedAt, "SUCCESS");
+            return true;
+        } catch (Exception error) {
+            recordProviderStage("GEMINI_CLASSIFICATION", assetId, startedAt, "FAILURE");
+            log.warn("Optional media enrichment failed for asset {}: {}", assetId, error.getMessage());
+            return false;
+        }
     }
 
     /**
      * Classifies a media asset and generates its embedding asynchronously.
-     * Called immediately after upload — never blocks the upload response.
+     * Legacy asynchronous entry point retained for compatibility. New uploads
+     * use MediaProcessingWorker and the synchronous, stage-aware processAsset path.
      *
      * @param assetId    UUID of the saved MediaAsset
-     * @param storageUrl Supabase Storage URL used as image input for Claude
+     * @param storageUrl storage URL used as image input for Gemini
      */
     @Async
     public void classifyAndEmbed(UUID assetId, String storageUrl) {
-        // Step 1: Classify via Claude Vision (external HTTP, no DB connection held)
+        // Step 1: Classify via Gemini (external HTTP, no DB connection held)
         MediaClassificationDto result;
         try {
-            result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+            result = classificationClient.classifyMedia(List.of(storageUrl));
         } catch (Exception e) {
             log.warn("AI classification failed for asset {}: {}", assetId, e.getMessage());
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
@@ -94,7 +229,7 @@ public class AIClassificationService {
                 .orElseGet(() -> buildEmbeddingText(result));
 
         // Step 4: Generate image + semantic embeddings (external HTTP, no DB connection held)
-        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
             return;
         }
@@ -123,14 +258,14 @@ public class AIClassificationService {
      * a classification (ai_classified_at set) but is stuck in PROCESSING/FAILED
      * because a prior embedding call failed. Used by EmbeddingReconciliationJob
      * instead of {@link #classifyAndEmbed} so a stuck asset isn't fully
-     * reclassified by Claude Vision on every 5-minute retry — that used to
+     * reclassified by the vision provider on every 5-minute retry — that used to
      * silently re-run classifyAndEmbed's classification step indefinitely for
      * any asset stuck on the embedding side, which (before persistSuggestedTags
      * was made to replace rather than accumulate) let one asset's AI tags grow
      * to 374 over repeated retries.
      */
     public void retryStuckImageEmbedding(UUID assetId, String storageUrl) {
-        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+        if (!mediaImageEmbeddingService.generateOrReuse(assetId, storageUrl)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
             return;
         }
@@ -150,10 +285,12 @@ public class AIClassificationService {
     }
 
     private boolean generateAndStoreEmbeddingInternal(UUID assetId, String embeddingText) {
+        long startedAt = System.nanoTime();
         String embeddingJson;
         try {
             embeddingJson = voyageAIClient.embedDocument(embeddingText);
         } catch (Exception e) {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "FAILURE");
             log.warn("Voyage AI embedding failed for asset {}: {}", assetId, e.getMessage());
             return false;
         }
@@ -165,41 +302,25 @@ public class AIClassificationService {
                     embeddingJson,
                     voyageAIClient.modelName());
             mediaAssetRepository.updateEmbedding(assetId, embeddingJson, voyageAIClient.modelName());
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "SUCCESS");
             log.info("Embedding stored for asset {}", assetId);
             return true;
         } catch (Exception e) {
+            recordProviderStage("VOYAGE_SEMANTIC_EMBEDDING", assetId, startedAt, "FAILURE");
             log.warn("Failed to store embedding for asset {}: {}", assetId, e.getMessage());
             return false;
         }
     }
 
-    private boolean generateAndStoreImageEmbedding(UUID assetId, String storageUrl) {
-        ClaudeVisionClient.PreparedImage image;
-        try {
-            image = claudeVisionClient.prepareImageForEmbedding(storageUrl);
-        } catch (Exception e) {
-            log.warn("Failed to fetch image for multimodal embedding for asset {}: {}", assetId, e.getMessage());
-            return false;
-        }
+    private void recordProviderStage(String stage, UUID assetId, long startedAt, String outcome) {
+        recordProviderStage(stage, assetId, startedAt, outcome, 1, 0);
+    }
 
-        String embeddingJson;
-        try {
-            embeddingJson = voyageAIClient.embedImageDocument(image.bytes(), image.mediaType());
-        } catch (Exception e) {
-            log.warn("Voyage AI image embedding failed for asset {}: {}", assetId, e.getMessage());
-            return false;
-        }
-
-        try {
-            mediaAssetEmbeddingRepository.upsert(
-                    assetId,
-                    MediaAssetEmbeddingType.IMAGE,
-                    embeddingJson,
-                    voyageAIClient.multimodalModelName());
-            return true;
-        } catch (Exception e) {
-            log.warn("Failed to store image embedding for asset {}: {}", assetId, e.getMessage());
-            return false;
+    private void recordProviderStage(String stage, UUID assetId, long startedAt, String outcome,
+            int providerCalls, int duplicateCallsAvoided) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record(stage, MediaAiTelemetryService.elapsedMillis(startedAt), outcome,
+                    assetId, null, 1, providerCalls, duplicateCallsAvoided);
         }
     }
 
@@ -217,8 +338,20 @@ public class AIClassificationService {
         asset.setPossibleUseCases(toArray(result.possibleUseCases()));
         asset.setAiTags(toArray(result.suggestedTags()));
         asset.setExcludedCategories(toArray(result.excludedCategories()));
+        asset.setObservedScenes(toArray(result.observedScenes()));
+        asset.setObservedActivities(toArray(result.observedActivities()));
+        asset.setPeopleCountRange(result.peopleCountRange());
+        asset.setEquipmentSignals(toArray(result.equipmentSignals()));
+        asset.setRecognitionSignals(toArray(result.recognitionSignals()));
+        asset.setOcrText(toArray(result.ocrText()));
+        asset.setVisibleDates(toArray(result.visibleDates()));
+        asset.setEventHypotheses(toJson(result.eventHypotheses()));
+        asset.setTemporalClassification(result.temporalClassification());
+        asset.setPossibleExpiration(result.possibleExpiration());
+        asset.setVisualQualitySignals(toArray(result.visualQualitySignals()));
+        asset.setCompositionSignals(toArray(result.compositionSignals()));
         asset.setAiClassifiedAt(java.time.Instant.now());
-        asset.setAiClassificationModel(claudeVisionClient.modelName());
+        asset.setAiClassificationModel(classificationClient.modelName());
         mediaAssetRepository.save(asset);
     }
 
@@ -247,7 +380,7 @@ public class AIClassificationService {
      * run's output (bounded to MAX_AI_TAGS_TO_STORE by normalizeTags), rather
      * than only adding to what's there. This used to be purely additive —
      * exact-label dedup (DB unique constraint on (media_asset_id, label))
-     * blocked a re-run from re-inserting an identical label, but Claude's
+     * blocked a re-run from re-inserting an identical label, but an AI model's
      * wording is not deterministic across calls ("Outdoor Event" one run,
      * "outdoor gathering" the next), so every reclassification of the same
      * asset just kept adding ~15-30 more rows with no ceiling — one asset in
@@ -296,6 +429,18 @@ public class AIClassificationService {
         appendAll(sb, "dominant_colors", result.dominantColors());
         appendAll(sb, "possible_use_cases", result.possibleUseCases());
         appendAll(sb, "ai_tags", result.suggestedTags());
+        appendAll(sb, "scenes", result.observedScenes());
+        appendAll(sb, "activities", result.observedActivities());
+        append(sb, "people_count", result.peopleCountRange());
+        appendAll(sb, "equipment", result.equipmentSignals());
+        appendAll(sb, "recognition", result.recognitionSignals());
+        appendAll(sb, "ocr", result.ocrText());
+        appendAll(sb, "visible_dates", result.visibleDates());
+        appendAll(sb, "event_hypotheses", result.eventHypotheses().stream()
+                .map(hypothesis -> hypothesis.eventType()).toList());
+        append(sb, "temporal", result.temporalClassification());
+        appendAll(sb, "visual_quality", result.visualQualitySignals());
+        appendAll(sb, "composition", result.compositionSignals());
         return sb.toString().trim();
     }
 
@@ -315,6 +460,9 @@ public class AIClassificationService {
         appendAll(sb, "possible_use_cases", firstNonEmpty(result.possibleUseCases(), asset.getPossibleUseCases()));
         appendAll(sb, "ai_tags", result.suggestedTags());
         appendAll(sb, "asset_tags", manualTags);
+        appendAll(sb, "scenes", Arrays.asList(asset.getObservedScenes() == null ? new String[0] : asset.getObservedScenes()));
+        appendAll(sb, "activities", Arrays.asList(asset.getObservedActivities() == null ? new String[0] : asset.getObservedActivities()));
+        append(sb, "people_count", asset.getPeopleCountRange());
         return sb.toString().trim();
     }
 
@@ -385,5 +533,13 @@ public class AIClassificationService {
             if (unique.size() >= MAX_AI_TAGS_TO_STORE) break;
         }
         return List.copyOf(unique);
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value == null ? List.of() : value);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("Could not serialize media classification context", error);
+        }
     }
 }

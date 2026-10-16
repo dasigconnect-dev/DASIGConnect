@@ -34,6 +34,8 @@ public class SubmissionLookupsDto {
      * window as non-blocking; a future date is still required if one is set.
      */
     private boolean guardrailsEnforced = true;
+    private int postingWindowStartHour;
+    private int postingWindowEndHour;
 
     public List<String> getAllowedFileTypes() {
         return allowedFileTypes;
@@ -81,5 +83,21 @@ public class SubmissionLookupsDto {
 
     public void setGuardrailsEnforced(boolean guardrailsEnforced) {
         this.guardrailsEnforced = guardrailsEnforced;
+    }
+
+    public int getPostingWindowStartHour() {
+        return postingWindowStartHour;
+    }
+
+    public void setPostingWindowStartHour(int postingWindowStartHour) {
+        this.postingWindowStartHour = postingWindowStartHour;
+    }
+
+    public int getPostingWindowEndHour() {
+        return postingWindowEndHour;
+    }
+
+    public void setPostingWindowEndHour(int postingWindowEndHour) {
+        this.postingWindowEndHour = postingWindowEndHour;
     }
 }

@@ -82,7 +82,7 @@ export default function CalendarToolbar({
                 : "Show full 24-hour day schedule"
           }
         >
-          <i className="ti ti-clock-hour-24" aria-hidden="true" />
+          <i className="ti ti-clock-24" aria-hidden="true" />
           <span>{showFullDay && view === "timeGridWeek" ? "Publishing Hours" : "Show Full Day"}</span>
         </button>
 

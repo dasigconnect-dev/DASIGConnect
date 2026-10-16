@@ -4,7 +4,6 @@ import MediaLibraryTab from "../../components/media/MediaLibraryTab";
 import type { SubmissionMediaItem } from "../../types/media";
 
 interface Props {
-  institutionId: string;
   excludeIds: string[];
   onAdd: (items: SubmissionMediaItem[]) => void;
   onClose: () => void;
@@ -13,11 +12,10 @@ interface Props {
 /**
  * Media Library picker for the review-queue editor. Reuses the composer's
  * MediaLibraryTab (search + category / type filters + grid + multi-select add
- * bar) — no device upload, no AI recommendations. Scoped to the submission's
- * institution because reviewers are network-wide.
+ * bar) — no device upload, no AI recommendations. Reviewers are network-wide,
+ * so it opens across all institutions.
  */
 export default function ReviewLibraryPickerModal({
-  institutionId,
   excludeIds,
   onAdd,
   onClose,
@@ -68,7 +66,7 @@ export default function ReviewLibraryPickerModal({
 
         <div className="val-libpick-body">
           <MediaLibraryTab
-            institutionId={institutionId || undefined}
+            institutionId={undefined}
             networkView
             showAlbumFilter
             alreadyAddedIds={alreadyAddedIds}

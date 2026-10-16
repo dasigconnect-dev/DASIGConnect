@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   cancelInvitation,
   createInstitution,
@@ -73,8 +73,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const invalidateInstitutionManagementData = useInvalidateInstitutionManagementData()
-  // Admins get full institution lifecycle control; moderators are limited to
   // inviting contributors and managing those pending invitations.
   const isAdmin = user.role === 'admin'
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -185,6 +185,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     })
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (id && institutions.length > 0) {
+      const match = institutions.find(i => i.id === id)
+      if (match) {
+        setSelectedInstitutionId(match.id)
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('id')
+        setSearchParams(nextParams, { replace: true })
+      }
+    }
+  }, [searchParams, institutions, setSearchParams])
 
   const selectedInstitutionOption = useMemo(
     () =>
@@ -1623,6 +1636,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                     key={inst.id}
                     institution={inst}
                     onSelect={() => handleSelectInstitution(inst)}
+                    canEditLogo={isAdmin}
                     onLogoUpload={(file) => void handleLogoUpload(inst, file)}
                     logoUploading={logoUploadingId === inst.id}
                   />
@@ -1657,6 +1671,8 @@ function InstitutionRegistryHeader() {
 interface InstitutionRowProps {
   institution: InstitutionWithStats
   onSelect: () => void
+  /** Logo upload is Admin-only (PUT /institutions/{id}/logo is hasRole('ADMIN')). */
+  canEditLogo: boolean
   onLogoUpload: (file: File) => void
   logoUploading: boolean
 }
@@ -1664,6 +1680,7 @@ interface InstitutionRowProps {
 function InstitutionRow({
   institution,
   onSelect,
+  canEditLogo,
   onLogoUpload,
   logoUploading,
 }: InstitutionRowProps) {
@@ -1696,30 +1713,34 @@ function InstitutionRow({
               />
             )}
           </div>
-          <button
-            type="button"
-            className={`im-logo-edit-btn${institution.logoUrl ? ' is-overlay' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={logoUploading}
-            aria-label={`${institution.logoUrl ? 'Replace' : 'Add'} ${institution.name} logo`}
-            title={`${institution.logoUrl ? 'Replace' : 'Add'} institution logo`}
-          >
-            <i
-              className={logoUploading ? 'ti ti-loader-2 im-spin' : 'ti ti-pencil'}
-              aria-hidden="true"
-            ></i>
-          </button>
-          <input
-            ref={fileInputRef}
-            className="im-logo-file-input"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onLogoUpload(file)
-              event.target.value = ''
-            }}
-          />
+          {canEditLogo && (
+            <>
+              <button
+                type="button"
+                className={`im-logo-edit-btn${institution.logoUrl ? ' is-overlay' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={logoUploading}
+                aria-label={`${institution.logoUrl ? 'Replace' : 'Add'} ${institution.name} logo`}
+                title={`${institution.logoUrl ? 'Replace' : 'Add'} institution logo`}
+              >
+                <i
+                  className={logoUploading ? 'ti ti-loader-2 im-spin' : 'ti ti-pencil'}
+                  aria-hidden="true"
+                ></i>
+              </button>
+              <input
+                ref={fileInputRef}
+                className="im-logo-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) onLogoUpload(file)
+                  event.target.value = ''
+                }}
+              />
+            </>
+          )}
         </div>
         <div className="im-inst-primary">
           <div className="im-inst-card-name-row">

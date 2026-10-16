@@ -5,6 +5,7 @@ interface Props {
   canSuggest: boolean;
   rateLimitReset: number | null;
   notice?: string | null;
+  hideInlineNotice?: boolean;
   onSuggest: () => void;
 }
 
@@ -20,6 +21,7 @@ export default function AiCaptionButton({
   canSuggest,
   rateLimitReset,
   notice,
+  hideInlineNotice = false,
   onSuggest,
 }: Props) {
   if (!canSuggest) return null;
@@ -27,7 +29,7 @@ export default function AiCaptionButton({
   if (state === "rate-limited") {
     const resetStr = rateLimitReset ? formatResetTime(rateLimitReset) : null;
     return (
-      <span className="ai-caption-control">
+      <span className="ai-caption-control" style={{ flexShrink: 0, minWidth: "max-content" }}>
         <span
           className="ai-caption-btn ai-caption-btn--limited"
           title={resetStr ? `Available again at ${resetStr}` : "Hourly limit reached"}
@@ -41,16 +43,19 @@ export default function AiCaptionButton({
 
   const isLoading = state === "loading";
   const isTimeout = state === "error-timeout";
-  const isUnavailable = state === "error-unavailable";
+  const isUnavailable =
+    state === "error-unavailable" ||
+    Boolean(notice && notice.toLowerCase().includes("unavailable"));
   const isError = isTimeout || isUnavailable;
 
   return (
-    <span className="ai-caption-control">
+    <span className="ai-caption-control" style={{ flexShrink: 0, minWidth: "max-content" }}>
       <button
         type="button"
         className={[
           "ai-caption-btn",
           isLoading ? "ai-caption-btn--loading" : "",
+          isUnavailable ? "ai-caption-btn--unavailable" : "",
           isError ? "ai-caption-btn--error" : "",
         ]
           .filter(Boolean)
@@ -63,7 +68,7 @@ export default function AiCaptionButton({
         disabled={isLoading || isUnavailable}
         title={
           isUnavailable
-            ? "AI caption service is unavailable."
+            ? notice ?? "AI caption service is unavailable. You can still write captions manually."
             : isTimeout
               ? "AI request timed out. Click to retry."
               : "Generate a suggested caption based on selected media and event details (auto-saves draft if needed)."
@@ -72,26 +77,26 @@ export default function AiCaptionButton({
         {isLoading ? (
           <>
             <span className="ai-caption-spinner" aria-hidden />
-            Generating...
+            <span className="ai-caption-text">Generating...</span>
           </>
         ) : isUnavailable ? (
           <>
-            <i className="ti ti-cloud-off" aria-hidden />
-            AI unavailable
+            <i className="ti ti-cloud-x" aria-hidden />
+            <span className="ai-caption-text">AI Caption Unavailable</span>
           </>
         ) : isTimeout ? (
           <>
             <i className="ti ti-refresh" aria-hidden />
-            Retry
+            <span className="ai-caption-text">Retry</span>
           </>
         ) : (
           <>
             <i className="ti ti-sparkles" aria-hidden />
-            Suggest Caption
+            <span className="ai-caption-text">Suggest Caption</span>
           </>
         )}
       </button>
-      {notice && (
+      {notice && !hideInlineNotice && !isUnavailable && (
         <span className="ai-caption-notice" role="status">
           {notice}
         </span>

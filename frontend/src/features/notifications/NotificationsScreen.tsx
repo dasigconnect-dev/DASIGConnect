@@ -41,7 +41,7 @@ const ADMIN_FILTERS: NotificationFilter[] = [
 ];
 
 function isContributorWorkflowNotification(notification: Notification) {
-  return ["submissions", "publishing", "deadline", "overrides"].includes(notification.category);
+  return ["submissions", "publishing", "deadline", "overrides", "system"].includes(notification.category);
 }
 
 function isModeratorWorkflowNotification(notification: Notification) {
@@ -148,10 +148,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
             : `/submissions?submissionId=${subId}`;
         if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
         if (REVIEW_FACING_EVENTS.has(eventType)) {
-          return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
+          return canReview ? `/queue?submissionId=${subId}` : ownerView;
         }
         // dual-audience (e.g. publish failed) — reviewers get the ops view
-        return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
+        return canReview ? `/queue?submissionId=${subId}` : ownerView;
       }
       return n.link;
     }
@@ -163,11 +163,11 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     eventType === "validation_timeout" ||
     eventType === "submission_missed_review"
   ) {
-    return canReview ? "/validation/queue" : "/submissions";
+    return canReview ? "/queue" : "/submissions";
   }
 
   if (eventType === "submission_publish_failed") {
-    return canReview ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
+    return canReview ? "/queue?tab=failed" : "/submissions?tab=failed";
   }
 
   if (
@@ -177,17 +177,19 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     eventType === "empty_schedule_warning" ||
     eventType === "admin_direct_post"
   ) {
-    return "/scheduler/calendar";
+    return "/calendar";
   }
 
   if (eventType === "submission_published" || eventType === "submission_published_manual") {
-    return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
+    return canReview ? "/calendar" : "/submissions?tab=published";
   }
 
-  if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
-    // Both live under the "Action Needed" tab in My Submissions. `openFeedback`
-    // is only honored on a single-submission route, so it's not appended here.
+  // `openFeedback` is only honored on a single-submission route, so it's not appended here.
+  if (eventType === "submission_needs_revision") {
     return "/submissions?tab=action-needed";
+  }
+  if (eventType === "submission_rejected") {
+    return "/submissions?tab=rejected";
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
@@ -196,7 +198,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "institution_onboarded" || eventType === "institution_no_moderator") {
-    return "/admin/institution-management";
+    return "/institution-management";
   }
 
   if (eventType === "embedding_failure_digest") {
@@ -204,18 +206,18 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (n.category === "submissions" || n.category === "overrides") {
-    return canReview ? "/validation/queue" : "/submissions";
+    return canReview ? "/queue" : "/submissions";
   }
 
   if (n.category === "publishing" || n.category === "deadline") {
-    return "/scheduler/calendar";
+    return "/calendar";
   }
 
   if (n.category === "system") {
     return isAdmin ? "/admin/system-health" : "/dashboard";
   }
 
-  return canReview ? "/validation/queue" : "/submissions";
+  return canReview ? "/queue" : "/submissions";
 }
 
 export default function NotificationsScreen({ user }: NotificationsScreenProps) {

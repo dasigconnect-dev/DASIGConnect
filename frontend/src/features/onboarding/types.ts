@@ -1,6 +1,11 @@
 export type TourPlacement = "top" | "bottom" | "left" | "right" | "auto";
 
 export interface TourStep {
+  /**
+   * Optional stable id, so a screen can set up the view a step needs (switch
+   * a wizard step, open a panel) via useScreenTour's onStepChange.
+   */
+  id?: string;
   /** CSS selector targeting the DOM element to highlight */
   target: string;
   /** Title displayed in the guide card */

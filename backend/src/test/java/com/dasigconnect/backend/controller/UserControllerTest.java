@@ -319,9 +319,9 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "MODERATOR")
-    void confirmAdminPromotion_asPromotedModerator_returnsAdmin() throws Exception {
+    void confirmPromotion_asPromotedModerator_returnsAdmin() throws Exception {
         User promoted = user(UUID.randomUUID(), "promoted@dasigconnect.com", UserRole.admin, null);
-        when(userService.confirmAdminPromotion(any())).thenReturn(UserDto.from(promoted));
+        when(userService.confirmPromotion(any())).thenReturn(UserDto.from(promoted));
 
         mockMvc.perform(post("/api/v1/users/promotion/confirm"))
                 .andExpect(status().isOk())
@@ -331,9 +331,9 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "CONTRIBUTOR")
-    void declineAdminPromotion_asContributor_returnsUnchangedAccount() throws Exception {
+    void declinePromotion_asContributor_returnsUnchangedAccount() throws Exception {
         User declined = user(UUID.randomUUID(), "declined@cit.edu.ph", UserRole.contributor, null);
-        when(userService.declineAdminPromotion(any())).thenReturn(UserDto.from(declined));
+        when(userService.declinePromotion(any())).thenReturn(UserDto.from(declined));
 
         mockMvc.perform(post("/api/v1/users/promotion/decline"))
                 .andExpect(status().isOk())
@@ -342,10 +342,10 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void cancelAdminPromotion_asAdminOwner_returnsUpdatedTarget() throws Exception {
+    void cancelPromotion_asAdminOwner_returnsUpdatedTarget() throws Exception {
         UUID targetId = UUID.randomUUID();
         User target = user(targetId, "target@dasigconnect.com", UserRole.moderator, null);
-        when(userService.cancelAdminPromotion(any(), any())).thenReturn(UserDto.from(target));
+        when(userService.cancelPromotion(any(), any())).thenReturn(UserDto.from(target));
 
         mockMvc.perform(delete("/api/v1/users/{id}/promotion", targetId))
                 .andExpect(status().isOk())
@@ -353,7 +353,7 @@ class UserControllerTest {
     }
 
     @Test
-    void cancelAdminPromotion_unauthenticated_returns401() throws Exception {
+    void cancelPromotion_unauthenticated_returns401() throws Exception {
         mockMvc.perform(delete("/api/v1/users/{id}/promotion", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized());
     }

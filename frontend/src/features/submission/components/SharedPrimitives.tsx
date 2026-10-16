@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import InfoTip from "../../../components/ui/InfoTip";
 
 export function SectionHead({
   icon,
@@ -117,8 +118,11 @@ export function Field({
   isPulsing,
   isDone,
   onToggleDone,
+  required,
 }: {
   label: string;
+  /** Marks the field as required for submission (red asterisk + screen-reader text). */
+  required?: boolean;
   count?: string;
   tone?: string;
   action?: ReactNode;
@@ -147,14 +151,16 @@ export function Field({
     <div className={`sub-fgroup ${isPulsing ? "sub-field-pulse" : ""}`}>
       <div className="sub-flabel">
         <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span>{label}</span>
-          {tooltip && (
-            <i
-              className="ti ti-info-circle"
-              title={tooltip}
-              style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
-            />
-          )}
+          <span>
+            {label}
+            {required && (
+              <>
+                <span className="sub-freq" aria-hidden="true">*</span>
+                <span className="sub-sr-only"> (required)</span>
+              </>
+            )}
+          </span>
+          {tooltip && <InfoTip text={tooltip} label={label} />}
           {revisionComment && (
             <div className="sub-field-comment-wrap" ref={popoverRef}>
               <button

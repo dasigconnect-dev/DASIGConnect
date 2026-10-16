@@ -70,9 +70,9 @@ public class AdminCapPolicy {
                 .distinct()
                 .count();
 
-        long pendingPromotions = userRepository.countLivePendingAdminPromotions(now);
+        long pendingPromotions = userRepository.countLivePendingPromotionsByRole(UserRole.admin, now);
         if (excludePromotionUserId != null
-                && userRepository.hasLivePendingAdminPromotion(excludePromotionUserId, now)) {
+                && userRepository.hasLivePendingPromotionByRole(excludePromotionUserId, UserRole.admin, now)) {
             pendingPromotions--;
         }
 
@@ -91,3 +91,4 @@ public class AdminCapPolicy {
         }
     }
 }
+

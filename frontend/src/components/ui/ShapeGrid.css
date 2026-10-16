@@ -1,0 +1,36 @@
+/* ShapeGrid Animated Canvas Background */
+.shapegrid-canvas {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.shapegrid-bg-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  /* Top & bottom organic feathering - eliminates harsh cutoff lines between sections */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16%,
+    black 84%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 16%,
+    black 84%,
+    transparent 100%
+  );
+}
+
+.shapegrid-bg-wrap.auth-grid {
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+  opacity: 0.95;
+}

@@ -9,11 +9,14 @@ import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
+import com.dasigconnect.backend.service.AiAdoptionTrackingService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -26,10 +29,19 @@ import java.util.UUID;
 @RequestMapping("/api/v1/ai/submissions")
 public class AIRecommendationController {
 
-    private final AIRecommendationService aiRecommendationService;
+    public static final String MEDIA_SUGGESTIONS_PROCESSING_HEADER = "X-Media-Suggestions-Processing";
+    public static final String MEDIA_SUGGESTIONS_OUTCOME_HEADER = "X-Media-Suggestions-Outcome";
 
-    public AIRecommendationController(AIRecommendationService aiRecommendationService) {
+    private final AIRecommendationService aiRecommendationService;
+    private final AiAdoptionTrackingService adoptionTracking;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
+
+    public AIRecommendationController(AIRecommendationService aiRecommendationService,
+                                      AiAdoptionTrackingService adoptionTracking) {
         this.aiRecommendationService = aiRecommendationService;
+        this.adoptionTracking = adoptionTracking;
     }
 
     /** Returns up to 5 similar media assets from the library using pgvector cosine search. */
@@ -42,16 +54,48 @@ public class AIRecommendationController {
     }
 
     /**
-     * Suggests up to 8 library assets based on text context (title + caption + tags)
-     * via a synchronous Voyage AI embedding call. Returns ranked results with similarity scores.
+     * Suggests up to 8 institution-visible library assets from selected-image
+     * vectors and optional post text. Outcome headers distinguish preparation,
+     * retrieval failure, an empty index, and a genuine no-match result.
      */
     @PostMapping("/{id}/suggest-media")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> suggestMedia(
             @PathVariable UUID id,
-            @RequestBody MediaSuggestRequestDto dto,
+            @RequestBody @Valid MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestMedia(id, dto, user)));
+        long startedAt = System.nanoTime();
+        try {
+            AIRecommendationService.MediaSuggestionBatch batch =
+                    aiRecommendationService.suggestMediaBatch(id, dto, user);
+            recordSuggestionMetric(id, startedAt, batch.outcome().name());
+            return ResponseEntity.ok()
+                    .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
+                    .header(MEDIA_SUGGESTIONS_OUTCOME_HEADER, batch.outcome().name())
+                    .body(ApiResponse.success(batch.results()));
+        } catch (RuntimeException error) {
+            recordSuggestionMetric(id, startedAt, "FAILURE");
+            throw error;
+        }
+    }
+
+    private void recordSuggestionMetric(UUID submissionId, long startedAt, String outcome) {
+        if (mediaAiTelemetry != null) {
+            mediaAiTelemetry.record("AI_SUGGESTION_QUERY",
+                    com.dasigconnect.backend.service.MediaAiTelemetryService.elapsedMillis(startedAt),
+                    outcome, null, submissionId, 1, 0, 0);
+        }
+    }
+
+    /** Lightweight readiness check used by the composer's bounded background refresh. */
+    @PostMapping("/{id}/suggest-media-status")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Boolean>> getSuggestMediaStatus(
+            @PathVariable UUID id,
+            @RequestBody @Valid MediaSuggestRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                aiRecommendationService.areSelectedImagesProcessing(id, dto, user)));
     }
 
     /**
@@ -65,7 +109,17 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody AlbumMatchRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestAlbum(id, dto, user)));
+        AlbumMatchResponseDto result = aiRecommendationService.suggestAlbum(id, dto, user);
+        if (result.getStatus() != AlbumMatchResponseDto.Status.none) {
+            try {
+                // AI Feature Adoption: the outcome (kept/changed) is judged on submit.
+                adoptionTracking.recordAlbumSuggestion(id, user.institutionId(), result.getStatus().name(),
+                        result.getCandidates().stream().map(candidate -> candidate.getAlbumName()).toList());
+            } catch (RuntimeException ignored) {
+                // Tracking must never fail the suggestion itself.
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /** Records a user action (accepted/dismissed) for tag_classification or media_recommendation. */
@@ -75,8 +129,11 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody @Valid AiInteractionLogRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        aiRecommendationService.logInteraction(
-                id, user.institutionId(), dto.getType(), dto.getActionTaken());
+        if (!id.equals(dto.getSubmissionId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Submission ID does not match the request path.");
+        }
+        aiRecommendationService.logInteraction(id, dto.getType(), dto.getActionTaken(), user);
         return ResponseEntity.noContent().build();
     }
 }

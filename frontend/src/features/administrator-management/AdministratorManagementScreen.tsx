@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   cancelInvitationByUser,
   changeUserRole,
@@ -80,6 +81,19 @@ export default function AdminManagementScreen({
     [admins, user.email],
   )
   const pendingTransfer = Boolean(currentAdminRecord?.superAdminTransferRequestedBy && currentAdminRecord.superAdminTransferExpiresAt)
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [targetUserId, setTargetUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (id) {
+      setTargetUserId(id)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('id')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Only the Admin Owner can invite, remove, or transfer admin accounts. Peer
   // admins get a read-only view of the roster.
@@ -504,34 +518,38 @@ export default function AdminManagementScreen({
             <p>
               {isOwner
                 ? 'Invite, remove, and transfer network-level admin accounts.'
-                : 'View network-level admin accounts. Only the Admin Owner can make changes.'}
+                : 'Invite and view network-level admin accounts. Only the Admin Owner can manage existing accounts.'}
               {' '}
               <strong>{activeAdminCount} / {ADMIN_LIMIT}</strong> admin
               {activeAdminCount === 1 ? '' : 's'} in use.
             </p>
           </div>
-          {isOwner && (
-            <button
-              type="button"
-              className="im-add-btn"
-              onClick={handleOpenInviteModal}
-              disabled={atAdminLimit}
-              title={atAdminLimit ? `Admin limit of ${ADMIN_LIMIT} reached` : undefined}
-            >
-              <i className="ti ti-user-plus" aria-hidden="true"></i>
-              Invite Admin
-            </button>
-          )}
+          <button
+            type="button"
+            className="im-add-btn"
+            onClick={handleOpenInviteModal}
+            disabled={atAdminLimit}
+            title={atAdminLimit ? `Admin limit of ${ADMIN_LIMIT} reached` : undefined}
+          >
+            <i className="ti ti-user-plus" aria-hidden="true"></i>
+            Invite Admin
+          </button>
         </header>
 
         {pendingTransfer && (
-          <div className="alert alert-info" role="status">
-            <i className="ti ti-shield-up" aria-hidden="true"></i>
-            <div>
-              <strong>Admin transfer pending.</strong>
-              <span> Confirm to accept network ownership before the request expires.</span>
+          <div className="um-transfer-banner" role="status">
+            <div className="um-transfer-banner-content">
+              <i className="ti ti-shield-up" aria-hidden="true"></i>
+              <div>
+                <strong>Admin transfer pending.</strong>
+                <span> Confirm to accept network ownership before the request expires.</span>
+              </div>
             </div>
-            <button type="button" className="btn-primary" onClick={() => void handleConfirmTransfer()}>
+            <button
+              type="button"
+              className="um-transfer-confirm-btn"
+              onClick={() => void handleConfirmTransfer()}
+            >
               Confirm Transfer
             </button>
           </div>
@@ -568,6 +586,7 @@ export default function AdminManagementScreen({
               showHeader={false}
               variant="directory"
               userColumnLabel="Admin"
+              targetUserId={targetUserId}
             />
           </>
         )}

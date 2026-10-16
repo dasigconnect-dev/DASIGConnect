@@ -24,9 +24,9 @@ public class UserDto {
     private boolean adminOwner;
     private UUID superAdminTransferRequestedBy;
     private Instant superAdminTransferExpiresAt;
-    private UUID adminPromotionRequestedBy;
-    private Instant adminPromotionExpiresAt;
-    private boolean adminPromotionPending;
+    private String pendingPromotionRole;
+    private UUID pendingPromotionRequestedBy;
+    private Instant pendingPromotionExpiresAt;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
@@ -53,11 +53,9 @@ public class UserDto {
         dto.adminOwner = user.isAdminOwner();
         dto.superAdminTransferRequestedBy = user.getSuperAdminTransferRequestedBy();
         dto.superAdminTransferExpiresAt = user.getSuperAdminTransferExpiresAt();
-        dto.adminPromotionRequestedBy = user.getAdminPromotionRequestedBy();
-        dto.adminPromotionExpiresAt = user.getAdminPromotionExpiresAt();
-        dto.adminPromotionPending = user.getAdminPromotionRequestedBy() != null
-                && user.getAdminPromotionExpiresAt() != null
-                && user.getAdminPromotionExpiresAt().isAfter(java.time.Instant.now());
+        dto.pendingPromotionRole = user.getPendingPromotionRole() != null ? user.getPendingPromotionRole().name() : null;
+        dto.pendingPromotionRequestedBy = user.getPendingPromotionRequestedBy();
+        dto.pendingPromotionExpiresAt = user.getPendingPromotionExpiresAt();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
@@ -133,16 +131,16 @@ public class UserDto {
         return superAdminTransferExpiresAt;
     }
 
-    public UUID getAdminPromotionRequestedBy() {
-        return adminPromotionRequestedBy;
+    public String getPendingPromotionRole() {
+        return pendingPromotionRole;
     }
 
-    public Instant getAdminPromotionExpiresAt() {
-        return adminPromotionExpiresAt;
+    public UUID getPendingPromotionRequestedBy() {
+        return pendingPromotionRequestedBy;
     }
 
-    public boolean isAdminPromotionPending() {
-        return adminPromotionPending;
+    public Instant getPendingPromotionExpiresAt() {
+        return pendingPromotionExpiresAt;
     }
 
     public UUID getInstitutionId() {
@@ -194,3 +192,4 @@ public class UserDto {
     public java.util.List<String> getTourSeenScreens() { return tourSeenScreens; }
     public boolean isToursEnabled() { return toursEnabled; }
 }
+

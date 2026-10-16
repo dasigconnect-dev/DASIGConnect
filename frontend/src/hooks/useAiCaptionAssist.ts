@@ -160,7 +160,10 @@ export function useAiCaptionAssist(
       );
       setState(timedOut ? "error-timeout" : "error-unavailable");
       cooldownRef.current = setTimeout(() => {
-        if (requestIdRef.current === request.id) setState("idle");
+        if (requestIdRef.current === request.id) {
+          setState("idle");
+          setNotice(null);
+        }
       }, 5000);
       return null;
     } finally {
@@ -185,7 +188,8 @@ export function useAiCaptionAssist(
 
   function regenerate() {
     setVariants(null);
-    if (submissionId) logCaptionInteraction(submissionId, "re_generate");
+    // No client-side "re_generate" log: the server records one per generation,
+    // and logging here too double-counted every regenerate.
     void suggest(lastPrompt, lastTone);
   }
 

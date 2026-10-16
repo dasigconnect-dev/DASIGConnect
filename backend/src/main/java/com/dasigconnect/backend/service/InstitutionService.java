@@ -306,6 +306,21 @@ public class InstitutionService {
         return InstitutionDto.from(saved);
     }
 
+    public InstitutionDto setAiMediaHybridRankingEnabled(UUID institutionId, boolean enabled) {
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+        boolean previous = institution.isAiMediaHybridRankingEnabled();
+        institution.setAiMediaHybridRankingEnabled(enabled);
+        Institution saved = institutionRepository.save(institution);
+        auditLogService.recordSystemAction(
+                "AI_MEDIA_HYBRID_ROLLOUT_UPDATED",
+                institutionId,
+                Map.of("previousEnabled", previous, "enabled", enabled));
+        log.info("AI media hybrid ranking rollout for institution {} changed from {} to {}",
+                institutionId, previous, enabled);
+        return InstitutionDto.from(saved);
+    }
+
     // ── A2: Deactivate Institution ────────────────────────────────────────────
     /**
      * Admin-initiated deactivation of an institution (A2). Sets status to

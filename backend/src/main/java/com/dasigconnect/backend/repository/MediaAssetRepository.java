@@ -22,6 +22,18 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
     Optional<MediaAsset> findActiveById(@Param("id") UUID id);
 
+    @EntityGraph(attributePaths = {"mediaAlbum"})
+    @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
+    Optional<MediaAsset> findActiveWithAlbumById(@Param("id") UUID id);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE MediaAsset m SET m.semanticRevision = m.semanticRevision + 1 WHERE m.id = :id AND m.deletedAt IS NULL")
+    int incrementSemanticRevision(@Param("id") UUID id);
+
+    @Query("SELECT m.id FROM MediaAsset m WHERE m.mediaAlbum.id = :albumId AND m.deletedAt IS NULL")
+    List<UUID> findActiveIdsByMediaAlbumId(@Param("albumId") UUID albumId);
+
     @Query("SELECT COUNT(m) > 0 FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL")
     boolean existsActiveByInstitutionId(@Param("institutionId") UUID institutionId);
 
@@ -104,6 +116,91 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             @Param("uploaderId") UUID uploaderId,
             Pageable pageable);
 
+    /**
+     * Keyword-search fallback for {@code /media-assets/search}, filtered and
+     * capped in SQL instead of loading every visible asset into memory first
+     * (that used to be the semantic-search keyword path — a full table scan
+     * into the JVM heap on every Enter-press, the single biggest Supabase
+     * egress source once semantic search itself is already scoped by pgvector).
+     */
+    @EntityGraph(attributePaths = {"institution", "uploader", "mediaAlbum"})
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              NOT EXISTS (
+                  SELECT sma.id FROM SubmissionMediaAsset sma
+                  WHERE sma.mediaAsset = m
+              )
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (
+              LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.aiCategory, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.aiDescription, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR (m.uploader IS NOT NULL AND LOWER(m.uploader.email) LIKE CONCAT('%', :searchTerm, '%'))
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m
+                    AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
+              )
+          )
+        ORDER BY CASE
+                   WHEN LOWER(m.assetCode) = :searchTerm THEN 0
+                   WHEN LOWER(COALESCE(m.displayTitle, '')) = :searchTerm THEN 1
+                   WHEN LOWER(m.fileName) = :searchTerm THEN 2
+                   WHEN EXISTS (
+                       SELECT exactTag.id FROM AssetTag exactTag
+                       WHERE exactTag.mediaAsset = m
+                         AND LOWER(exactTag.label) = :searchTerm
+                   ) THEN 3
+                   ELSE 4
+                 END,
+                 m.createdAt DESC
+        """)
+    List<MediaAsset> findKeywordMatches(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable);
+
+    @Query("""
+        SELECT m.id FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              NOT EXISTS (SELECT sma.id FROM SubmissionMediaAsset sma WHERE sma.mediaAsset = m)
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (
+              LOWER(m.fileName) = :searchTerm
+              OR LOWER(COALESCE(m.displayTitle, '')) = :searchTerm
+              OR LOWER(m.assetCode) = :searchTerm
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m AND LOWER(tag.label) = :searchTerm
+              )
+          )
+        """)
+    List<UUID> findExactKeywordMatchIds(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable);
+
     // JPQL (not SELECT *) so Hibernate emits an explicit column list and never
     // pulls the unmapped embedding VECTOR(1024) column across the wire.
     @Query("""
@@ -114,6 +211,28 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         ORDER BY m.createdAt DESC
         """)
     List<MediaAsset> findReadyByInstitution(@Param("institutionId") UUID institutionId);
+
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.institution.id = :institutionId
+          AND m.deletedAt IS NULL
+          AND m.status = com.dasigconnect.backend.model.entity.MediaAssetStatus.READY
+          AND LOWER(COALESCE(m.temporalClassification, '')) <> 'expired'
+          AND (
+              NOT EXISTS (
+                  SELECT link.id FROM SubmissionMediaAsset link
+                  WHERE link.mediaAsset.id = m.id
+              )
+              OR EXISTS (
+                  SELECT visibleLink.id FROM SubmissionMediaAsset visibleLink
+                  WHERE visibleLink.mediaAsset.id = m.id
+                    AND visibleLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+        ORDER BY m.createdAt DESC
+        """)
+    List<MediaAsset> findVisibleReadyByInstitution(
+            @Param("institutionId") UUID institutionId, Pageable pageable);
 
     // Excludes STAGED rows (draft uploads not yet bound to an institution) so they
     // never surface in the admin network-wide Media Repository view.
@@ -268,13 +387,28 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         UPDATE media_assets
         SET embedding = CAST(:embedding AS vector),
             embedding_generated_at = NOW(),
-            embedding_model = :embeddingModel,
-            status = 'READY'
+            embedding_model = :embeddingModel
         WHERE id = :id
         """, nativeQuery = true)
     void updateEmbedding(@Param("id") UUID id,
             @Param("embedding") String embeddingJson,
             @Param("embeddingModel") String embeddingModel);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE media_assets
+        SET embedding = CAST(:embedding AS vector),
+            embedding_generated_at = NOW(),
+            embedding_model = :embeddingModel
+        WHERE id = :id
+          AND deleted_at IS NULL
+          AND semantic_revision = :semanticRevision
+        """, nativeQuery = true)
+    int updateEmbeddingIfSemanticRevision(@Param("id") UUID id,
+            @Param("embedding") String embeddingJson,
+            @Param("embeddingModel") String embeddingModel,
+            @Param("semanticRevision") long semanticRevision);
 
     @Modifying
     @Transactional
@@ -299,6 +433,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           AND deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 5
         """, nativeQuery = true)
@@ -307,48 +442,229 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query(value = "SELECT embedding::text FROM media_assets WHERE id = :id AND deleted_at IS NULL AND status = 'READY' AND embedding IS NOT NULL", nativeQuery = true)
     Optional<String> findEmbeddingById(@Param("id") UUID id);
 
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status IN (
+              com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING,
+              com.dasigconnect.backend.model.entity.MediaAssetStatus.FAILED
+          )
+          AND NOT EXISTS (
+              SELECT job.id FROM MediaProcessingJob job
+              WHERE job.assetId = m.id
+                AND job.processingVersion = :processingVersion
+                AND job.status IN (
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.PENDING,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.PROCESSING,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.RETRY,
+                    com.dasigconnect.backend.model.entity.MediaProcessingJobStatus.DEAD
+                )
+          )
+        ORDER BY m.createdAt ASC, m.id ASC
+        """)
+    List<MediaAsset> findNeedingProcessingVersion(
+            @Param("processingVersion") String processingVersion, Pageable pageable);
+
     @Query(value = """
-        SELECT
-          id,
-          institution_id,
-          uploader_id,
-          asset_code,
-          storage_url,
-          media_album_id,
-          file_name,
-          display_title,
-          file_type,
-          file_size_bytes,
-          ai_category,
-          ai_confidence,
-          ai_description,
-          asset_type,
-          visible_objects,
-          specific_subjects,
-          visual_style,
-          dominant_colors,
-          content_hash,
-          possible_use_cases,
-          ai_tags,
-          excluded_categories,
-          ai_classified_at,
-          ai_classification_model,
-          embedding_generated_at,
-          embedding_model,
-          reclassified_at,
-          status,
-          deleted_at,
-          deleted_by_user_id,
-          purged_at,
-          created_at
-        FROM media_assets
-        WHERE deleted_at IS NULL
-          AND status IS DISTINCT FROM 'STAGED'
-          AND (status IS NULL OR status IN ('PROCESSING', 'FAILED') OR embedding IS NULL)
-        ORDER BY created_at ASC
-        LIMIT 10
+        SELECT ma.*
+        FROM media_assets ma
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_asset_embeddings embedding
+              WHERE embedding.asset_id = ma.id
+                AND embedding.embedding_type = 'image'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type = 'EMBED_IMAGE_ONLY'
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
         """, nativeQuery = true)
-    List<MediaAsset> findNeedingEmbedding();
+    List<MediaAsset> findReadyImagesMissingImageEmbedding(Pageable pageable);
+
+    @Query(value = """
+        SELECT DISTINCT ma.*
+        FROM media_assets ma
+        JOIN submission_media_assets link ON link.media_asset_id = ma.id
+        JOIN submissions submission ON submission.id = link.submission_id
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'STAGED'
+          AND submission.status = 'draft'
+          AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_asset_embeddings embedding
+              WHERE embedding.asset_id = ma.id
+                AND embedding.embedding_type = 'image'
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type = 'EMBED_IMAGE_ONLY'
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findDraftImagesMissingImageEmbedding(Pageable pageable);
+
+    @Query(value = """
+        SELECT DISTINCT ma.*
+        FROM media_assets ma
+        JOIN submission_media_assets link ON link.media_asset_id = ma.id
+        JOIN submissions submission ON submission.id = link.submission_id
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'STAGED'
+          AND submission.status = 'draft'
+          AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+          AND (ma.asset_type IS NULL OR BTRIM(ma.asset_type) = '')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type IN ('ENRICH_MEDIA', 'CLASSIFY_AND_EMBED')
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findDraftImagesMissingClassification(Pageable pageable);
+
+    /**
+     * Institution-fair Gemini metadata backfill for historical READY images.
+     * Completed jobs may be selected again when metadata is still absent, while
+     * active/dead jobs for the current enrichment version remain untouched.
+     */
+    @Query(value = """
+        WITH eligible AS (
+            SELECT ma.id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ma.institution_id
+                       ORDER BY ma.created_at ASC, ma.id ASC
+                   ) AS institution_rank
+            FROM media_assets ma
+            WHERE ma.deleted_at IS NULL
+              AND ma.status = 'READY'
+              AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+              AND ma.storage_url IS NOT NULL
+              AND (
+                  ma.ai_classified_at IS NULL
+                  OR ma.asset_type IS NULL
+                  OR BTRIM(ma.asset_type) = ''
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM media_processing_jobs job
+                  WHERE job.asset_id = ma.id
+                    AND job.job_type IN ('ENRICH_MEDIA', 'CLASSIFY_AND_EMBED')
+                    AND job.processing_version = :enrichmentVersion
+                    AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+              )
+        )
+        SELECT ma.*
+        FROM eligible candidate
+        JOIN media_assets ma ON ma.id = candidate.id
+        WHERE candidate.institution_rank <= :perInstitutionLimit
+        ORDER BY candidate.institution_rank, ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findFairReadyImagesMissingClassification(
+            @Param("enrichmentVersion") String enrichmentVersion,
+            @Param("perInstitutionLimit") int perInstitutionLimit,
+            Pageable pageable);
+
+    @Query(value = """
+        SELECT ma.*
+        FROM media_assets ma
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_asset_embeddings embedding
+              WHERE embedding.asset_id = ma.id
+                AND embedding.embedding_type = 'semantic'
+                AND embedding.model = :embeddingModel
+                AND embedding.processing_version = :processingVersion
+                AND embedding.source_revision = ma.semantic_revision
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM media_processing_jobs job
+              WHERE job.asset_id = ma.id
+                AND job.job_type = 'EMBED_SEMANTIC_ONLY'
+                AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+          )
+        ORDER BY ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findReadyAssetsMissingCurrentSemanticEmbedding(
+            @Param("embeddingModel") String embeddingModel,
+            @Param("processingVersion") String processingVersion,
+            Pageable pageable);
+
+    @Query(value = """
+        WITH eligible AS (
+            SELECT ma.id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ma.institution_id
+                       ORDER BY ma.created_at ASC, ma.id ASC
+                   ) AS institution_rank
+            FROM media_assets ma
+            WHERE ma.deleted_at IS NULL
+              AND ma.status = 'READY'
+              AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif')
+              AND ma.storage_url IS NOT NULL
+              AND (
+                  NOT EXISTS (
+                      SELECT 1 FROM media_asset_embeddings image_embedding
+                      WHERE image_embedding.asset_id = ma.id
+                        AND image_embedding.embedding_type = 'image'
+                        AND image_embedding.model = :imageModel
+                        AND image_embedding.processing_version = :imageVersion
+                        AND image_embedding.source_revision = 0
+                        AND image_embedding.source_input_hash =
+                            encode(digest(btrim(ma.storage_url), 'sha256'), 'hex')
+                  )
+                  OR NOT EXISTS (
+                      SELECT 1 FROM media_asset_embeddings semantic_embedding
+                      WHERE semantic_embedding.asset_id = ma.id
+                        AND semantic_embedding.embedding_type = 'semantic'
+                        AND semantic_embedding.model = :semanticModel
+                        AND semantic_embedding.processing_version = :semanticVersion
+                        AND semantic_embedding.source_revision = ma.semantic_revision
+                  )
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM media_processing_jobs job
+                  WHERE job.asset_id = ma.id
+                    AND (
+                        (job.job_type = 'RETRIEVAL_EMBEDDINGS'
+                            AND job.processing_version = :retrievalVersion)
+                        OR (job.job_type = 'EMBED_IMAGE_ONLY'
+                            AND job.processing_version = :imageVersion)
+                        OR (job.job_type = 'EMBED_SEMANTIC_ONLY'
+                            AND job.processing_version = :semanticVersion)
+                    )
+                    AND job.status IN ('PENDING', 'PROCESSING', 'RETRY', 'DEAD')
+              )
+        )
+        SELECT ma.*
+        FROM eligible candidate
+        JOIN media_assets ma ON ma.id = candidate.id
+        WHERE candidate.institution_rank <= :perInstitutionLimit
+        ORDER BY candidate.institution_rank, ma.created_at ASC, ma.id ASC
+        """, nativeQuery = true)
+    List<MediaAsset> findFairReadyImagesNeedingCurrentEmbeddings(
+            @Param("imageModel") String imageModel,
+            @Param("imageVersion") String imageVersion,
+            @Param("semanticModel") String semanticModel,
+            @Param("semanticVersion") String semanticVersion,
+            @Param("retrievalVersion") String retrievalVersion,
+            @Param("perInstitutionLimit") int perInstitutionLimit,
+            Pageable pageable);
 
     /**
      * Returns id + cosine similarity score for top nearest neighbours.
@@ -360,6 +676,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           AND deleted_at IS NULL
           AND status = 'READY'
           AND embedding IS NOT NULL
+          AND COALESCE(LOWER(temporal_classification), '') <> 'expired'
         ORDER BY embedding <=> CAST(:queryVector AS vector)
         LIMIT 30
         """, nativeQuery = true)
@@ -374,36 +691,79 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * institutions.
      */
     @Query(value = """
-        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
-        FROM media_assets
-        WHERE institution_id IN (:institutionIds)
-          AND deleted_at IS NULL
-          AND status = 'READY'
-          AND embedding IS NOT NULL
-        ORDER BY embedding <=> CAST(:queryVector AS vector)
-        LIMIT 60
+        SELECT CAST(ma.id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets ma
+        JOIN media_asset_embeddings mae ON mae.asset_id = ma.id
+        WHERE ma.institution_id IN (:institutionIds)
+          AND ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
+          AND mae.embedding_type = 'semantic'
+          AND mae.model = :model
+          AND mae.source_revision = ma.semantic_revision
+          AND mae.processing_version = :processingVersion
+          AND (
+              NOT EXISTS (SELECT 1 FROM submission_media_assets any_link WHERE any_link.media_asset_id = ma.id)
+              OR EXISTS (
+                  SELECT 1 FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id AND visible_submission.status <> 'draft'
+              )
+          )
+        ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> findTopSimilarInInstitutions(@Param("institutionIds") java.util.Collection<UUID> institutionIds,
-            @Param("queryVector") String queryVectorJson);
+            @Param("queryVector") String queryVectorJson,
+            @Param("model") String model,
+            @Param("processingVersion") String processingVersion,
+            @Param("limit") int limit);
 
     /**
      * [idText, cosineScore] for the nearest ready assets network-wide (admin).
      */
     @Query(value = """
-        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
-        FROM media_assets
-        WHERE deleted_at IS NULL
-          AND status = 'READY'
-          AND embedding IS NOT NULL
-        ORDER BY embedding <=> CAST(:queryVector AS vector)
-        LIMIT 60
+        SELECT CAST(ma.id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets ma
+        JOIN media_asset_embeddings mae ON mae.asset_id = ma.id
+        WHERE ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
+          AND mae.embedding_type = 'semantic'
+          AND mae.model = :model
+          AND mae.source_revision = ma.semantic_revision
+          AND mae.processing_version = :processingVersion
+          AND (
+              NOT EXISTS (SELECT 1 FROM submission_media_assets any_link WHERE any_link.media_asset_id = ma.id)
+              OR EXISTS (
+                  SELECT 1 FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id AND visible_submission.status <> 'draft'
+              )
+          )
+        ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
-    List<Object[]> findTopSimilarAllInstitutions(@Param("queryVector") String queryVectorJson);
+    List<Object[]> findTopSimilarAllInstitutions(
+            @Param("queryVector") String queryVectorJson,
+            @Param("model") String model,
+            @Param("processingVersion") String processingVersion,
+            @Param("limit") int limit);
 
     @Modifying
     @Transactional
     @Query(value = "UPDATE media_assets SET status = :status WHERE id = :id", nativeQuery = true)
     void updateStatus(@Param("id") UUID id, @Param("status") String status);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE media_assets
+        SET status = 'READY', ai_processing_version = :processingVersion
+        WHERE id = :id AND deleted_at IS NULL
+        """, nativeQuery = true)
+    void markProcessingReady(@Param("id") UUID id,
+                             @Param("processingVersion") String processingVersion);
 
     @Query(value = """
         SELECT * FROM media_assets

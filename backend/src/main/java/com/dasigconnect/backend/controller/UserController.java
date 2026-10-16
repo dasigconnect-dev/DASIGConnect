@@ -152,9 +152,9 @@ public class UserController {
 
     /**
      * PATCH /api/v1/users/{id}/institution Reassigns a contributor account to a
-     * different institution (Moderator-only, A4). Moderators cannot be reassigned
-     * through this endpoint. Historical submissions retain their original
-     * institution attribution.
+     * different institution (Moderator-only, A4). Moderators cannot be
+     * reassigned through this endpoint. Historical submissions retain their
+     * original institution attribution.
      */
     @PatchMapping("/users/{id}/institution")
     @PreAuthorize("hasRole('ADMIN')")
@@ -215,7 +215,7 @@ public class UserController {
     }
 
     @PostMapping("/users/admin-transfer/confirm")
-    @PreAuthorize("hasRole('MODERATOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserDto>> confirmAdminTransfer(
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminTransfer(user)));
@@ -229,20 +229,9 @@ public class UserController {
      */
     @PostMapping("/users/promotion/confirm")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> confirmAdminPromotion(
+    public ResponseEntity<ApiResponse<UserDto>> confirmPromotion(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminPromotion(user)));
-    }
-
-    /**
-     * POST /api/v1/users/promotion/decline Declines a pending Administrator
-     * promotion, releasing the reserved slot immediately.
-     */
-    @PostMapping("/users/promotion/decline")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<UserDto>> declineAdminPromotion(
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.declineAdminPromotion(user)));
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmPromotion(user)));
     }
 
     /**
@@ -251,10 +240,17 @@ public class UserController {
      */
     @DeleteMapping("/users/{id}/promotion")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<UserDto>> cancelAdminPromotion(
+    public ResponseEntity<ApiResponse<UserDto>> cancelPromotion(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(userService.cancelAdminPromotion(id, user)));
+        return ResponseEntity.ok(ApiResponse.success(userService.cancelPromotion(id, user)));
+    }
+
+    @PostMapping("/users/promotion/decline")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> declinePromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.declinePromotion(user)));
     }
 
     /**

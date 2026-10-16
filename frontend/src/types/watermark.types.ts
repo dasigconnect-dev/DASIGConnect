@@ -23,7 +23,7 @@ export interface WatermarkElement {
   imageUrl?: string;
 
   // Shape specific
-  shapeType?: "rectangle" | "line";
+  shapeType?: "rectangle" | "line" | "gradient";
   fillColor?: string;
   strokeColor?: string;
 }

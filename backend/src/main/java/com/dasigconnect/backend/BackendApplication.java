@@ -101,6 +101,12 @@ public class BackendApplication {
                 // Seed bootstrap admin — credentials must be supplied via env, no defaults.
                 String adminEmail = System.getenv("BOOTSTRAP_ADMIN_EMAIL");
                 String adminPassword = System.getenv("BOOTSTRAP_ADMIN_PASSWORD");
+                if (adminEmail == null || adminEmail.isBlank()) {
+                    adminEmail = System.getProperty("BOOTSTRAP_ADMIN_EMAIL");
+                }
+                if (adminPassword == null || adminPassword.isBlank()) {
+                    adminPassword = System.getProperty("BOOTSTRAP_ADMIN_PASSWORD");
+                }
 
                 System.out.println("Configuring database user and tables for clean RLS bypassing...");
                 try (java.sql.Statement stmt = conn.createStatement()) {
