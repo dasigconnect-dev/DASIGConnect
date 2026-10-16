@@ -1,18 +1,16 @@
 # DASIGConnect Documentation
 
-This directory contains the maintained documentation used for development, testing, deployment, and academic submission. Completed implementation plans and temporary generation artifacts are preserved in Git history instead of remaining beside current documents.
+This directory contains the formal PDF deliverables and retained visual reference material used by the project. Completed plans, editable drafts, source-level requirement notes, and temporary generation artifacts remain recoverable from Git history instead of remaining in the demo branch.
 
 ## Canonical Documents
 
 | Area | Canonical path | Purpose |
 |---|---|---|
 | Proposal | `pdf/DASIGConnect - Proposal.pdf` | Approved project scope and objectives |
-| Software requirements | `md/srs/SRS.md` and `md/srs/UC-*.md` | Maintained requirements and use-case specifications |
 | SRS submission copy | `pdf/DASIGConnect_SRS.pdf` | Formal SRS artifact |
 | Software design | `pdf/DASIGConnect_SDD.pdf` | Formal SDD artifact |
-| Software testing | `md/std.md` | Test plan, cases, and reports |
-| SRS alignment record | `md/srs/SRS-codebase-alignment-notes-2026-09-27.md` | Verified code-to-requirement alignment notes |
-| Refactoring evidence | `word/DASIGConnect_Refactoring_Evidence.docx` | MVP finding-to-implementation evidence |
+| Local database setup | `pdf/local-db-setup.pdf` | Local PostgreSQL setup reference |
+| Visual references | `img/` | Retained DASIG content screenshots |
 | Deployment | `../DEPLOY.md` | Deployment and runtime guidance |
 | Repository setup | `../README.md` | Architecture and local development instructions |
 
@@ -45,7 +43,10 @@ Cleanup approved by the project member requesting demo preparation on 17 October
 | `md/AI_MEDIA_SUGGESTION_STEP1_SAFE_DEVELOPMENT_PLAN.md` | Completed phased development plan | Current AI recommendation implementation and tests |
 | `md/MEDIA_LIBRARY_VOYAGE_RETRIEVAL_IMPLEMENTATION_PLAN.md` | Completed retrieval implementation plan | Current Voyage/pgvector implementation and tests |
 | `md/DEMO_READINESS_CODE_AND_DOCUMENT_CLEANUP_PLAN.md` | Phase plan completed and replaced by this maintained inventory | This document and PR history |
+| `md/srs/SRS.md`, `md/srs/UC-*.md`, and the SRS alignment notes | Editable/source-level requirement copies removed from the demo branch | `pdf/DASIGConnect_SRS.pdf` and Git history |
+| `md/std.md` | Editable Software Test Document removed from the demo branch | External submitted copy and Git history |
+| `word/DASIGConnect_Refactoring_Evidence.docx` | Editable evidence file removed after completion | PR #407 and Git history |
 
 ## Local-Only Material
 
-Untracked academic drafts under `docs/word`, `docs/xlsx`, `docs/rtm req`, `docs/audits`, and `docs/img` were not deleted. The team must identify final approved copies before archiving or removing them. Generated `output`, `outputs`, `tmp`, and `work` directories are ignored and are not part of the repository.
+The retained PDF and image files are part of the demo documentation set. Generated `output`, `outputs`, `tmp`, and `work` directories are ignored and are not part of the repository. Respondent-identifying data and editable academic working files should remain outside the source repository.

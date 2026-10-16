@@ -186,9 +186,8 @@ DASIGConnect/
 │   ├── vite.config.ts              # Vite bundler configuration
 │   └── package.json                # Frontend dependencies & scripts
 ├── docs/                           # Canonical documentation (see docs/README.md)
-│   ├── md/srs/                     # Maintained SRS and use-case specifications
-│   ├── pdf/                        # Formal Proposal, SDD, and SRS deliverables
-│   └── word/                       # Refactoring evidence and editable deliverables
+│   ├── pdf/                        # Formal Proposal, SDD, SRS, and local DB guide
+│   └── img/                        # Retained visual reference material
 ├── docker-compose.yml              # Local PostgreSQL + pgvector container configuration
 └── README.md                       # Repository guide & setup instructions
 ```
