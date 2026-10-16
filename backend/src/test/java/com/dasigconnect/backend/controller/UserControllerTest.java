@@ -305,9 +305,9 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "MODERATOR")
-    void confirmAdminTransfer_asModerator_returnsIncomingAdmin() throws Exception {
-        User incoming = user(UUID.randomUUID(), "incoming@dasigconnect.com", UserRole.moderator, null);
+    @WithMockUser(roles = "ADMIN")
+    void confirmAdminTransfer_asAdmin_returnsIncomingAdminOwner() throws Exception {
+        User incoming = user(UUID.randomUUID(), "incoming@dasigconnect.com", UserRole.admin, null);
         incoming.setAdminOwner(true);
         when(userService.confirmAdminTransfer(any())).thenReturn(UserDto.from(incoming));
 
@@ -315,6 +315,24 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("incoming@dasigconnect.com"))
                 .andExpect(jsonPath("$.data.adminOwner").value(true));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void confirmAdminTransfer_asModerator_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/users/admin-transfer/confirm"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void confirmAdminTransfer_asContributor_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/users/admin-transfer/confirm"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"));
     }
 
     @Test
