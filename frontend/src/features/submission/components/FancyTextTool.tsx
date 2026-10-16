@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CAPTION_CHAR_LIMIT } from "../utils";
 
@@ -38,6 +38,12 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   /** Show the styles panel regardless of internal state (the composer guide's view-only preview). */
   forceOpen?: boolean;
+}
+
+interface PreviewState {
+  baseCaption: string;
+  baseSelection: FancyTextSelection;
+  previewCaption: string;
 }
 
 const PREVIEW_TEXT_LIMIT = 54;
@@ -118,12 +124,54 @@ export default function FancyTextTool({
   forceOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const panelOpen = open || forceOpen;
   const containerRef = useRef<HTMLDivElement>(null);
-  const baseCaptionRef = useRef<string | null>(null);
-  const baseSelectionRef = useRef<FancyTextSelection | null>(null);
-  const lastPreviewCaptionRef = useRef<string | null>(null);
-  const previewingRef = useRef(false);
+
+  const isPreviewingCurrentCaption =
+    previewState !== null && caption === previewState.previewCaption;
+  const activeCaption = isPreviewingCurrentCaption
+    ? previewState.baseCaption
+    : caption;
+  const activeSelection = isPreviewingCurrentCaption
+    ? previewState.baseSelection
+    : selection;
+  const hasExplicitSelection = activeSelection.end > activeSelection.start;
+  const effectiveSelection = hasExplicitSelection
+    ? activeSelection
+    : panelOpen && activeCaption.length > 0
+      ? { start: 0, end: activeCaption.length }
+      : activeSelection;
+  const selectedText = effectiveSelection.end > effectiveSelection.start
+    ? activeCaption.slice(effectiveSelection.start, effectiveSelection.end)
+    : "";
+  const canUseSelection = Boolean(selectedText) && !disabled;
+
+  const closePanel = useCallback((
+    options: { restorePreview?: boolean; restoreSelection?: boolean } = {},
+  ) => {
+    const shouldRestorePreview =
+      previewState !== null && caption === previewState.previewCaption;
+    const nextSelection = shouldRestorePreview
+      ? previewState.baseSelection
+      : selection;
+    if (options.restorePreview && shouldRestorePreview) {
+      onPreviewSelection(previewState.baseCaption, previewState.baseSelection);
+    }
+    setPreviewState(null);
+    onPreviewStateChange?.(false);
+    setOpen(false);
+    onOpenChange?.(false);
+    if (options.restoreSelection !== false) onRestoreSelection(nextSelection);
+  }, [
+    caption,
+    onOpenChange,
+    onPreviewSelection,
+    onPreviewStateChange,
+    onRestoreSelection,
+    previewState,
+    selection,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -138,26 +186,7 @@ export default function FancyTextTool({
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("touchstart", handleClickOutside);
     };
-  }, [open]);
-
-  const isPreviewingCurrentCaption =
-    previewingRef.current && caption === lastPreviewCaptionRef.current;
-  const activeCaption = isPreviewingCurrentCaption && baseCaptionRef.current != null
-    ? baseCaptionRef.current
-    : caption;
-  const activeSelection = isPreviewingCurrentCaption && baseSelectionRef.current
-    ? baseSelectionRef.current
-    : selection;
-  const hasExplicitSelection = activeSelection.end > activeSelection.start;
-  const effectiveSelection = hasExplicitSelection
-    ? activeSelection
-    : panelOpen && activeCaption.length > 0
-      ? { start: 0, end: activeCaption.length }
-      : activeSelection;
-  const selectedText = effectiveSelection.end > effectiveSelection.start
-    ? activeCaption.slice(effectiveSelection.start, effectiveSelection.end)
-    : "";
-  const canUseSelection = Boolean(selectedText) && !disabled;
+  }, [closePanel, open]);
 
   const previews = useMemo(
     () =>
@@ -194,49 +223,27 @@ export default function FancyTextTool({
   }
 
   function openPanel() {
-    baseCaptionRef.current = caption;
-    baseSelectionRef.current = selection;
-    previewingRef.current = false;
-    lastPreviewCaptionRef.current = null;
+    setPreviewState(null);
     onPreviewStateChange?.(false);
     setOpen(true);
     onOpenChange?.(true);
     onRestoreSelection(selection);
   }
 
-  function closePanel(options: { restorePreview?: boolean; restoreSelection?: boolean } = {}) {
-    const previewBaseCaption = baseCaptionRef.current;
-    const previewBaseSelection = baseSelectionRef.current;
-    const shouldRestorePreview =
-      previewingRef.current &&
-      caption === lastPreviewCaptionRef.current &&
-      previewBaseCaption != null &&
-      previewBaseSelection != null;
-    const nextSelection = shouldRestorePreview && previewBaseSelection
-      ? previewBaseSelection
-      : selection;
-    if (options.restorePreview && shouldRestorePreview && previewBaseSelection) {
-      onPreviewSelection(previewBaseCaption, previewBaseSelection);
-    }
-    previewingRef.current = false;
-    lastPreviewCaptionRef.current = null;
-    onPreviewStateChange?.(false);
-    baseCaptionRef.current = null;
-    baseSelectionRef.current = null;
-    setOpen(false);
-    onOpenChange?.(false);
-    if (options.restoreSelection !== false) onRestoreSelection(nextSelection);
-  }
-
   function previewStyle(styleId: FancyTextStyleId) {
     if (!canUseSelection) return;
-    if (!isPreviewingCurrentCaption) {
-      baseCaptionRef.current = caption;
-      baseSelectionRef.current = selection;
-    }
+    const baseCaption = isPreviewingCurrentCaption
+      ? previewState.baseCaption
+      : caption;
+    const baseSelection = isPreviewingCurrentCaption
+      ? previewState.baseSelection
+      : selection;
     const preview = buildStyledCaption(styleId);
-    previewingRef.current = true;
-    lastPreviewCaptionRef.current = preview.nextCaption;
+    setPreviewState({
+      baseCaption,
+      baseSelection,
+      previewCaption: preview.nextCaption,
+    });
     onPreviewStateChange?.(true);
     onPreviewSelection(preview.nextCaption, preview.nextSelection);
   }
@@ -244,8 +251,7 @@ export default function FancyTextTool({
   function applyStyle(styleId: FancyTextStyleId) {
     if (!canUseSelection) return;
     const result = buildStyledCaption(styleId);
-    previewingRef.current = false;
-    lastPreviewCaptionRef.current = null;
+    setPreviewState(null);
     onPreviewStateChange?.(false);
     onReplaceSelection(result.nextCaption, result.nextSelection);
     closePanel({ restorePreview: false, restoreSelection: false });
@@ -286,17 +292,11 @@ export default function FancyTextTool({
           aria-label="Fancy text styles"
           onMouseDown={(event) => event.preventDefault()}
           onMouseLeave={() => {
-            if (
-              !previewingRef.current ||
-              caption !== lastPreviewCaptionRef.current ||
-              !baseCaptionRef.current ||
-              !baseSelectionRef.current
-            ) return;
-            onPreviewSelection(baseCaptionRef.current, baseSelectionRef.current);
-            previewingRef.current = false;
-            lastPreviewCaptionRef.current = null;
+            if (!previewState || caption !== previewState.previewCaption) return;
+            onPreviewSelection(previewState.baseCaption, previewState.baseSelection);
+            setPreviewState(null);
             onPreviewStateChange?.(false);
-            onRestoreSelection(baseSelectionRef.current);
+            onRestoreSelection(previewState.baseSelection);
           }}
         >
           <div className="fancy-text-panel-head">

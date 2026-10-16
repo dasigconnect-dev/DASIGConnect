@@ -50,6 +50,25 @@ const DEFAULT_ROW_GAP = 76;
 const DRAG_MIN = 4;
 const ZONE_PAD = 30;
 
+interface DragState {
+  i: number;
+  id: number;
+  dx: number;
+  dy: number;
+  sx: number;
+  sy: number;
+  moved: boolean;
+}
+
+interface PhysicsZone {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+type PhasedBody = Matter.Body & { plugin: { phase?: number } };
+
 const jitter = (i: number) => {
   const x = Math.sin(i * 12.9898 + 4.1414) * 43758.5453;
   return x - Math.floor(x);
@@ -134,8 +153,8 @@ export default function FolderFloat({
     raf: number;
     last: number;
     t0: number;
-    drag: any;
-    zone: any;
+    drag: DragState | null;
+    zone: PhysicsZone | null;
     live: boolean;
   }>({
     engine: null,
@@ -154,7 +173,11 @@ export default function FolderFloat({
     drift: number;
     reduce: boolean;
   }>({ drift, reduce: false });
-  latest.current = { onSelect, onOpenChange, drift, reduce: false };
+  useEffect(() => {
+    latest.current.onSelect = onSelect;
+    latest.current.onOpenChange = onOpenChange;
+    latest.current.drift = drift;
+  }, [drift, onOpenChange, onSelect]);
   const popTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const liveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const list: FolderFloatItem[] = items.map(item =>
@@ -246,7 +269,7 @@ export default function FolderFloat({
         frictionAir: 0.1,
         inertia: Infinity,
       });
-      (b as any).plugin = { phase: jitter(i) * Math.PI * 2 };
+      (b as PhasedBody).plugin = { phase: jitter(i) * Math.PI * 2 };
       return b;
     });
     const T = 80;
@@ -278,7 +301,7 @@ export default function FolderFloat({
       const k = latest.current.drift * 0.00003 * Math.min(1, t / 2);
       s.bodies.forEach((b, i) => {
         if (s.drag && s.drag.i === i) return;
-        const ph = (b as any).plugin.phase;
+        const ph = (b as PhasedBody).plugin.phase ?? 0;
         Body.applyForce(b, b.position, {
           x: Math.sin(t * 0.9 + ph) * k * b.mass,
           y: Math.cos(t * 1.3 + ph * 1.7) * k * b.mass,
@@ -312,9 +335,8 @@ export default function FolderFloat({
   useEffect(() => {
     clearTimeout(liveTimer.current);
     if (!open || !physics || latest.current.reduce) {
-      if (!open) stopPhysics();
-      else if (!physics) stopPhysics();
-      return undefined;
+      liveTimer.current = setTimeout(stopPhysics, 0);
+      return () => clearTimeout(liveTimer.current);
     }
     liveTimer.current = setTimeout(startPhysics, openDuration + (n - 1) * stagger + 80);
     return () => clearTimeout(liveTimer.current);
@@ -369,7 +391,9 @@ export default function FolderFloat({
     };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch {
+      // Pointer capture is not supported by every browser/input combination.
+    }
   };
 
   const move = (e: PointerEvent<HTMLButtonElement>, i: number) => {
@@ -385,6 +409,7 @@ export default function FolderFloat({
     const bw = w.sizes[i]?.w ?? 120;
     const bh = w.sizes[i]?.h ?? 38;
     const z = w.zone;
+    if (!z) return;
     const p = pointerAt(e);
     const x = Math.min(z.right - bw / 2, Math.max(z.left + bw / 2, p.x + d.dx));
     const y = Math.min(z.bottom - bh / 2, Math.max(z.top + bh / 2, p.y + d.dy));
@@ -400,7 +425,9 @@ export default function FolderFloat({
     e.currentTarget.removeAttribute('data-drag');
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch {
+      // The pointer may already have released capture.
+    }
     if (!d.moved && e.type === 'pointerup') pick(item, i);
   };
 

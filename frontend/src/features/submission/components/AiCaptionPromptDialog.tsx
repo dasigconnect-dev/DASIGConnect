@@ -12,7 +12,7 @@ interface Props {
   existingCaption: string;
   isUnsaved?: boolean;
   onClose: () => void;
-  onSubmit: (prompt: string, tone: CaptionTone) => Promise<any> | any;
+  onSubmit: (prompt: string, tone: CaptionTone) => Promise<unknown> | unknown;
   onApprove: (caption: string, tone: CaptionTone) => void;
 }
 
@@ -77,10 +77,12 @@ export default function AiCaptionPromptDialog({
 
   useEffect(() => {
     if (!open) {
-      setPrompt("");
-      setCaptionResult("");
-      setSelectedTone(null);
-      setCopied(false);
+      queueMicrotask(() => {
+        setPrompt("");
+        setCaptionResult("");
+        setSelectedTone(null);
+        setCopied(false);
+      });
       return;
     }
 

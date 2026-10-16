@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- context hooks are intentionally colocated with the provider */
 import {
   createContext,
   useCallback,

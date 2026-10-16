@@ -76,6 +76,7 @@ export default function InstitutionUsersCard({
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [mountedAt] = useState(() => new Date().getTime())
 
   const processedTargetIdRef = useRef<string | null>(null)
 
@@ -83,10 +84,12 @@ export default function InstitutionUsersCard({
     if (targetUserId && targetUserId !== processedTargetIdRef.current && users.length > 0) {
       const targetUser = users.find((u) => u.id === targetUserId)
       if (targetUser) {
-        setSearch(targetUser.email)
-        setRoleFilter('all')
-        setStatusFilter('all')
         processedTargetIdRef.current = targetUserId
+        queueMicrotask(() => {
+          setSearch(targetUser.email)
+          setRoleFilter('all')
+          setStatusFilter('all')
+        })
       }
     }
   }, [targetUserId, users])
@@ -371,7 +374,7 @@ export default function InstitutionUsersCard({
                   const hasTransferPending = Boolean(
                     managedUser.superAdminTransferRequestedBy &&
                     (!managedUser.superAdminTransferExpiresAt ||
-                      new Date(managedUser.superAdminTransferExpiresAt).getTime() > Date.now())
+                      new Date(managedUser.superAdminTransferExpiresAt).getTime() > mountedAt)
                   )
 
                   return (
@@ -451,6 +454,7 @@ export default function InstitutionUsersCard({
     </>
   )
 }
+
 
 function UserAvatarEditor({
   user,

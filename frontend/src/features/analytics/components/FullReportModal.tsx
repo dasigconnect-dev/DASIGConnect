@@ -211,7 +211,7 @@ export default function FullReportModal({
   useEffect(() => {
     // A stale error from a previous export shouldn't linger once the user
     // switches to a different report.
-    setDownloadError(null);
+    queueMicrotask(() => setDownloadError(null));
   }, [metric]);
 
   useEffect(() => {

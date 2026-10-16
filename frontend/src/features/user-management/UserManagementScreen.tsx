@@ -104,7 +104,13 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !sending) handleCloseInviteModal()
+      if (event.key === 'Escape' && !sending) {
+        setShowInviteModal(false)
+        setEmailChips([])
+        setEmailDraft('')
+        setInviteRole(null)
+        setInviteResults(null)
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => {
@@ -116,7 +122,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   useEffect(() => {
     const id = searchParams.get('id')
     if (id) {
-      setTargetUserId(id)
+      queueMicrotask(() => setTargetUserId(id))
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('id')
       setSearchParams(nextParams, { replace: true })

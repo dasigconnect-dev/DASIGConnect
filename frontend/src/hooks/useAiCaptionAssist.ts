@@ -49,6 +49,7 @@ export function useAiCaptionAssist(
   const [lastTone, setLastTone] = useState<CaptionTone>("professional");
   const [notice, setNotice] = useState<string | null>(null);
   const [responseContext, setResponseContext] = useState<string | null>(null);
+  const [inFlightSubmissionId, setInFlightSubmissionId] = useState<string | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestIdRef = useRef(0);
@@ -59,7 +60,7 @@ export function useAiCaptionAssist(
   const canSuggest = !!submissionId;
   const contextMatches =
     responseContext === submissionId ||
-    (!submissionId && !!inFlightSubmissionIdRef.current && responseContext === inFlightSubmissionIdRef.current);
+    (!submissionId && !!inFlightSubmissionId && responseContext === inFlightSubmissionId);
 
   useEffect(() => {
     const prevId = previousSubmissionIdRef.current;
@@ -78,6 +79,7 @@ export function useAiCaptionAssist(
       requestRef.current?.controller.abort();
       requestRef.current = null;
       inFlightSubmissionIdRef.current = null;
+      setInFlightSubmissionId(null);
       if (cooldownRef.current) clearTimeout(cooldownRef.current);
       cooldownRef.current = null;
       setState("idle");
@@ -118,6 +120,7 @@ export function useAiCaptionAssist(
     };
     requestRef.current = request;
     inFlightSubmissionIdRef.current = targetSubmissionId;
+    setInFlightSubmissionId(targetSubmissionId);
     const normalizedPrompt = prompt.trim();
     setLastPrompt(normalizedPrompt);
     setLastTone(tone);
@@ -170,6 +173,7 @@ export function useAiCaptionAssist(
       if (requestRef.current?.id === request.id) {
         requestRef.current = null;
         inFlightSubmissionIdRef.current = null;
+        setInFlightSubmissionId(null);
       }
     }
   }

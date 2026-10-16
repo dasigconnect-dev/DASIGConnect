@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- image URL helpers are shared by media views */
 import { useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react";
 
 type ResizeMode = "cover" | "contain" | "fill";

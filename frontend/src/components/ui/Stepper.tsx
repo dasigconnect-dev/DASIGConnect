@@ -21,7 +21,7 @@ export interface StepperProps {
     currentStep: number;
     onStepClick: (clicked: number) => void;
   }) => ReactNode;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export default function Stepper({

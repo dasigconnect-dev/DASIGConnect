@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -374,10 +374,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
-  const customTemplates = templatesQuery.data ?? [];
+  const customTemplates = useMemo(
+    () => templatesQuery.data ?? [],
+    [templatesQuery.data],
+  );
   const templatesLoading = templatesQuery.isLoading || templatesQuery.isFetching;
   const existingAlbums = selectedInstitutionId ? albumNamesQuery.data ?? [] : [];
-  const institutions = institutionsQuery.data ?? [];
+  const institutions = useMemo(
+    () => institutionsQuery.data ?? [],
+    [institutionsQuery.data],
+  );
   const institutionsLoading = institutionsQuery.isLoading || institutionsQuery.isFetching;
   const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
   const templateErrorNotifiedRef = useRef(false);
@@ -827,22 +833,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }, [shouldPromptBeforeLeave]);
 
+  const handleGuardedBrowserBack = useEffectEvent(() => {
+    if (!shouldPromptBeforeLeaveRef.current) return;
+    window.history.pushState(
+      { dasigSubmissionGuard: true },
+      "",
+      window.location.href,
+    );
+    browserBackGuardRef.current = true;
+    setPendingLeaveAction(() => exitSubmission);
+    setModal("draft-exit");
+  });
+
   useEffect(() => {
     function handleBrowserBack() {
-      if (!shouldPromptBeforeLeaveRef.current) return;
-      window.history.pushState(
-        { dasigSubmissionGuard: true },
-        "",
-        window.location.href,
-      );
-      browserBackGuardRef.current = true;
-      setPendingLeaveAction(() => exitSubmission);
-      setModal("draft-exit");
+      handleGuardedBrowserBack();
     }
 
     window.addEventListener("popstate", handleBrowserBack);
     return () => window.removeEventListener("popstate", handleBrowserBack);
-  }, [navigate]);
+  }, []);
 
   const progressSteps = useMemo(
     () => {
@@ -885,6 +895,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
   const proofread = useProofread(form.id);
+
+  const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
+    void applySubmission(summary);
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1022,7 +1036,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         }));
       });
     }
-    void applySubmission({
+    applyRoutedSubmission({
       id: submissionId,
       institutionId: existing?.institutionId || user.institutionId || "",
       institutionName: existing?.institutionName || user.inst,
@@ -1768,6 +1782,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
+  const autosaveDraft = useEffectEvent(() => {
+    void saveDraft({ silent: true });
+  });
+
   useEffect(() => {
     if (!isDirty || busy || fancyTextPreviewActive) return;
     // Selecting media is enough to create the initial draft. The media picker
@@ -1777,7 +1795,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
-      void saveDraft({ silent: true });
+      autosaveDraft();
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
