@@ -22,6 +22,7 @@ public class WatermarkConfigurationController {
 
     /** Readable by any authenticated user — every role needs it to render post previews. */
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<WatermarkConfigurationDto> get(
             @AuthenticationPrincipal JwtUserDetails actor
     ) {
