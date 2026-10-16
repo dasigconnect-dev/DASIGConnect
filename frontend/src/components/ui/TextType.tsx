@@ -66,7 +66,6 @@ export const TextType: React.FC<TextTypeProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(!startOnVisible);
-  const cursorRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLElement>(null);
 
   const effectiveVariableSpeed = useMemo(() => {
@@ -286,6 +285,7 @@ export const TextType: React.FC<TextTypeProps> = ({
   }, [reserveSpace, textArray, currentTextIndex]);
 
   if (reserveSpace) {
+    /* eslint-disable react-hooks/refs -- the dynamic element receives the observer ref; it is not read during render */
     return createElement(
       Component,
       {
@@ -300,8 +300,8 @@ export const TextType: React.FC<TextTypeProps> = ({
         <span className="text-type__content">{renderedContent}</span>
         {showCursor && (
           <span
-            ref={cursorRef}
             className={`text-type__cursor ${cursorClassName} ${shouldHideCursor ? 'text-type__cursor--hidden' : ''}`}
+            style={{ animationDuration: `${cursorBlinkDuration}s` }}
           >
             {cursorCharacter}
           </span>
@@ -322,13 +322,14 @@ export const TextType: React.FC<TextTypeProps> = ({
     </span>,
     showCursor && (
       <span
-        ref={cursorRef}
         className={`text-type__cursor ${cursorClassName} ${shouldHideCursor ? 'text-type__cursor--hidden' : ''}`}
+        style={{ animationDuration: `${cursorBlinkDuration}s` }}
       >
         {cursorCharacter}
       </span>
     )
   );
+  /* eslint-enable react-hooks/refs */
 };
 
 export default TextType;

@@ -191,7 +191,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     if (id && institutions.length > 0) {
       const match = institutions.find(i => i.id === id)
       if (match) {
-        setSelectedInstitutionId(match.id)
+        queueMicrotask(() => setSelectedInstitutionId(match.id))
         const nextParams = new URLSearchParams(searchParams)
         nextParams.delete('id')
         setSearchParams(nextParams, { replace: true })
@@ -268,8 +268,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     document.body.style.overflow = 'hidden'
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        handleCloseAddModal()
+      if (event.key === 'Escape' && !addForm.loading) {
+        setShowAddModal(false)
+        setAddForm({ name: '', domain: '', loading: false, error: '' })
       }
     }
 

@@ -31,6 +31,7 @@ export default function PendingInvitationsCard({
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>('all')
+  const [mountedAt] = useState(() => new Date().getTime())
 
   const filtered = invitations.filter((invite) => {
     if (search && !invite.recipientEmail.toLowerCase().includes(search.toLowerCase())) {
@@ -41,7 +42,7 @@ export default function PendingInvitationsCard({
     }
     if (expiryFilter !== 'all') {
       const expiresMs = new Date(invite.expiresAt).getTime()
-      const now = Date.now()
+      const now = mountedAt
       if (expiryFilter === 'expired' && expiresMs > now) return false
       if (expiryFilter === 'soon' && (expiresMs <= now || expiresMs - now > 24 * 60 * 60 * 1000)) {
         return false

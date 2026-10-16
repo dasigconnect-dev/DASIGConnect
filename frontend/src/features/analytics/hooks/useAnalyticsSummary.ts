@@ -37,17 +37,18 @@ export function useAnalyticsSummary(user: User, initialRange: AnalyticsRange = "
     meta: authenticatedQueryMeta,
     staleTime: ANALYTICS_STALE_TIME_MS,
   });
+  const { refetch } = analyticsQuery;
 
   useEffect(() => {
     // Background refresh. Kept long and skipped while the tab is hidden; each
     // tick runs a batch of aggregation queries server-side.
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void analyticsQuery.refetch();
+        void refetch();
       }
     }, BACKGROUND_REFRESH_MS);
     return () => window.clearInterval(intervalId);
-  }, [analyticsQuery.refetch]);
+  }, [refetch]);
 
   const setRange = useCallback((nextRange: AnalyticsRange) => {
     setRangeValue(nextRange);
@@ -58,8 +59,8 @@ export function useAnalyticsSummary(user: User, initialRange: AnalyticsRange = "
   }, []);
 
   const refresh = useCallback(() => {
-    void analyticsQuery.refetch();
-  }, [analyticsQuery]);
+    void refetch();
+  }, [refetch]);
 
   return {
     range,

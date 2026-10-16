@@ -987,6 +987,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       }, signal);
 
       // Reserve the last 10% for the metadata-register call below.
+      // eslint-disable-next-line react-hooks/purity -- measured inside an upload event, never during render
       const uploadStartedAt = performance.now();
       await putToStorage(
         urlData.signedUrl,
@@ -994,6 +995,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         (pct) => onProgress?.(Math.round(pct * 0.9)),
         signal,
       );
+      // eslint-disable-next-line react-hooks/purity -- measured inside an upload event, never during render
       const r2UploadDurationMs = Math.round(performance.now() - uploadStartedAt);
 
       await registerMediaAsset({

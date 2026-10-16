@@ -27,7 +27,7 @@ export default function AuthShowcase({
       emailDomain?: string
     }>
   >([])
-  const [internalLoading, setInternalLoading] = useState(false)
+  const [internalLoading, setInternalLoading] = useState(propInstitutions === undefined)
 
   useEffect(() => {
     // If institutions are explicitly provided via props, no need to fetch
@@ -35,7 +35,9 @@ export default function AuthShowcase({
 
     let mounted = true
     const controller = new AbortController()
-    setInternalLoading(true)
+    queueMicrotask(() => {
+      if (mounted) setInternalLoading(true)
+    })
 
     listPublicInstitutions(controller.signal)
       .then((res) => {
