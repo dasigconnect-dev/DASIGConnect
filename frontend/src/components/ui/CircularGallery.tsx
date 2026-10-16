@@ -10,7 +10,7 @@ export interface CircularGalleryItem {
 }
 
 export interface CircularGalleryProps {
-  items?: CircularGalleryItem[];
+  items: CircularGalleryItem[];
   bend?: number;
   textColor?: string;
   alternateColors?: boolean;
@@ -537,7 +537,7 @@ class App {
   }
 
   createMedias(
-    items: any[],
+    items: CircularGalleryItem[],
     bend = 1,
     textColor: string,
     alternateColors = true,
@@ -545,14 +545,7 @@ class App {
     font: string,
     padding = 0.45
   ) {
-    const defaultItems = [
-      { image: `https://picsum.photos/seed/1/800/600?grayscale`, text: 'Bridge' },
-      { image: `https://picsum.photos/seed/2/800/600?grayscale`, text: 'Desk Setup' },
-      { image: `https://picsum.photos/seed/3/800/600?grayscale`, text: 'Waterfall' },
-      { image: `https://picsum.photos/seed/4/800/600?grayscale`, text: 'Strawberries' },
-      { image: `https://picsum.photos/seed/5/800/600?grayscale`, text: 'Deep Diving' },
-    ];
-    let galleryItems = items && items.length ? items : defaultItems;
+    let galleryItems = items;
     while (galleryItems.length < 10) {
       galleryItems = galleryItems.concat(galleryItems);
     }
@@ -735,7 +728,7 @@ export function CircularGallery({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || items.length === 0) return;
     let app: App | undefined;
     let isMounted = true;
 
