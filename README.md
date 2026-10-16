@@ -185,8 +185,10 @@ DASIGConnect/
 │   │   └── main.tsx                # React DOM root entry point
 │   ├── vite.config.ts              # Vite bundler configuration
 │   └── package.json                # Frontend dependencies & scripts
-├── docs/                           # Official project documentation
-│   └── pdf/                        # Formal Proposal, SDD, and SRS deliverables
+├── docs/                           # Canonical documentation (see docs/README.md)
+│   ├── md/srs/                     # Maintained SRS and use-case specifications
+│   ├── pdf/                        # Formal Proposal, SDD, and SRS deliverables
+│   └── word/                       # Refactoring evidence and editable deliverables
 ├── docker-compose.yml              # Local PostgreSQL + pgvector container configuration
 └── README.md                       # Repository guide & setup instructions
 ```
