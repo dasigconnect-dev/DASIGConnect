@@ -9,12 +9,9 @@ interface Props {
 
 export default function PublishingTrendChart({ metric, onOpenReport }: Props) {
   const points = useMemo(() => {
-    if (metric.sparkline && metric.sparkline.length >= 2) {
-      return metric.sparkline;
-    }
-    // Fallback demonstration points if sparkline has fewer samples
-    return [1, 2, 4, 3, 5, 6, 8];
+    return metric.sparkline ?? [];
   }, [metric.sparkline]);
+  const hasTrendData = points.length > 0;
 
   const width = 580;
   const height = 180;
@@ -37,7 +34,7 @@ export default function PublishingTrendChart({ metric, onOpenReport }: Props) {
       </div>
 
       <div className="analytics-chart-body">
-        <svg
+        {hasTrendData ? <svg
           viewBox={`0 0 ${width} ${height}`}
           className="analytics-trend-svg"
           preserveAspectRatio="none"
@@ -92,13 +89,16 @@ export default function PublishingTrendChart({ metric, onOpenReport }: Props) {
               </text>
             </g>
           ))}
-        </svg>
+        </svg> : (
+          <div className="analytics-empty-state">No publishing activity recorded for this period.</div>
+        )}
       </div>
 
       <div className="analytics-trend-footer">
         <span>Timeline Interval</span>
         <span className="analytics-trend-badge">
-          <i className="ti ti-trending-up" /> Active Trajectory
+          <i className={`ti ${hasTrendData ? "ti-trending-up" : "ti-minus"}`} />
+          {hasTrendData ? "Active Trajectory" : "No data"}
         </span>
       </div>
     </div>

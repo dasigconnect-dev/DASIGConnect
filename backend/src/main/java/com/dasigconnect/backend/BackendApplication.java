@@ -10,6 +10,8 @@ import java.util.List;
 
 import javax.sql.DataSource;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -23,6 +25,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @EnableAsync
 public class BackendApplication {
+
+    private static final Logger log = LoggerFactory.getLogger(BackendApplication.class);
 
     public static void main(String[] args) {
         loadLocalEnvFiles();
@@ -52,7 +56,7 @@ public class BackendApplication {
                     }
                 }
             } catch (IOException ex) {
-                System.err.println("Warning: Could not load local env file " + candidate + ": " + ex.getMessage());
+                log.warn("Could not load local env file {}", candidate, ex);
             }
         }
     }
@@ -64,8 +68,7 @@ public class BackendApplication {
             @Value("${spring.flyway.baseline-on-migrate:true}") boolean baselineOnMigrate,
             @Value("${spring.flyway.baseline-version:0}") String baselineVersion,
             @Value("${spring.flyway.out-of-order:true}") boolean outOfOrder) {
-        System.out.println("==================================================");
-        System.out.println("INITIALIZING CUSTOM FLYWAY BEAN...");
+        log.info("Initializing custom Flyway bean");
         org.flywaydb.core.Flyway flyway = org.flywaydb.core.Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration")
@@ -76,8 +79,7 @@ public class BackendApplication {
 
         flyway.repair();
         flyway.migrate();
-        System.out.println("Flyway migrate() completed.");
-        System.out.println("==================================================");
+        log.info("Flyway migration completed");
         return flyway;
     }
 
@@ -91,12 +93,13 @@ public class BackendApplication {
             com.dasigconnect.backend.repository.PageSettingsRepository pageSettingsRepository,
             org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
         return args -> {
-            System.out.println("==================================================");
-            System.out.println("DATABASE SEEDING AND VERIFICATION:");
+            log.info("Starting database diagnostics and bootstrap verification");
             try (Connection conn = dataSource.getConnection()) {
                 DatabaseMetaData metaData = conn.getMetaData();
-                System.out.println("JDBC URL: " + metaData.getURL());
-                System.out.println("Database Product Version: " + metaData.getDatabaseProductVersion());
+                log.info(
+                        "Database connection verified: product={}, version={}",
+                        metaData.getDatabaseProductName(),
+                        metaData.getDatabaseProductVersion());
 
                 // Seed bootstrap admin — credentials must be supplied via env, no defaults.
                 String adminEmail = System.getenv("BOOTSTRAP_ADMIN_EMAIL");
@@ -108,13 +111,12 @@ public class BackendApplication {
                     adminPassword = System.getProperty("BOOTSTRAP_ADMIN_PASSWORD");
                 }
 
-                System.out.println("Configuring database user and tables for clean RLS bypassing...");
+                log.info("Configuring database role and table RLS settings");
                 try (java.sql.Statement stmt = conn.createStatement()) {
                     // Check active database roles
                     try (java.sql.ResultSet rs = stmt.executeQuery("SELECT current_user, session_user")) {
                         if (rs.next()) {
-                            System.out.println(" -> PostgreSQL current_user: " + rs.getString(1));
-                            System.out.println(" -> PostgreSQL session_user: " + rs.getString(2));
+                            log.debug("PostgreSQL roles: currentUser={}, sessionUser={}", rs.getString(1), rs.getString(2));
                         }
                     }
 
@@ -127,7 +129,7 @@ public class BackendApplication {
                     stmt.execute("ALTER TABLE account_lockouts ENABLE ROW LEVEL SECURITY;");
                     stmt.execute("ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;");
                     stmt.execute("ALTER TABLE slot_reservations ENABLE ROW LEVEL SECURITY;");
-                    System.out.println("Row Level Security re-enabled on all tables.");
+                    log.info("Row Level Security re-enabled on bootstrap tables");
 
                     // Dynamically execute BYPASSRLS on current_user
                     String activeRole = "postgres";
@@ -137,16 +139,16 @@ public class BackendApplication {
                         }
                     }
                     stmt.execute("ALTER ROLE \"" + activeRole + "\" BYPASSRLS;");
-                    System.out.println("Successfully granted BYPASSRLS privilege to: " + activeRole);
+                    log.info("BYPASSRLS privilege verified for active database role");
                 } catch (Exception rlsEx) {
-                    System.out.println("Warning: Could not configure RLS bypass: " + rlsEx.getMessage());
+                    log.warn("Could not configure RLS bypass", rlsEx);
                 }
 
                 // Seed Protected Institution: DASIG Central Visayas
                 String dasigInstName = "DASIG Central Visayas";
                 com.dasigconnect.backend.model.entity.Institution dasigInstitution = institutionRepository.findByNameIgnoreCase(dasigInstName)
                         .orElseGet(() -> {
-                            System.out.println("No default protected institution found. Seeding " + dasigInstName + "...");
+                            log.info("Default protected institution is missing; seeding it");
                             com.dasigconnect.backend.model.entity.Institution inst = new com.dasigconnect.backend.model.entity.Institution();
                             inst.setName(dasigInstName);
                             inst.setCode("DASIG-CV");
@@ -175,7 +177,7 @@ public class BackendApplication {
                     dasigInstitution.setLogoContentType("image/svg+xml");
                     dasigInstitution.setLogoUpdatedAt(java.time.Instant.now());
                     dasigInstitution = institutionRepository.save(dasigInstitution);
-                    System.out.println("Official DASIG logo asset assigned to " + dasigInstName);
+                    log.info("Official DASIG logo asset assigned to the default institution");
                 }
 
                 // Watermark Configuration: Assign default watermark configuration if watermark table exists (UC-2.5)
@@ -198,15 +200,15 @@ public class BackendApplication {
                         settings.setWatermarkEnabled(true);
                         settings.setWatermarkText("DASIG Central Visayas");
                         pageSettingsRepository.save(settings);
-                        System.out.println("Default watermark configuration assigned to " + dasigInstName);
+                        log.info("Default watermark configuration assigned to the default institution");
                     }
                 }
 
                 if (adminEmail == null || adminEmail.isBlank()
                         || adminPassword == null || adminPassword.length() < 12) {
-                    System.out.println("Bootstrap admin skipped: set BOOTSTRAP_ADMIN_EMAIL and a 12+ char BOOTSTRAP_ADMIN_PASSWORD to seed one.");
+                    log.info("Bootstrap admin skipped because valid bootstrap credentials were not configured");
                 } else if (userRepository.findByEmail(adminEmail).isEmpty()) {
-                    System.out.println("No admin found. Seeding bootstrap admin...");
+                    log.info("Configured bootstrap admin is missing; creating it");
                     com.dasigconnect.backend.model.entity.User admin = new com.dasigconnect.backend.model.entity.User();
                     admin.setEmail(adminEmail);
                     admin.setFirstName("DASIG");
@@ -216,26 +218,26 @@ public class BackendApplication {
                     admin.setPasswordHash(passwordEncoder.encode(adminPassword));
                     admin.setAccountState(com.dasigconnect.backend.model.entity.UserStatus.active);
                     userRepository.save(admin);
-                    System.out.println("Bootstrap admin created: " + adminEmail);
+                    log.info("Bootstrap admin created");
                 } else {
-                    System.out.println("Admin already exists: " + adminEmail);
+                    log.info("Configured bootstrap admin already exists");
                 }
 
-                System.out.println("Current Tables in Schema 'public':");
+                log.debug("Current tables in schema public:");
                 try (ResultSet rs = metaData.getTables(null, "public", "%", new String[]{"TABLE"})) {
                     boolean hasTables = false;
                     while (rs.next()) {
                         hasTables = true;
-                        System.out.println(" - " + rs.getString("TABLE_NAME"));
+                        log.debug("Database table: {}", rs.getString("TABLE_NAME"));
                     }
                     if (!hasTables) {
-                        System.out.println(" [No tables found in public schema]");
+                        log.warn("No tables found in schema public");
                     }
                 }
             } catch (Exception e) {
-                System.err.println("Failed to perform seeder / database tables check: " + e.getMessage());
+                log.error("Failed to perform database bootstrap verification", e);
             }
-            System.out.println("==================================================");
+            log.info("Database diagnostics and bootstrap verification completed");
         };
     }
 }
