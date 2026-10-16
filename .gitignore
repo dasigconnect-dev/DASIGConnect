@@ -26,3 +26,6 @@ Thumbs.db
 *.log
 *.tmp
 
+# Submission folders (Google Drive deliverables)
+01_Software_and_Deployment/
+
