@@ -48,6 +48,7 @@ export interface DeleteCheckResult {
 export interface MediaAssetUploadUrlRequest {
   fileName: string;
   fileType: string;
+  fileSizeBytes: number;
   contentHash?: string;
   allowDuplicate?: boolean;
   /** Target institution, so the backend keys the object under the right tenant partition. */
@@ -58,6 +59,9 @@ export interface MediaAssetUploadUrlResponse {
   signedUrl: string;
   publicUrl: string;
   path: string;
+  reservationId?: string | null;
+  reservationExpiresAt?: string | null;
+  storageWarning?: boolean;
 }
 
 export interface MediaAssetRegisterRequest {
@@ -65,6 +69,7 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  reservationId?: string | null;
   r2UploadDurationMs?: number;
   contentHash?: string;
   allowDuplicate?: boolean;

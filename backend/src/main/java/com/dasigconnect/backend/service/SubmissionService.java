@@ -88,6 +88,9 @@ public class SubmissionService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private StorageQuotaService storageQuotaService;
+
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
     private static final int MAX_MEDIA_PER_SUBMISSION = 10;
@@ -166,20 +169,44 @@ public class SubmissionService {
     public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
-        return signedUploadUrlFor(submission, dto);
+        return signedUploadUrlFor(submission, dto, user.userId());
     }
 
     /**
      * Media-upload URL core — caller owns the auth/status checks. Reused by
      * ValidationService.
      */
-    SignedUploadUrlResponse signedUploadUrlFor(Submission submission, SignedUploadUrlRequest dto) {
+    SignedUploadUrlResponse signedUploadUrlFor(
+            Submission submission, SignedUploadUrlRequest dto, UUID userId) {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
         String objectPath = submission.getId() + "/" + UUID.randomUUID() + "-" + safeFileName;
-        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
-        String publicUrl = mediaStorage.getPublicUrl(objectPath);
-        return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
+        StorageQuotaService.ReservationResult reservation = storageQuotaService == null
+                ? null
+                : storageQuotaService.reserve(
+                        submission.getInstitution().getOrganizationId(),
+                        submission.getInstitution().getId(),
+                        userId,
+                        objectPath,
+                        dto.getFileSizeBytes());
+        try {
+            String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+            String publicUrl = mediaStorage.getPublicUrl(objectPath);
+            return reservation == null
+                    ? new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath)
+                    : new SignedUploadUrlResponse(
+                            signedUrl,
+                            publicUrl,
+                            objectPath,
+                            reservation.reservationId(),
+                            reservation.expiresAt(),
+                            reservation.warningThresholdReached());
+        } catch (RuntimeException ex) {
+            if (reservation != null) {
+                storageQuotaService.release(reservation.reservationId());
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -899,6 +926,15 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        if (storageQuotaService != null) {
+            storageQuotaService.consume(
+                    dto.getReservationId(),
+                    submission.getInstitution().getOrganizationId(),
+                    submission.getInstitution().getId(),
+                    user.userId(),
+                    dto.getFileSizeBytes(),
+                    asset.getId());
+        }
         if (mediaAiTelemetry != null) {
             if (dto.getR2UploadDurationMs() != null) {
                 mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
