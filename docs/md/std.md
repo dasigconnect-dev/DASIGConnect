@@ -1036,6 +1036,44 @@ Verify the Administrator-only **Audit Log** (`/admin/audit-log`, `UC-3.6`), incl
 
 ---
 
+## **3.27 Case-27: First-Time Independence — Role Home Next-Action Guidance, Plain-Language Statuses & System Task Telemetry (UC-1.4, UC-3.3, BR-NOT-05, SRS 3.4.8 — Refactoring Priority #2)** {#327-case-27-first-time-independence--role-home-next-action-guidance-plain-language-statuses--system-task-telemetry-uc-14-uc-33-br-not-05-srs-348--refactoring-priority-2}
+
+### **3.27.1 Purpose**
+
+Verify that each role's home screen (`DashboardScreen.tsx`) leads with a clear, actionable **Next Action** banner and primary CTA button before secondary summary tiles, that every submission status badge and notification states in plain language what the status means and which role acts next (`statusGuidance`, `BR-NOT-05`), and that the system instruments and logs first-attempt completion and time-on-task (`V123__task_completion_telemetry.sql`, `TaskTelemetryController`).
+
+### **3.27.2 Inputs**
+
+- **Actors:**
+  - Contributor (`contrib.citu@cit.edu`) with 1 incomplete draft (`2` missing required checks) and 1 `needs_revision` submission.
+  - Moderator (`mod.one@dasig.org`) with `2` pending submissions in the review queue.
+  - Administrator (`admin.owner@dasig.org`) with `1` failed publication (`PUBLISH_FAILED`).
+- **Telemetry API Calls:**
+  - `POST /api/v1/telemetry/tasks/start` (`{"taskName": "CONTRIBUTOR_SUBMIT_POST"}`)
+  - `POST /api/v1/telemetry/tasks/complete` (`{"taskName": "CONTRIBUTOR_SUBMIT_POST", "durationMs": 42000, "errorCount": 0, "firstAttemptSuccess": true}`)
+  - `GET /api/v1/telemetry/tasks/summary`
+
+### **3.27.3 Expected Outputs & Pass/Fail Criteria**
+
+- **Expected Outputs:**
+  1. **Role Home Next-Action Guidance (`DashboardScreen.tsx`):**
+     - Contributor with revision needed sees `"Next action: Needs revision — the Moderator asked for changes. Edit and resubmit."` with a primary `Edit & Resubmit` button routing to `/submissions/{id}`; with an incomplete draft sees `"Next action: Finish your draft — X required item(s) left."` with a `Finish Draft` button.
+     - Moderator with pending items sees `"Next action: 2 submissions awaiting review — review next from contributors across the network."` with a primary `Review Next` button routing to `/queue`.
+     - Administrator with a failed publication sees `"Next action: 1 failed publication needs action — retry automatic publishing or complete manual fallback."` with a primary `Resolve Failed Posts` button routing to `/queue`.
+  2. **Plain-Language Status & Next-Actor Wording (`BR-NOT-05`):**
+     - `SubmissionListScreen.tsx`, `SubmissionScreen.tsx`, `ValidationQueueScreen.tsx`, and `NotificationEventListener.java` display plain-language status explanations and next-actor ownership (`"Needs revision — the Moderator asked for changes. Edit and resubmit."`, `"Waiting for Moderator Review"`, `"Publishing Slot Passed (Needs New Schedule)"`, `"Live event (immediate review)"`).
+  3. **System Task Completion Telemetry (`V123`, `TaskTelemetryService`):**
+     - Starting and completing a core role task persists a `COMPLETED` row in `task_completion_logs` with `duration_ms`, `attempt_number`, `error_count`, and `first_attempt_success`, and `GET /api/v1/telemetry/tasks/summary` returns per-role first-attempt completion rate (`%`) and median duration (`seconds`).
+- **Pass/Fail Criteria:** **PASS** if role dashboards lead with actionable next-step CTAs, all status surfaces and notifications state plain-language meaning + next actor, and task telemetry persists and aggregates accurately; **FAIL** otherwise.
+
+### **3.27.4 Test Procedure**
+
+1. Log in as Contributor, Moderator, and Administrator in turn and inspect `#first-login-notice` on `/dashboard`; verify the role-specific Next Action text and primary CTA button navigation.
+2. Inspect status cards in `/submissions`, `/submissions/{id}`, `/queue`, and dispatched notifications (`NotificationEventListenerTest`); verify plain-language status + next-actor strings.
+3. Complete a submission in `SubmissionScreen` and a review decision in `ValidationQueueScreen`; query `GET /api/v1/telemetry/tasks/summary` and verify `completedTasks`, `firstAttemptCompletionRatePercent`, and `medianDurationSeconds`.
+
+---
+
 # **Appendix (Test Logs)** {#appendix-test-logs}
 
 ## **A.1 Log for Test n** {#a1-log-for-test-n}
