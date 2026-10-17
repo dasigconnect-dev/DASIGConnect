@@ -58,6 +58,9 @@ public class InstitutionService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionEntitlementService subscriptionEntitlementService;
+
     private final InstitutionRepository institutionRepository;
     private final UserRepository userRepository;
     private final SubmissionRepository submissionRepository;
@@ -113,6 +116,9 @@ public class InstitutionService {
         if (institutionRepository.existsByEmailDomain(emailDomain)) {
             throw new IllegalArgumentException(
                     "Email domain '" + emailDomain + "' is already in use.");
+        }
+        if (subscriptionEntitlementService != null) {
+            subscriptionEntitlementService.assertCanCreateInstitution(Institution.DEFAULT_ORGANIZATION_ID);
         }
 
         Institution institution = new Institution();

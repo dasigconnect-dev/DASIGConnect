@@ -70,6 +70,9 @@ public class UserService {
     private final AdminCapPolicy adminCapPolicy;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionEntitlementService subscriptionEntitlementService;
+
     public UserService(
             UserRepository userRepository,
             NotificationRepository notificationRepository,
@@ -236,6 +239,12 @@ public class UserService {
             // pass the same headcount cap as an invite or a promotion.
             if (user.getRole() == UserRole.admin) {
                 adminCapPolicy.assertHasFreeSlot(null, null);
+            }
+            if (subscriptionEntitlementService != null) {
+                UUID organizationId = user.getInstitution() == null
+                        ? com.dasigconnect.backend.model.entity.Institution.DEFAULT_ORGANIZATION_ID
+                        : user.getInstitution().getOrganizationId();
+                subscriptionEntitlementService.assertCanCommitSeat(organizationId, user.getEmail());
             }
         } else if (newStatus == UserStatus.cancelled) {
             if (user.getAccountState() != UserStatus.pending

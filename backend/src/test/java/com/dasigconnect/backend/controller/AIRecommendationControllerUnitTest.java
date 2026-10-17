@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 
 import com.dasigconnect.backend.model.dto.ai.AiInteractionLogRequestDto;
@@ -15,14 +14,13 @@ import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
 import com.dasigconnect.backend.service.AiAdoptionTrackingService;
-import com.dasigconnect.backend.service.SubscriptionUsageService;
+import com.dasigconnect.backend.service.SubscriptionEntitlementService;
 import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
-import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 class AIRecommendationControllerUnitTest {
@@ -30,17 +28,22 @@ class AIRecommendationControllerUnitTest {
     @Test
     void suggestMedia_preservesListBodyAndReportsProcessingHeader() {
         AIRecommendationService service = mock(AIRecommendationService.class);
+        SubscriptionEntitlementService entitlementService = mock(SubscriptionEntitlementService.class);
         AIRecommendationController controller = new AIRecommendationController(
-                service, mock(AiAdoptionTrackingService.class));
-        SubscriptionUsageService usageService = mock(SubscriptionUsageService.class);
-        ReflectionTestUtils.setField(controller, "subscriptionUsageService", usageService);
+                service, mock(AiAdoptionTrackingService.class), entitlementService);
         UUID submissionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
+        UUID reservationId = UUID.randomUUID();
         JwtUserDetails user = new JwtUserDetails(
                 userId, "contributor@test.edu", "contributor", institutionId);
         MediaSuggestRequestDto request = new MediaSuggestRequestDto();
         List<MediaSuggestResultDto> results = List.of();
+        when(entitlementService.reserveForSubmission(
+                eq(submissionId), eq(userId), eq(SubscriptionUsageEventType.AI_MEDIA_SUGGESTION),
+                eq("client-request-1"), eq("AI_MEDIA_SUGGESTION_REQUEST")))
+                .thenReturn(new SubscriptionEntitlementService.ActionReservation(
+                        reservationId, 9, Instant.now().plusSeconds(60), false, false));
         when(service.suggestMediaBatch(submissionId, request, user))
                 .thenReturn(new AIRecommendationService.MediaSuggestionBatch(results, true));
 
@@ -52,16 +55,7 @@ class AIRecommendationControllerUnitTest {
         assertEquals("PROCESSING", response.getHeaders().getFirst(
                 AIRecommendationController.MEDIA_SUGGESTIONS_OUTCOME_HEADER));
         assertEquals(results, response.getBody().data());
-        verify(usageService).recordForSubmission(
-                eq(submissionId),
-                eq(userId),
-                eq(SubscriptionUsageEventType.AI_MEDIA_SUGGESTION),
-                eq(1L),
-                eq(SubscriptionUsageUnit.COUNT),
-                eq("ai-media-suggestion:" + UUID.nameUUIDFromBytes(
-                        "client-request-1".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
-                eq("AI_MEDIA_SUGGESTION_REQUEST"),
-                any(java.time.Instant.class));
+        verify(entitlementService).consume(reservationId);
 
         when(service.areSelectedImagesProcessing(submissionId, request, user)).thenReturn(true);
         ResponseEntity<ApiResponse<Boolean>> statusResponse =
@@ -73,7 +67,8 @@ class AIRecommendationControllerUnitTest {
     void logInteraction_authorizesMatchingSubmissionThroughService() {
         AIRecommendationService service = mock(AIRecommendationService.class);
         AIRecommendationController controller = new AIRecommendationController(
-                service, mock(AiAdoptionTrackingService.class));
+                service, mock(AiAdoptionTrackingService.class),
+                mock(SubscriptionEntitlementService.class));
         UUID submissionId = UUID.randomUUID();
         JwtUserDetails user = new JwtUserDetails(
                 UUID.randomUUID(), "contributor@test.edu", "contributor", UUID.randomUUID());
@@ -90,7 +85,8 @@ class AIRecommendationControllerUnitTest {
     @Test
     void logInteraction_rejectsSubmissionIdMismatch() {
         AIRecommendationController controller = new AIRecommendationController(
-                mock(AIRecommendationService.class), mock(AiAdoptionTrackingService.class));
+                mock(AIRecommendationService.class), mock(AiAdoptionTrackingService.class),
+                mock(SubscriptionEntitlementService.class));
         JwtUserDetails user = new JwtUserDetails(
                 UUID.randomUUID(), "contributor@test.edu", "contributor", UUID.randomUUID());
 
