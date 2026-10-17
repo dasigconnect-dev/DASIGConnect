@@ -3,6 +3,7 @@ package com.dasigconnect.backend.model.dto.submission;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.util.UUID;
 
 public class AttachMediaDto {
 
@@ -21,6 +22,8 @@ public class AttachMediaDto {
 
     @jakarta.validation.constraints.PositiveOrZero
     private Long r2UploadDurationMs;
+
+    private UUID reservationId;
 
     /**
      * Optional target album name for a media asset uploaded during review —
@@ -47,4 +50,7 @@ public class AttachMediaDto {
 
     public Long getR2UploadDurationMs() { return r2UploadDurationMs; }
     public void setR2UploadDurationMs(Long r2UploadDurationMs) { this.r2UploadDurationMs = r2UploadDurationMs; }
+
+    public UUID getReservationId() { return reservationId; }
+    public void setReservationId(UUID reservationId) { this.reservationId = reservationId; }
 }
