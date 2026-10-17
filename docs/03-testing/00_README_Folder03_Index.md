@@ -8,15 +8,25 @@
 
 ---
 
-## What is in this folder (read in this order)
+## Submission Deliverables (Primary Files)
 
-| # | File | What it is | Matches STD section |
+| # | Submission Item | Word Document (.docx) | Markdown Document (.md) | Scope & Result |
+| :-: | :--- | :--- | :--- | :--- |
+| **1** | **Functional Testing Results** | [`01_Functional_Testing_Results.docx`](01_Functional_Testing_Results.docx) | [`01_Functional_Testing_Results.md`](01_Functional_Testing_Results.md) | 930 tests / 99 classes / 100% PASS (UC-1.1 to UC-3.6) |
+| **2** | **Integration, System, and Regression Testing Results** | [`02_Integration_System_and_Regression_Testing_Results.docx`](02_Integration_System_and_Regression_Testing_Results.docx) | [`02_Integration_System_and_Regression_Testing_Results.md`](02_Integration_System_and_Regression_Testing_Results.md) | DB migrations, GiST exclusion constraints, Defect INC-11 fixed, screenshots |
+| **3** | **Performance Testing Report** | [`03_Performance_Testing_Report.docx`](03_Performance_Testing_Report.docx) | [`03_Performance_Testing_Report.md`](03_Performance_Testing_Report.md) | 13/13 Playwright performance regressions passed (34.1s), bundle budget audit |
+
+---
+
+## Supporting Evidence & Logs
+
+| # | Supporting File | What it is | Matches STD section |
 | :-: | :--- | :--- | :--- |
 | 1 | [`01_Defect_Log_Failed_vs_Fixed.md`](01_Defect_Log_Failed_vs_Fixed.md) | Defect Log: what failed, why, how it was fixed, and proof | Appendix A.3 Incident Report |
 | 1b | [`01_Defect_Log_Failed_vs_Fixed.csv`](01_Defect_Log_Failed_vs_Fixed.csv) | Same Defect Log in spreadsheet form (open in Excel / Google Sheets) | Appendix A.3 |
-| 2 | [`02_Test_Execution_Report.md`](02_Test_Execution_Report.md) | Before/after metrics, environment, log index, list of every new test function | Appendix A.1 + A.2 |
-| 3 | [`logs/`](logs/) | Raw Maven console output — the actual evidence | Appendix A.1 Test Logs |
-| 4 | [`reports/per-class-test-results.csv`](reports/per-class-test-results.csv) | Pass/fail and test count for all 99 test classes (from the final run) | Appendix A.2 |
+| 2 | [`reports/per-class-test-results.csv`](reports/per-class-test-results.csv) | Pass/fail and test count for all 99 test classes (from the final run) | Appendix A.2 |
+| 3 | [`screenshots/`](screenshots/) | High-resolution terminal captures for Figures 1, 2, and 3 | Appendix A.4 |
+| 4 | [`logs/`](logs/) | Raw Maven console output — the actual evidence | Appendix A.1 Test Logs |
 
 ### Logs (numbered in the order they happened)
 

@@ -116,12 +116,17 @@ public class TopPostTemplateService {
     }
 
     private LoadedPosts loadPosts() {
+        List<Post> fbPosts = List.of();
         try {
             List<PagePostSample> pagePosts = facebookClient.fetchRecentPostsWithText();
             if (!pagePosts.isEmpty()) {
-                return new LoadedPosts(SOURCE_FACEBOOK, pagePosts.stream()
+                fbPosts = pagePosts.stream()
                         .map(p -> new Post(p.message(), p.publishedAt(), p.reactions(), p.comments(), p.shares()))
-                        .toList());
+                        .toList();
+                long fbEngaged = fbPosts.stream().filter(p -> p.score() > 0).count();
+                if (fbEngaged >= MIN_ENGAGED_POSTS) {
+                    return new LoadedPosts(SOURCE_FACEBOOK, fbPosts);
+                }
             }
         } catch (IOException ex) {
             log.info("Facebook Page history unavailable for template generation, using DASIGConnect data: {}",
@@ -129,12 +134,21 @@ public class TopPostTemplateService {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+
         List<Post> local = engagementRepository
                 .findPublishedCaptionsWithEngagement(PageRequest.of(0, LOCAL_FALLBACK_LIMIT))
                 .stream()
                 .map(row -> new Post((String) row[0], (Instant) row[1],
                         toLong(row[2]), toLong(row[3]), toLong(row[4])))
                 .toList();
+        long localEngaged = local.stream().filter(p -> p.score() > 0).count();
+        if (localEngaged >= MIN_ENGAGED_POSTS) {
+            return new LoadedPosts(SOURCE_DASIGCONNECT, local);
+        }
+
+        if (!fbPosts.isEmpty()) {
+            return new LoadedPosts(SOURCE_FACEBOOK, fbPosts);
+        }
         return new LoadedPosts(SOURCE_DASIGCONNECT, local);
     }
 
