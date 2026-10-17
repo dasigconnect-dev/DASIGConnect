@@ -69,7 +69,7 @@ public class NotificationEventListener {
         Submission s = event.submission();
         String scheduledPart = s.getScheduledAt() != null ? " (scheduled for " + fmt(s.getScheduledAt()) + ")" : "";
         String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart + ".";
-        String link = "/submissions/" + s.getId();
+        String link = "/queue?submissionId=" + s.getId() + "&mode=review";
 
         for (User reviewer : reviewers()) {
             notificationService.createNotification(reviewer, NotificationEventType.submission_pending, msg, link);
@@ -228,7 +228,8 @@ public class NotificationEventListener {
     public void onPublishFailed(PublishFailedEvent event) {
         Submission s = event.submission();
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "unknown";
-        String link = "/submissions/" + s.getId();
+        String adminLink = "/queue?tab=failed&submissionId=" + s.getId();
+        String contributorLink = "/submissions/" + s.getId();
 
         String adminMsg = "Automated publishing failed for '" + s.getEventTitle()
                 + "' (scheduled " + slot + "): " + event.errorDetail()
@@ -262,14 +263,14 @@ public class NotificationEventListener {
             }
         } else {
             for (User admin : targetAdmins) {
-                notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
+                notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, adminLink);
                 emailDeliveryService.send(admin,
                         NotificationEventType.submission_publish_failed.name(),
                         "DASIGConnect - Publishing failed",
                         adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
                 // Messenger alert (A4 / A5)
                 String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
-                        + "\". Manual action required: " + frontendBaseUrl + link;
+                        + "\". Manual action required: " + frontendBaseUrl + adminLink;
                 messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
             }
         }
@@ -277,7 +278,7 @@ public class NotificationEventListener {
         String contributorMsg = "'" + s.getEventTitle()
                 + "' could not be published automatically. A moderator has been notified and will follow up.";
         notificationService.createNotification(
-                s.getContributor(), NotificationEventType.submission_publish_failed, contributorMsg, link);
+                s.getContributor(), NotificationEventType.submission_publish_failed, contributorMsg, contributorLink);
     }
 
     // ── UC-2.4 A6 — Submission missed its review window (MISSED_REVIEW) ───────

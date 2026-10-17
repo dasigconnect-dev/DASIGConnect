@@ -865,15 +865,27 @@ export default function ValidationQueueScreen({
   // `?submissionId=` (from notifications) opens that submission once, then the
   // param is dropped so a reload doesn't reopen it after it's been closed.
   const deepLinkId = searchParams.get("submissionId");
+  const deepLinkMode = searchParams.get("mode");
   useEffect(() => {
     if (!deepLinkId) return;
     let active = true;
     fetchSubmissionDetail(deepLinkId)
-      .then((detail) => {
+      .then(async (detail) => {
         if (!active) return;
-        void openSubmission(detail);
+        await openSubmission(detail);
         if (!isDesktop) savedScrollYRef.current = window.scrollY;
         setMobileView("review");
+
+        if (deepLinkMode === "review" && REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
+          try {
+            const lockRes = await acquireReviewLock(detail.id);
+            if (active && lockRes.data) {
+              setLockFor(detail.id, lockRes.data);
+            }
+          } catch {
+            // If lock could not be acquired (e.g. held by another or forbidden), openSubmission handles notice
+          }
+        }
       })
       .catch((err: unknown) => {
         if (active) toast.error(readApiError(err, "Unable to open this submission."));
@@ -884,6 +896,7 @@ export default function ValidationQueueScreen({
           (prev) => {
             const params = new URLSearchParams(prev);
             params.delete("submissionId");
+            params.delete("mode");
             return params;
           },
           { replace: true },
@@ -894,7 +907,7 @@ export default function ValidationQueueScreen({
     };
     // Runs per deep-link id only; openSubmission's identity changes with the selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkId]);
+  }, [deepLinkId, deepLinkMode]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));

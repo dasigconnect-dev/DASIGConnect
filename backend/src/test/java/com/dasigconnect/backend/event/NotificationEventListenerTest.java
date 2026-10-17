@@ -94,12 +94,13 @@ class NotificationEventListenerTest {
 
         listener.onSubmissionPending(new SubmissionPendingEvent(s));
 
+        String expectedLink = "/queue?submissionId=" + s.getId() + "&mode=review";
         verify(notificationService).createNotification(
-                eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+                eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), eq(expectedLink));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("AI Expo"));
 
         verify(notificationService).createNotification(
-                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), eq(expectedLink));
         verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("AI Expo"));
     }
 
@@ -195,13 +196,14 @@ class NotificationEventListenerTest {
 
         listener.onPublishFailed(new PublishFailedEvent(s, "Graph API Error 190"));
 
+        String expectedAdminLink = "/queue?tab=failed&submissionId=" + s.getId();
         verify(notificationService).createNotification(
-                eq(admin), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), any());
+                eq(admin), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), eq(expectedAdminLink));
         verify(emailDeliveryService).send(
                 eq(admin), eq(NotificationEventType.submission_publish_failed.name()), any(), contains("Graph API Error 190"));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("Webinar"));
         verify(notificationService).createNotification(
-                eq(contributor), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), any());
+                eq(contributor), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), eq("/submissions/" + s.getId()));
     }
 
     @Test
