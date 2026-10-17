@@ -893,7 +893,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ),
     [form.files, form.savedAssets],
   );
-  const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
+  const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption, form.eventTitle);
   const proofread = useProofread(form.id);
 
   const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
@@ -2975,10 +2975,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                   <AiCaptionSuggestion
                     variants={aiCaption.variants}
-                    onApply={(caption, tone, action) => {
+                    onApply={(caption, tone, action, qualityRating) => {
                       if (!canUseAiCaption) return;
                       updateCaption(caption);
-                      aiCaption.logApply(tone, action);
+                      aiCaption.logApply(tone, action, qualityRating);
                     }}
                     onDismissOne={aiCaption.logDismissOne}
                     onDismissAll={aiCaption.dismissAll}

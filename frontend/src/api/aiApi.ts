@@ -271,10 +271,18 @@ export function isRateLimitError(e: unknown): e is RateLimitError {
 export function logCaptionInteraction(
   submissionId: string,
   actionTaken: CaptionAction,
-  toneSelected?: CaptionTone
+  toneSelected?: CaptionTone,
+  qualityRating?: number | null,
+  draftingDurationMs?: number | null,
 ): void {
   api
-    .post("/ai/caption/log", { submissionId, actionTaken, toneSelected })
+    .post("/ai/caption/log", {
+      submissionId,
+      actionTaken,
+      toneSelected,
+      ...(qualityRating != null ? { qualityRating } : {}),
+      ...(draftingDurationMs != null ? { draftingDurationMs } : {}),
+    })
     .catch(() => {});
 }
 

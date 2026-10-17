@@ -160,6 +160,25 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       state.draft = { ...(state.draft ?? baseDraft()), status: "pending", submittedAt: new Date().toISOString() };
       await json(request, state.draft);
     },
+    "POST /api/v1/ai/caption": async (request: ApiRequest) => {
+      record(request);
+      await json(request, {
+        success: true,
+        data: {
+          submissionId: DRAFT_ID,
+          variants: [
+            {
+              tone: "professional",
+              caption: "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+            },
+          ],
+        },
+      });
+    },
+    "POST /api/v1/ai/caption/log": async (request: ApiRequest) => {
+      record(request);
+      await request.route.fulfill({ status: 204, body: "" });
+    },
   });
   return { state, api };
 }
@@ -272,6 +291,7 @@ test.describe("submission composer", () => {
       }),
     );
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "autosaved.png",
       mimeType: "image/png",
@@ -303,6 +323,7 @@ test.describe("submission composer", () => {
       await route.fallback();
     });
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "cancelled.png",
       mimeType: "image/png",
@@ -349,6 +370,7 @@ test.describe("submission composer", () => {
       await route.fallback();
     });
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "retry.png",
       mimeType: "image/png",
@@ -444,5 +466,57 @@ test.describe("submission composer", () => {
     await expect(banner).toContainText("Revision Requested");
     await expect(banner).toContainText("Please use a clearer photo.");
     await expect(page.locator(".sub-guard-submit-btn")).toContainText("Submit for Revision");
+  });
+
+  test("Case-30c (RP-03): defaults media picker to AI Suggestions when context exists, auto-generates caption in background without auto-inserting, and logs 1-5 rating & drafting duration", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "CIT-U Innovation Summit 2026",
+        eventDate: "2026-09-25",
+        caption: "",
+        albumName: "Saved Album",
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    // Media-first: AI Suggestions tab is selected by default when event context exists
+    await expect(page.getByRole("tab", { name: /AI Suggestions/ })).toHaveAttribute("aria-selected", "true");
+
+    // Step 2 — Post Details: background AI caption suggestion was generated but NOT auto-inserted
+    const captionInput = page.getByPlaceholder("Write a compelling caption for the DASIG Facebook page...");
+    await goToStep(page, /Step 2 Post Details/, captionInput);
+    await expect(captionInput).toHaveValue("");
+
+    const suggestionPanel = page.getByTestId("ai-caption-suggestion-panel");
+    await expect(suggestionPanel).toBeVisible();
+    await expect(suggestionPanel).toContainText("AI draft ready — Use / Edit / Dismiss");
+
+    // Select 5-star quality rating and click Use
+    await suggestionPanel.getByRole("button", { name: "5★" }).click();
+    await suggestionPanel.getByRole("button", { name: "Use", exact: true }).click();
+
+    await expect(captionInput).toHaveValue(
+      "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+    );
+
+    await expect
+      .poll(
+        () =>
+          state.log.some((entry) => {
+            if (entry.key !== "POST /api/v1/ai/caption/log") return false;
+            const body = entry.body as Record<string, unknown>;
+            return (
+              body.actionTaken === "use" &&
+              body.toneSelected === "professional" &&
+              body.qualityRating === 5 &&
+              typeof body.draftingDurationMs === "number"
+            );
+          }),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
   });
 });

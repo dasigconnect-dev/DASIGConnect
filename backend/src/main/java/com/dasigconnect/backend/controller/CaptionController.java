@@ -36,7 +36,7 @@ public class CaptionController {
         this.captionGenerationService = captionGenerationService;
     }
 
-    @PostMapping("/caption")
+    @PostMapping({"/caption", "/caption/background"})
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
@@ -81,7 +81,9 @@ public class CaptionController {
                 dto.getSubmissionId(),
                 user.institutionId(),
                 dto.getActionTaken(),
-                dto.getToneSelected());
+                dto.getToneSelected(),
+                dto.getQualityRating(),
+                dto.getDraftingDurationMs());
         return ResponseEntity.noContent().build();
     }
 

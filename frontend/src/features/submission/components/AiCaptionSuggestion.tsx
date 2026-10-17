@@ -4,9 +4,14 @@ import "./AiCaptionSuggestion.css";
 
 interface Props {
   variants: CaptionVariant[];
-  onApply: (caption: string, tone: CaptionTone, action: "use" | "use_then_edited") => void;
-  onDismissOne: (tone: CaptionTone) => void;
-  onDismissAll: () => void;
+  onApply: (
+    caption: string,
+    tone: CaptionTone,
+    action: "use" | "use_then_edited",
+    qualityRating?: number | null,
+  ) => void;
+  onDismissOne: (tone: CaptionTone, qualityRating?: number | null) => void;
+  onDismissAll: (qualityRating?: number | null) => void;
   onRegenerate: () => void;
 }
 
@@ -24,16 +29,38 @@ export default function AiCaptionSuggestion({
   onRegenerate,
 }: Props) {
   const [expanded, setExpanded] = useState<CaptionTone | null>(null);
+  const [qualityRating, setQualityRating] = useState<number | null>(null);
 
   return (
-    <div className="ai-sugg-panel">
+    <div className="ai-sugg-panel" data-testid="ai-caption-suggestion-panel">
       <div className="ai-sugg-header">
         <span className="ai-sugg-header-title">
           <i className="ti ti-sparkles" aria-hidden />
-          AI Suggestions
+          AI draft ready — Use / Edit / Dismiss
           <span className="ai-sugg-disclaimer">Review before applying</span>
         </span>
         <div className="ai-sugg-header-actions">
+          <div
+            className="ai-sugg-rating-group"
+            role="group"
+            aria-label="Rate AI caption quality (1 to 5)"
+          >
+            {[1, 2, 3, 4, 5].map((score) => (
+              <button
+                key={score}
+                type="button"
+                className={`ai-sugg-action-btn${qualityRating === score ? " active" : ""}`}
+                aria-pressed={qualityRating === score}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setQualityRating((prev) => (prev === score ? null : score));
+                }}
+                title={`Rate AI caption ${score} out of 5`}
+              >
+                {score}★
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             className="ai-sugg-action-btn"
@@ -45,7 +72,7 @@ export default function AiCaptionSuggestion({
           <button
             type="button"
             className="ai-sugg-action-btn ai-sugg-action-btn--close"
-            onClick={(e) => { e.preventDefault(); onDismissAll(); }}
+            onClick={(e) => { e.preventDefault(); onDismissAll(qualityRating); }}
             title="Dismiss suggestions"
           >
             <i className="ti ti-x" aria-hidden />
@@ -62,8 +89,10 @@ export default function AiCaptionSuggestion({
             onToggle={() =>
               setExpanded((prev) => (prev === v.tone ? null : v.tone))
             }
-            onApply={(caption, action) => onApply(caption, v.tone, action)}
-            onDismiss={() => onDismissOne(v.tone)}
+            onApply={(caption, action) =>
+              onApply(caption, v.tone, action, qualityRating)
+            }
+            onDismiss={() => onDismissOne(v.tone, qualityRating)}
           />
         ))}
       </div>
@@ -122,6 +151,17 @@ function SuggestionRow({
             }}
           >
             Use
+          </button>
+          <button
+            type="button"
+            className="ai-sugg-action-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              if (!expanded) onToggle();
+              setEditing(true);
+            }}
+          >
+            Edit
           </button>
           <button
             type="button"
