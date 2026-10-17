@@ -386,11 +386,11 @@ Verify login authentication, JWT claims scoping, 5-attempt / 15-minute account l
 
 ---
 
-## **3.6 Case-6: Three-Step Post Composer, Readiness Checklist & Post Templates (UC-1.5)** {#36-case-6-three-step-post-composer-readiness-checklist--post-templates-uc-15}
+## **3.6 Case-6: Three-Step Post Composer, Submission Gate & Post Templates (UC-1.5)** {#36-case-6-three-step-post-composer-readiness-checklist--post-templates-uc-15}
 
 ### **3.6.1 Purpose**
 
-Verify the 3-step post composer wizard (`Step 1: Media → Step 2: Post Details → Step 3: Organize & Schedule`), the live 0–100 Readiness Checklist (75% Required, 25% Recommended), built-in and personal post templates, **Posting As** institution switching for Moderators/Administrators, autosave, and the network-wide `guardrails_enforced` runtime toggle (`UC-1.5 Main Flow & A1–A9`).
+Verify the 3-step post composer wizard (`Step 1: Media → Step 2: Post Details → Step 3: Organize & Schedule`), the binary 7-of-7 Required Submission Gate (`Required: 7 of 7 ✓ — Ready to submit` with next-missing-item jump CTA), separate non-blocking Post Quality Tips (`Tips: X of 5 applied`), built-in and personal post templates, **Posting As** institution switching for Moderators/Administrators, autosave, and the network-wide `guardrails_enforced` runtime toggle (`UC-1.5 Main Flow & A1–A9`).
 
 ### **3.6.2 Inputs**
 
@@ -410,14 +410,14 @@ Verify the 3-step post composer wizard (`Step 1: Media → Step 2: Post Details 
   4. For Administrator/Moderator, changing the **Posting As** institution on a saved draft prompts confirmation, clears the previously selected preferred schedule, preserves attached media, and re-homes the draft on save.
   5. When `guardrails_enforced = false` (toggled in **Settings → Page**), Standard drafts still require a future scheduled date and create a `SlotReservation`, but skip the `8:00 AM–8:00 PM` window, `±30-min` spacing, `≤6/day`, and `≥2h` lead-time checks (`UC-1.5`).
   6. Deleting a draft or `rejected` submission (`UC-1.5 A2`) cascades cleanup of `validation_logs`/`review_locks` (`V103`) and writes `SUBMISSION_DELETED`.
-- **Pass/Fail Criteria:** **PASS** if wizard gating, Readiness score calculation (0–100), template CRUD, Posting As re-homing, guard-rail toggle behavior, and draft/rejected deletion all succeed; **FAIL** otherwise.
+- **Pass/Fail Criteria:** **PASS** if wizard gating, binary Submission Gate (`Required: 7 of 7 ✓ — Ready to submit`), separate Post Quality Tips (`Tips: X of 5 applied`), Submit button promotion across desktop and mobile viewports, template CRUD, Posting As re-homing, guard-rail toggle behavior, and draft/rejected deletion all succeed; **FAIL** otherwise.
 
 ### **3.6.4 Test Procedure**
 
-1. Open **New Post** as Contributor; verify Step 1 blocks advancing to Step 2 until at least one valid media asset is attached.
+1. Open **New Post** as Contributor; verify Step 1 blocks advancing to Step 2 until at least one valid media asset is attached, and verify the **Submission Gate** names the next missing required item (`Next: Event title`) and jumps directly to it when clicked.
 2. Attach `event-banner.jpg`, advance to Step 2, open the **Templates** panel, apply `"Event Announcement"`, and save a personal template `"My Lab Spotlight"`; attempt to save a second template with the same name and assert `409 Conflict`.
-3. Verify the **Readiness Checklist** updates live as Required items (75% weight) and Recommended items (25% weight: comfortable caption length, `≥1` hashtag, `≥1` media tag, `≥1` per-media caption, template used) are completed.
-4. Click **Submit** when all Required items are met but one Recommended item is missing; verify the non-blocking confirmation dialog displays the readiness score (`UC-1.5 A7`).
+3. Verify the **Submission Gate** updates live across the 7 Required checks (`Required: X of 7`) while the **Post Quality Tips** section displays `Tips: X of 5 applied` separately without reducing the submission gate into a misleading percentage.
+4. Complete all 7 Required checks while leaving 2 optional quality tips unapplied; verify the gate displays `Required: 7 of 7 ✓ — Ready to submit`, **Submit for Approval** is promoted and visible on every step (including `≤900px` mobile viewports), and the submit confirmation dialog notes the optional tips as non-blocking advisories (`UC-1.5 A7`).
 5. As Administrator, toggle **Scheduling Guard Rails** OFF in **Settings → Page** and verify a Standard draft can be scheduled at `9:30 PM` (outside `8 AM–8 PM`) as long as the timestamp is in the future; re-enable Guard Rails afterward.
 
 ---
@@ -1036,6 +1036,34 @@ Verify the Administrator-only **Audit Log** (`/admin/audit-log`, `UC-3.6`), incl
 
 ---
 
+## **3.26 Case-26: Binary Required-Check Submission Gate vs. Optional Quality Tips (`RP-01`, `UC-1.5`, `UC-1.9`)** {#326-case-26-binary-required-check-submission-gate-vs-optional-quality-tips-rp-01-uc-15-uc-19}
+
+### **3.26.1 Purpose**
+
+Verify that the post composer separates the binary 7-of-7 Required Submission Gate (`Required: 7 of 7 ✓ — Ready to submit`, with next-missing-item jump CTA) from the 5 non-blocking Post Quality Tips (`Tips: X of 5 applied`), removes the misleading 0–100 blended percentage, and promotes **Submit for Approval** on every screen size once all 7 required checks pass (`RP-01`).
+
+### **3.26.2 Inputs**
+
+- **Actor:** Contributor (`contrib.citu@cit.edu`) on desktop (`1280×800`) and mobile (`360×800`).
+- **Draft:** All 7 required items satisfied (`eventTitle`, `eventDate`, `caption`, `media`, `fileRequirements`, `album`, `schedule`), with only 3 of 5 optional quality tips applied (no hashtags, no template selected).
+
+### **3.26.3 Expected Outputs & Pass/Fail Criteria**
+
+- **Expected Outputs:**
+  1. While incomplete (e.g., 6 of 7 required items passed), the Submission Gate displays `Required: 6 of 7` and renders a clickable `Next: [Missing Item] →` button that jumps directly to the missing field.
+  2. Once all 7 required items are completed (with 3 of 5 optional tips applied), the Submission Gate displays `Required: 7 of 7 ✓ — Ready to submit` (and `Required: 7/7 ✓` in the mobile top-bar chip), never `90%`.
+  3. Optional quality tips are displayed separately under **Post Quality Tips** as `Tips: 3 of 5 applied`.
+  4. **Submit for Approval** is enabled and visible in the mobile sticky action bar across Steps 1, 2, and 3 once the gate passes.
+- **Pass/Fail Criteria:** **PASS** if the binary gate, next-missing-item jump, separate `Tips: 3 of 5 applied` counter, and cross-step mobile Submit button promotion all behave as specified; **FAIL** otherwise.
+
+### **3.26.4 Test Procedure**
+
+1. Open the composer on a `360×800` viewport, attach 1 valid image, and verify the Submission Gate shows `Required: 2 of 7` with `Next: Event title`.
+2. Click `Next: Event title`; verify the composer jumps to Step 2 and focuses the Event Title input.
+3. Complete all 7 required items while leaving hashtags and templates empty; verify `Required: 7 of 7 ✓ — Ready to submit` and `Tips: 3 of 5 applied`, and verify **Submit for Approval** is visible on Step 1, Step 2, and Step 3.
+
+---
+
 # **Appendix (Test Logs)** {#appendix-test-logs}
 
 ## **A.1 Log for Test n** {#a1-log-for-test-n}
@@ -1097,13 +1125,13 @@ The following execution logs record the verification runs conducted on **2026-10
   - Messenger link code (`POST /api/v1/auth/messenger-link-code`) → `200 OK` for Moderator/Admin, `403 Forbidden` for Contributor.
 - **Outcome:** **PASS**
 
-### **Log for Test 6 (`Case-6` — UC-1.5 Three-Step Post Composer, Readiness & Templates)**
+### **Log for Test 6 (`Case-6` — UC-1.5 Three-Step Post Composer, Submission Gate & Templates)**
 
-- **Date / Time:** `2026-10-11 09:35:15 PHT (UTC+8)`
-- **Automated Test Reference:** `SubmissionServiceTest`, `SubmissionControllerTest`, Playwright `performance-regressions.spec.ts`
+- **Date / Time:** `2026-10-18 00:10:00 PHT (UTC+8)`
+- **Automated Test Reference:** `SubmissionServiceTest`, `SubmissionControllerTest`, `getReadinessChecklist` (`utils.ts`), Playwright `performance-regressions.spec.ts`
 - **Execution Trace:**
   - 3-step wizard (`Media → Post Details → Organize & Schedule`) enforces Required step gates on forward navigation and allows free backward navigation.
-  - Readiness Checklist computes `75%` Required + `25%` Recommended score (`0–100`).
+  - Submission Gate computes binary 7-of-7 Required check status (`Required: 7 of 7 ✓ — Ready to submit`) with `nextMissingRequired` jump CTA, while Post Quality Tips displays `Tips: X of 5 applied` separately (`RP-01`).
   - Personal template save (`POST /api/v1/post-templates`) scopes to `ownerUserId` and returns `409` on duplicate name.
   - Deleting a `draft` or `rejected` submission cascades `validation_logs`/`review_locks` (`V103`) and logs `SUBMISSION_DELETED`.
 - **Outcome:** **PASS**

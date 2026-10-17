@@ -31,13 +31,15 @@
 10. The actor organises media into an **album** and adds media tags (UC-1.7). On submit the backend reconciles the album — freshly uploaded assets are filed into the album resolved from the post's album name, **auto-creating one from the event title if none is set**; library picks keep their own album; all attached assets receive the post's media tags.
 11. The actor chooses **Set a Schedule** (default) with peak-hour suggestions (UC-1.8), or **Live Event Fast-Track**, which hides the scheduling fields. A Standard post always needs a future scheduled time; the network guard-rail switch only controls the *rules* on that time (see below).
 12. The actor may open a **Facebook-style preview** — a persistent centre-panel toggle available on any step, not just Step 3.
-13. The actor clicks **Submit** to send for approval (UC-1.9). Submit is disabled while any blocking readiness item is unmet; if only Recommended items remain, Submit is allowed after a non-blocking confirmation showing the readiness score (A7).
+13. The actor clicks **Submit** to send for approval (UC-1.9). Submit is disabled while any blocking required item is unmet; once all 7 required checks pass, **Submit for Approval** becomes the primary, always-visible action on every screen size (including mobile/compact viewports across all wizard steps). Optional post-quality tips never block submission or imply a pass mark (A7).
 
-## Readiness Checklist (all steps)
+## Submission Gate & Post Quality Tips (all steps)
 
-A right-panel checklist updates live, and produces a **readiness score out of 100** (Required weighted 75%, Recommended 25%), a **grade** ("Ready to submit" / "Incomplete"), a description line, and a **dial (ReadinessRing)**. Each checklist row is **clickable** — it jumps to the relevant step/field. Required rows show ✓ / ✗; Recommended rows show ✓ / ⚠ with an explanatory sub-line.
+A right-panel checklist (and top-bar status chip + bottom sheet on compact `≤900px` screens) separates submission readiness into two distinct signals instead of a single blended percentage:
+1. **Submission Gate (binary status):** Shows `Required: 7 of 7 ✓ — Ready to submit` when complete, or `Required: X of 7` while incomplete. It is the only thing that can block submission. While incomplete, the gate header names the **next missing required item** (`Next: [Field] →`) and clicking it jumps directly to the relevant step and field.
+2. **Post Quality Tips (optional advisories):** Shown in a separate section labeled `Tips: X of 5 applied`, never as a percentage that implies a pass mark. Each row in both sections is clickable and jumps to the relevant step/field.
 
-**Required (blocking):**
+**Required (blocking submission gate — 7 checks):**
 - Event title present
 - Event date present
 - Caption non-empty
@@ -48,7 +50,7 @@ A right-panel checklist updates live, and produces a **readiness score out of 10
   - **Guard rails ON:** the slot must also fall within the 8:00 AM–8:00 PM publish window and not collide with a guard-rail conflict (±30-min spacing, ≤6 posts/day, ≥2h lead time).
   - **Guard rails OFF:** any interval, any time of day — publish-window and slot-conflict checks are skipped. A future date is still required.
 
-**Recommended (non-blocking):**
+**Post Quality Tips (non-blocking optional advisories — 5 tips):**
 - Caption length within a comfortable range
 - At least one hashtag in the caption
 - At least one media tag
@@ -82,11 +84,11 @@ The switch governs the *rules* on a scheduled time, **not whether one is picked*
 
 - **A1 — Edit Existing Draft:** The composer loads a `draft` at Step 1 with all reached steps accessible by backward navigation.
 - **A2 — Delete a Draft or Rejected Submission:** Confirmation prompt, then `DELETE /api/v1/submissions/{id}` — allowed in `draft` or `rejected` status (since 2026-09-24; it used to be `draft` only), by the submission's author only; also purges orphaned draft uploads (a rejected post's media was already filed into the library on submit and stays) and the slot reservation. Its review rows — `validation_logs`, `review_locks`, `override_requests` — go with it by `ON DELETE CASCADE` (V103; before that, deleting any reviewed submission failed on `validation_logs_submission_id_fkey`, including a draft withdrawn after a reviewer had opened it). The review decisions themselves stay in the append-only audit log, and the deletion is audited as `SUBMISSION_DELETED` with the status and title. `publication_attempts` deliberately still blocks the delete, as a database-level guard that a published post can never be removed.
-- **A3 — Template Not Selected:** The flow proceeds normally; "Template used" simply stays a ⚠ Recommended item.
+- **A3 — Template Not Selected:** The flow proceeds normally; "Template used" simply stays an unapplied optional quality tip.
 - **A4 — Draft Returned for Revision:** A `needs_revision` draft reopens with the reviewer's remarks. Remarks are parsed into **per-field comments**; the affected fields pulse, and the actor can mark each field "addressed". Re-submitting from `needs_revision` is allowed (submit accepts `draft` or `needs_revision`). A `rejected` submission shows the rejection reason and offers **Edit & Resubmit** (`submit` also accepts `rejected`; corrected 2026-09-24 — it was previously described here as terminal/read-only). *Reviewer remarks exist only for these two outcomes — `requestRevision` sets `validatorRemarks`, `reject` sets `rejectionReason`; approval sets neither.*
 - **A5 — Dirty-State Navigation Warning:** Closing or navigating away with unsaved modifications prompts for confirmation.
-- **A6 — Incomplete Readiness at Save:** The actor may Save as Draft with unmet Required or Recommended items at any step; the checklist persists as a reminder.
-- **A7 — Submit Despite Recommended Warnings:** With all Required items met but Recommended items unmet, Submit is allowed after a non-blocking confirmation showing the readiness score.
+- **A6 — Incomplete Submission Gate at Save:** The actor may Save as Draft with unmet Required items or optional quality tips at any step; the checklist persists as a guide.
+- **A7 — Submit With Unapplied Quality Tips:** With all 7 Required checks met (`Required: 7 of 7 ✓ — Ready to submit`), Submit is immediately enabled and promoted on all screen sizes; unapplied optional quality tips (`Tips: X of 5 applied`) are noted as non-blocking advisories in the confirmation dialog without any pass/fail percentage.
 - **A8 — Navigate Backward Between Steps:** Always allowed; forward progression requires the current step's Required items. All entered data persists within the session.
 - **A9 — Withdraw a Submitted Post:** `POST /api/v1/submissions/{id}/withdraw` returns a still-`pending` submission to `draft` (refused once `in_review`); writes a `SUBMISSION_WITHDRAWN` audit entry. The draft then re-enters this flow.
 - **A10 — Generate Template from Top-Performing Posts** *(added 2026-09-23)*: From the Post Templates panel's header, the actor chooses **Generate from Top Posts** (any role; not shown on read-only submissions). `POST /api/v1/ai/templates/from-top-posts` (`AiTemplateController` → `TopPostTemplateService`) returns an AI-drafted template; **nothing is saved server-side**.
@@ -104,12 +106,12 @@ A draft post record exists in `draft` state with event title/date, caption, hash
 
 ---
 
-_Verified against the running code as of 2026-09-10. Primary sources: `frontend/src/features/submission/SubmissionScreen.tsx` + `utils.ts` (`getReadinessChecklist`, `getPreviewValidation`), `SubmissionController` / `SubmissionService` (`create`, `update`, `submit`, `delete`, `withdraw`, media/album reconciliation), `SubmissionLookupsDto`, `PostTemplate*` (entity/controller/service), `GuardRailSettingsService` + `SlotReservationService` + `GuardRailService`, `ValidationService` (`requestRevision`, `reject`), `PageSettings*`, migration `V89__page_settings_guardrails_toggle.sql`._
+_Verified against the running code. Primary sources: `frontend/src/features/submission/SubmissionScreen.tsx` + `utils.ts` (`getReadinessChecklist`, `getPreviewValidation`), `SubmissionController` / `SubmissionService` (`create`, `update`, `submit`, `delete`, `withdraw`, media/album reconciliation), `SubmissionLookupsDto`, `PostTemplate*` (entity/controller/service), `GuardRailSettingsService` + `SlotReservationService` + `GuardRailService`, `ValidationService` (`requestRevision`, `reject`), `PageSettings*`, migration `V89__page_settings_guardrails_toggle.sql`._
 
 **Changes from the prior draft of this UC, made this session:**
 - Actors: added Moderator (the code gives moderators the full composer and Posting-As selector).
 - Removed the "event category" field from Step 2 — it isn't in the composer (decision: not needed).
-- Readiness checklist rewritten to the actual 7 Required / 5 Recommended items, plus the previously-undocumented score / grade / dial and clickable rows.
+- Submission Gate & Post Quality Tips (Refactoring Priority #1): separated the binary 7-of-7 Required submission gate (`Required: 7 of 7 ✓ — Ready to submit`, with next-missing-item jump CTA) from the 5 non-blocking Post Quality Tips (`Tips: X of 5 applied`), removing the misleading 0–100 blended percentage and promoting Submit on every screen size once the gate passes.
 - Schedule readiness/blocking is now explicitly tied to the network guard-rail switch (new this session): a future scheduled time is **always** required for a Standard post; only the ±30-min spacing / daily cap / lead time / 8:00 AM–8:00 PM window relax when the switch is off.
 - **Templates moved into the caption tools (2026-09-24):** the always-visible left sidebar was replaced by a **Templates** button in the caption action row plus an empty-caption starter, opening a panel with the Generate / Save actions pinned in its header (see Templates). Step 7 also corrected: Fancy text is button-opened, not triggered by text selection.
 - Documented what the prior draft omitted entirely: personal Save-as-Template + delete, built-in vs custom templates, autosave, withdraw (A9), the media/album reconciliation on submit, the per-field revision UI, and that reviewer remarks appear only on request-revision or reject.
