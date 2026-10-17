@@ -54,6 +54,36 @@ public interface SubscriptionUsageEventRepository extends JpaRepository<Subscrip
             @Param("periodEnd") Instant periodEnd);
 
     @Query(value = """
+            SELECT COALESCE(SUM(quantity), 0)
+            FROM subscription_usage_events
+            WHERE organization_id = :organizationId
+              AND event_type = :eventType
+              AND occurred_at >= :periodStart
+              AND occurred_at < :periodEnd
+            """, nativeQuery = true)
+    long sumConsumption(
+            @Param("organizationId") UUID organizationId,
+            @Param("eventType") String eventType,
+            @Param("periodStart") Instant periodStart,
+            @Param("periodEnd") Instant periodEnd);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(quantity), 0)
+            FROM subscription_usage_events
+            WHERE organization_id = :organizationId
+              AND user_id = :userId
+              AND event_type = :eventType
+              AND occurred_at >= :periodStart
+              AND occurred_at < :periodEnd
+            """, nativeQuery = true)
+    long sumUserConsumption(
+            @Param("organizationId") UUID organizationId,
+            @Param("userId") UUID userId,
+            @Param("eventType") String eventType,
+            @Param("periodStart") Instant periodStart,
+            @Param("periodEnd") Instant periodEnd);
+
+    @Query(value = """
             SELECT institution.id,
                    institution.name,
                    COALESCE((
@@ -126,6 +156,74 @@ public interface SubscriptionUsageEventRepository extends JpaRepository<Subscrip
               )
             """, nativeQuery = true)
     long currentActiveUserCount(@Param("organizationId") UUID organizationId);
+
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM users user_account
+            WHERE (
+                user_account.institution_id IN (
+                    SELECT institution.id
+                    FROM institutions institution
+                    WHERE institution.organization_id = :organizationId
+                )
+                OR (
+                    user_account.institution_id IS NULL
+                    AND :organizationId = CAST('00000000-0000-0000-0000-000000000001' AS UUID)
+                )
+            )
+              AND (
+                  user_account.account_state = 'active'
+                  OR (
+                      user_account.account_state IN ('pending', 'pending_email_undelivered')
+                      AND EXISTS (
+                          SELECT 1
+                          FROM invitation_tokens token
+                          WHERE LOWER(token.recipient_email) = LOWER(user_account.email)
+                            AND token.used_at IS NULL
+                            AND token.expires_at > :now
+                      )
+                  )
+              )
+            """, nativeQuery = true)
+    long currentSeatCommitmentCount(
+            @Param("organizationId") UUID organizationId,
+            @Param("now") Instant now);
+
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM users user_account
+                WHERE LOWER(user_account.email) = LOWER(:email)
+                  AND (
+                      user_account.institution_id IN (
+                          SELECT institution.id
+                          FROM institutions institution
+                          WHERE institution.organization_id = :organizationId
+                      )
+                      OR (
+                          user_account.institution_id IS NULL
+                          AND :organizationId = CAST('00000000-0000-0000-0000-000000000001' AS UUID)
+                      )
+                  )
+                  AND (
+                      user_account.account_state = 'active'
+                      OR (
+                          user_account.account_state IN ('pending', 'pending_email_undelivered')
+                          AND EXISTS (
+                              SELECT 1
+                              FROM invitation_tokens token
+                              WHERE LOWER(token.recipient_email) = LOWER(user_account.email)
+                                AND token.used_at IS NULL
+                                AND token.expires_at > :now
+                          )
+                      )
+                  )
+            )
+            """, nativeQuery = true)
+    boolean hasSeatCommitment(
+            @Param("organizationId") UUID organizationId,
+            @Param("email") String email,
+            @Param("now") Instant now);
 
     @Query(value = """
             SELECT COALESCE(SUM(media.file_size_bytes), 0)

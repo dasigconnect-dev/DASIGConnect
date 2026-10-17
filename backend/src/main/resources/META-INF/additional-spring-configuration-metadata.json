@@ -200,6 +200,12 @@
       "defaultValue": 300000
     },
     {
+      "name": "app.subscription.action-reservation-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "Minutes an AI or submission quota reservation remains active before it can be retried.",
+      "defaultValue": 15
+    },
+    {
       "name": "spring.flyway.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Flyway database migration on startup.",
