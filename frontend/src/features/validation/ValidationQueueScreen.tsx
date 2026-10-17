@@ -1270,17 +1270,9 @@ export default function ValidationQueueScreen({
   }, [editForm]);
 
   // ── Business rule: Edits require at least one changed field to save ─────────
-  const hasEditChanges = useMemo(() => {
-    if (!editMode || !selected) return false;
-    return describeEditChanges().length > 0;
-  }, [
-    editMode,
-    selected,
-    editForm,
-    fastTrackChanged,
-    scheduleChanged,
-    editScheduledAtIso,
-  ]);
+  const hasEditChanges = editMode && selected
+    ? describeEditChanges().length > 0
+    : false;
 
   // Only an admin can bypass a hard block — with a reason. Moderators cannot
   // save a blocked slot at all. Saving requires at least one field to have been modified.

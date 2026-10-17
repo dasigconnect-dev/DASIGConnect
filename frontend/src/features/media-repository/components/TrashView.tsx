@@ -33,7 +33,6 @@ export default function TrashView({
   institutions,
   selectedInstitutionId,
   onInstitutionChange,
-  onBack: _onBack,
   onRestored,
 }: TrashViewProps) {
   const toast = useToast();
@@ -70,18 +69,20 @@ export default function TrashView({
   }, [search, selectedInstitutionId, page, pageSize, toast]);
 
   useEffect(() => {
-    void fetchTrash();
+    queueMicrotask(() => void fetchTrash());
   }, [fetchTrash]);
 
   // Deselect any selected items when items list changes
   useEffect(() => {
-    setSelectedIds((prev) => {
-      const existing = new Set(items.map((i) => i.id));
-      const next = new Set<string>();
-      prev.forEach((id) => {
-        if (existing.has(id)) next.add(id);
+    queueMicrotask(() => {
+      setSelectedIds((prev) => {
+        const existing = new Set(items.map((i) => i.id));
+        const next = new Set<string>();
+        prev.forEach((id) => {
+          if (existing.has(id)) next.add(id);
+        });
+        return next;
       });
-      return next;
     });
   }, [items]);
 

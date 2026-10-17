@@ -44,9 +44,11 @@ export function CalendarDateField({
 
   useEffect(() => {
     if (selectedDate) {
-      setVisibleMonth(
-        new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
-      );
+      queueMicrotask(() => {
+        setVisibleMonth(
+          new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+        );
+      });
     }
   }, [selectedDate]);
 

@@ -85,8 +85,10 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   useEffect(() => {
     if (user.role === 'contributor') return
 
-    setInstitutionsLoading(true)
-    setInstitutionError('')
+    queueMicrotask(() => {
+      setInstitutionsLoading(true)
+      setInstitutionError('')
+    })
     listInstitutions()
       .then((response) => {
         const nextInstitutions = response.data.map(toInstitutionOption)

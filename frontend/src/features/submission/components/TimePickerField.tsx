@@ -53,7 +53,9 @@ export function TimePickerField({
   const displayValue = value ? formatTimeDisplay(value) : "";
 
   useEffect(() => {
-    if (open) setDraft(parseTimeValue(value));
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => setDraft(parseTimeValue(value)));
+    return () => window.cancelAnimationFrame(frame);
   }, [open, value]);
 
   useEffect(() => {

@@ -24,3 +24,10 @@ Thumbs.db
 *.log
 *.tmp
 
+
+# Local generated artifacts and document/test workspaces
+output/
+outputs/
+tmp/
+work/
+

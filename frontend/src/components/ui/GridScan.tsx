@@ -532,9 +532,8 @@ export const GridScan: FC<GridScanProps> = ({
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     scene.add(quad);
 
-    let composer: EffectComposer | null = null;
     if (enablePost) {
-      composer = new EffectComposer(renderer);
+      const composer = new EffectComposer(renderer);
       composerRef.current = composer;
       const renderPass = new RenderPass(scene, camera);
       composer.addPass(renderPass);

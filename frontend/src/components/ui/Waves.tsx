@@ -133,7 +133,10 @@ const Waves: React.FC<WavesProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const boundingRef = useRef({ width: 0, height: 0, left: 0, top: 0 });
-  const noiseRef = useRef(new Noise(Math.random()));
+  const noiseRef = useRef<Noise | null>(null);
+  if (noiseRef.current === null) {
+    noiseRef.current = new Noise(0.5);
+  }
   const linesRef = useRef<Point[][]>([]);
   const mouseRef = useRef({
     x: -100,
@@ -217,6 +220,7 @@ const Waves: React.FC<WavesProps> = ({
       const lines = linesRef.current;
       const mouse = mouseRef.current;
       const noise = noiseRef.current;
+      if (!noise) return;
       const {
         waveSpeedX: speedX,
         waveSpeedY: speedY,

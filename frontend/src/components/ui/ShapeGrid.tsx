@@ -390,7 +390,7 @@ export default function ShapeGrid({
       (canvas.closest('section, .landing-cta-zone, .panel-r, .panel-l, .split, .screen') as HTMLElement) ||
       canvas.parentElement ||
       canvas;
-    parent.addEventListener('mousemove', handleMouseMove as any);
+    parent.addEventListener('mousemove', handleMouseMove);
     parent.addEventListener('mouseleave', handleMouseLeave);
 
     let isVisible = false;
@@ -411,7 +411,8 @@ export default function ShapeGrid({
     const io = new IntersectionObserver(
       ([entry]) => {
         isVisible = entry.isIntersecting;
-        isVisible ? tryStart() : tryStop();
+        if (isVisible) tryStart();
+        else tryStop();
       },
       { threshold: 0 }
     );
@@ -419,7 +420,8 @@ export default function ShapeGrid({
 
     const onVisibility = () => {
       isPageVisible = !document.hidden;
-      isPageVisible ? tryStart() : tryStop();
+      if (isPageVisible) tryStart();
+      else tryStop();
     };
     document.addEventListener('visibilitychange', onVisibility);
 
@@ -430,7 +432,7 @@ export default function ShapeGrid({
       tryStop();
       io.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
-      parent.removeEventListener('mousemove', handleMouseMove as any);
+      parent.removeEventListener('mousemove', handleMouseMove);
       parent.removeEventListener('mouseleave', handleMouseLeave);
     };
   }, [direction, speed, borderColor, hoverFillColor, squareSize, shape, hoverTrailAmount]);

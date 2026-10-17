@@ -88,7 +88,7 @@ export default function AdminManagementScreen({
   useEffect(() => {
     const id = searchParams.get('id')
     if (id) {
-      setTargetUserId(id)
+      queueMicrotask(() => setTargetUserId(id))
       const nextParams = new URLSearchParams(searchParams)
       nextParams.delete('id')
       setSearchParams(nextParams, { replace: true })
@@ -115,7 +115,10 @@ export default function AdminManagementScreen({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && !sending) {
-        handleCloseInviteModal()
+        setShowInviteModal(false)
+        setEmailChips([])
+        setEmailDraft('')
+        setInviteResults(null)
       }
     }
 

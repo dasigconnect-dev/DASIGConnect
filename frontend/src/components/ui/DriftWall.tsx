@@ -97,10 +97,9 @@ export default function DriftWall({
   const [containerHeight, setContainerHeight] = useState<number>(600);
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
-  const [reduced, setReduced] = useState<boolean>(false);
+  const [reduced, setReduced] = useState<boolean>(prefersReducedMotion);
 
   useEffect(() => {
-    setReduced(prefersReducedMotion());
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
     mq.addEventListener('change', onChange);

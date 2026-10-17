@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 import dasigLogo from '../../assets/dasigconnect-logo.png'
@@ -44,14 +44,8 @@ export default function DashboardShell({
   children,
 }: DashboardShellProps) {
   const navigate = useNavigate()
-  const location = useLocation()
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const navItems = dashboardNavItems(user)
-
-  // Auto-close drawer on route change
-  useEffect(() => {
-    setMobileDrawerOpen(false)
-  }, [location.pathname])
 
   // Prevent body scrolling when mobile drawer is open
   useEffect(() => {

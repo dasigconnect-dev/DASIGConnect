@@ -63,14 +63,8 @@ export function usePopoverCollision(open: boolean, minRequiredHeight = 370) {
         // 1. If it fits completely below with natural height, drop down
         // 2. If it does not fit below, but fits completely above, drop UP
         // 3. Otherwise, pick whichever side provides more space
-        let shouldDropUp = false;
-        if (spaceBelow >= naturalHeight) {
-          shouldDropUp = false;
-        } else if (spaceAbove >= naturalHeight) {
-          shouldDropUp = true;
-        } else {
-          shouldDropUp = spaceAbove > spaceBelow;
-        }
+        const shouldDropUp = spaceBelow < naturalHeight &&
+          (spaceAbove >= naturalHeight || spaceAbove > spaceBelow);
 
         setPlacement(shouldDropUp ? "drop-up" : "drop-down");
 

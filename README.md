@@ -8,11 +8,11 @@ DASIGConnect is a capstone project (Team Code: `2627-sem1-it411-38`) built for t
 
 ## 🌐 Live System Deployment
 
-| Service | Live URL | Platform | Notes |
-|---|---|---|---|
-| **Web Application (Frontend)** | [https://dasigconnect.com](https://dasigconnect.com) | Vercel | Single-Page Application (React 19 + Vite) |
-| **Backend REST API** | [https://api.dasigconnect.com](https://api.dasigconnect.com) | Railway | Spring Boot 4 / Java 21 REST API |
-| **System Health Endpoint** | [https://api.dasigconnect.com/health](https://api.dasigconnect.com/health) | Railway | Operational health status probe |
+| Service                        | Live URL                                                                   | Platform | Notes                                     |
+| ------------------------------ | -------------------------------------------------------------------------- | -------- | ----------------------------------------- |
+| **Web Application (Frontend)** | [https://dasigconnect.com](https://dasigconnect.com)                       | Vercel   | Single-Page Application (React 19 + Vite) |
+| **Backend REST API**           | [https://api.dasigconnect.com](https://api.dasigconnect.com)               | Railway  | Spring Boot 4 / Java 21 REST API          |
+| **System Health Endpoint**     | [https://api.dasigconnect.com/health](https://api.dasigconnect.com/health) | Railway  | Operational health status probe           |
 
 ---
 
@@ -36,14 +36,18 @@ DASIGConnect is a capstone project (Team Code: `2627-sem1-it411-38`) built for t
 ## Problem & Solution
 
 ### The Problem
+
 The DASIG Facebook page traditionally suffered from:
+
 - **Delayed event coverage:** Submissions were often provided days after an event occurred.
 - **Incomplete content:** Missing photo/video assets, unvetted captions, and missing institutional branding.
 - **Irregular activity:** Multi-institution posts collided or left long inactive gaps with no coordination.
 - **Lack of auditability:** No formal approval trails, revision history, or automated scheduling.
 
 ### The Solution
+
 DASIGConnect provides a unified **Social Media Content Workflow and Scheduling Management System** that:
+
 1. **Empowers Contributors** at member institutions to self-draft and schedule event coverage within system-enforced spacing and daily limit guard rails.
 2. **Standardizes Verification** through a network-wide Moderator/Administrator review queue, supporting revision requests, side-by-side diff tracking, and Fast-Track approval for live, time-sensitive events.
 3. **Automates Publishing** to the DASIG Facebook Page via the Meta Graph API, backed by an atomic claim state machine, automated brand watermarking, and a guided Manual Fallback for edge cases.
@@ -54,6 +58,7 @@ DASIGConnect provides a unified **Social Media Content Workflow and Scheduling M
 ## Features by Module
 
 ### Module 1 — Accounts, Institutions, Sessions & Drafting
+
 - **Role-Based Access Control (RBAC):** Three network-wide and institution-scoped roles (Contributor, Moderator, Administrator).
 - **Institution Management:** Row-level data scoping (RLS) with a protected network-default institution.
 - **Account Lifecycle:** Invite, activate, deactivate, reactivate, delete, and erase accounts; capped Admin promotion with propose/confirm workflow, plus Admin Owner transfer.
@@ -63,6 +68,7 @@ DASIGConnect provides a unified **Social Media Content Workflow and Scheduling M
 - **Schedule Guard Rails:** Spacing buffers, daily caps, minimum lead times, and configurable posting-hour boundaries.
 
 ### Module 2 — Content Workflow, Media Library & Governance
+
 - **Centralized Media Repository:** Shared and institution-scoped media library, nested albums, batch uploads, and manual tag floor enforcement.
 - **AI Classification & Multimodal Embeddings:** Background image classification + Voyage AI embeddings (`voyage-4-lite`, 1024-dim, pgvector cosine similarity) powering semantic search and album auto-matching.
 - **Media Asset Lifecycle:** Tiered soft-delete with a 30-day purge window, duplicate detection, and "Used In" activity tracking.
@@ -72,6 +78,7 @@ DASIGConnect provides a unified **Social Media Content Workflow and Scheduling M
 - **Analytics & Audit Logging:** Role-scoped engagement analytics, content quality telemetry, and an immutable, append-only Audit Log with CSV export.
 
 ### Module 3 — Calendar, Publishing & Exception Handling
+
 - **Master Publishing Calendar:** Full visibility of upcoming and past posts across member HEIs with drag-to-reschedule safeguards.
 - **Automated Facebook Publishing:** Meta Graph API integration with atomic lock-and-publish semantics to prevent duplicate posting.
 - **Fast-Track ("Live Event") Mode:** Asynchronous instant publication upon review approval for live event coverage.
@@ -107,6 +114,7 @@ DASIGConnect follows a decoupled, three-tier cloud architecture:
 ```
 
 ### External Integrations
+
 - **Meta Graph API (v22.0+):** Post publishing, page engagement insights, and OAuth token management.
 - **Anthropic Claude Vision (`claude-haiku-4-5`):** On-demand caption generation and image metadata tagging.
 - **Voyage AI (`voyage-4-lite`, 1024-dim):** Vector embeddings stored in PostgreSQL via `pgvector` for semantic media search.
@@ -118,38 +126,41 @@ DASIGConnect follows a decoupled, three-tier cloud architecture:
 ## Tech Stack
 
 ### Frontend (`/frontend`)
-| Layer | Technology |
-|---|---|
-| Framework | **React 19** + **TypeScript** |
-| Build Tool | **Vite** + `@tailwindcss/vite` |
-| Routing | **React Router v7** |
-| Styling & UI | **Tailwind CSS v4** + **shadcn/ui** (Radix UI primitives) |
-| State & Query | **TanStack Query** (React Query) + Context API |
-| HTTP Client | **Axios** (with token refresh & session expiration interceptors) |
-| Calendar | **FullCalendar** (daygrid, timegrid, interaction) |
-| Real-time Updates | **EventSource** (Server-Sent Events) |
-| Hosting | **Vercel** (`dasigconnect.com`) |
+
+| Layer             | Technology                                                       |
+| ----------------- | ---------------------------------------------------------------- |
+| Framework         | **React 19** + **TypeScript**                                    |
+| Build Tool        | **Vite** + `@tailwindcss/vite`                                   |
+| Routing           | **React Router v7**                                              |
+| Styling & UI      | **Tailwind CSS v4** + **shadcn/ui** (Radix UI primitives)        |
+| State & Query     | **TanStack Query** (React Query) + Context API                   |
+| HTTP Client       | **Axios** (with token refresh & session expiration interceptors) |
+| Calendar          | **FullCalendar** (daygrid, timegrid, interaction)                |
+| Real-time Updates | **EventSource** (Server-Sent Events)                             |
+| Hosting           | **Vercel** (`dasigconnect.com`)                                  |
 
 ### Backend (`/backend`)
-| Layer | Technology |
-|---|---|
-| Language & Runtime | **Java 21 (LTS)** |
-| Framework | **Spring Boot 4.0.6** |
-| Security | **Spring Security** + **jjwt** (stateless tokens + DB revocation) |
-| Persistence & ORM | **Spring Data JPA** + **Hibernate** |
-| Database Migrations | **Flyway** (versioned incremental migrations) |
-| Connection Pooling | **HikariCP** (tuned for session pooler limits) |
-| Email Service | **Resend HTTP API** |
-| Task Scheduling | **Spring Scheduler** (cron & background workers) |
+
+| Layer               | Technology                                                                |
+| ------------------- | ------------------------------------------------------------------------- |
+| Language & Runtime  | **Java 21 (LTS)**                                                         |
+| Framework           | **Spring Boot 4.0.6**                                                     |
+| Security            | **Spring Security** + **jjwt** (stateless tokens + DB revocation)         |
+| Persistence & ORM   | **Spring Data JPA** + **Hibernate**                                       |
+| Database Migrations | **Flyway** (versioned incremental migrations)                             |
+| Connection Pooling  | **HikariCP** (tuned for session pooler limits)                            |
+| Email Service       | **Resend HTTP API**                                                       |
+| Task Scheduling     | **Spring Scheduler** (cron & background workers)                          |
 | Hosting & Container | **Railway** (Docker build, `/health` healthcheck, `api.dasigconnect.com`) |
 
 ### Database & Cloud Storage
-| Service | Implementation |
-|---|---|
-| Primary Database | **Supabase PostgreSQL** |
-| Vector Extension | **pgvector** (`VECTOR(1024)`, cosine similarity index) |
+
+| Service              | Implementation                                          |
+| -------------------- | ------------------------------------------------------- |
+| Primary Database     | **Supabase PostgreSQL**                                 |
+| Vector Extension     | **pgvector** (`VECTOR(1024)`, cosine similarity index)  |
 | Media Object Storage | **Cloudflare R2** (S3-compatible, presigned PUT upload) |
-| Primary Keys | **UUID v4** throughout all database entities |
+| Primary Keys         | **UUID v4** throughout all database entities            |
 
 ---
 
@@ -185,8 +196,9 @@ DASIGConnect/
 │   │   └── main.tsx                # React DOM root entry point
 │   ├── vite.config.ts              # Vite bundler configuration
 │   └── package.json                # Frontend dependencies & scripts
-├── docs/                           # Official project documentation
-│   └── pdf/                        # Formal Proposal, SDD, and SRS deliverables
+├── docs/                           # Canonical documentation (see docs/README.md)
+│   ├── pdf/                        # Formal Proposal, SDD, SRS, and local DB guide
+│   └── img/                        # Retained visual reference material
 ├── docker-compose.yml              # Local PostgreSQL + pgvector container configuration
 └── README.md                       # Repository guide & setup instructions
 ```
@@ -196,19 +208,24 @@ DASIGConnect/
 ## Getting Started (Local Development)
 
 ### Prerequisites
+
 - **Java 21 JDK** or later
 - **Node.js 18+** & **npm 9+**
 - **Docker Desktop** (optional, recommended for local PostgreSQL + pgvector)
 - **Maven** (optional; `./mvnw` wrapper is included in `/backend`)
 
 ### 1. Database Setup (Local Docker)
+
 From the repository root, start the local PostgreSQL database with pgvector:
+
 ```bash
 docker compose up -d
 ```
-*This starts PostgreSQL on port `5432` with user `postgres`, password `postgres`, and database `dasigconnect`.*
+
+_This starts PostgreSQL on port `5432` with user `postgres`, password `postgres`, and database `dasigconnect`._
 
 ### 2. Backend Setup
+
 ```bash
 cd backend
 
@@ -221,9 +238,11 @@ cp .env.example .env
 # Or build the executable JAR
 ./mvnw clean package -DskipTests
 ```
-*The backend API will be available at `http://localhost:8080/api/v1` and healthcheck at `http://localhost:8080/health`.*
+
+_The backend API will be available at `http://localhost:8080/api/v1` and healthcheck at `http://localhost:8080/health`._
 
 ### 3. Frontend Setup
+
 ```bash
 cd frontend
 
@@ -236,13 +255,15 @@ npm run dev
 # Run production build & typecheck
 npm run build
 ```
-*The web client will be running at `http://localhost:5173`.*
+
+_The web client will be running at `http://localhost:5173`._
 
 ---
 
 ## Environment Variables
 
 ### Backend Configuration (`backend/.env`)
+
 Create `backend/.env` with the following variables (see [`backend/.env.example`](backend/.env.example) for detailed comments):
 
 ```env
@@ -285,24 +306,26 @@ R2_CUSTOM_DOMAIN_URL=https://media.dasigconnect.com
 ```
 
 ### Frontend Configuration (`frontend/.env`)
+
 Create `frontend/.env` (or set in Vercel project settings for production):
 
 ```env
 # Backend REST API Base URL
 VITE_API_URL=http://localhost:8080/api/v1
 ```
-*(In production, this is set to `https://api.dasigconnect.com/api/v1`)*
+
+_(In production, this is set to `https://api.dasigconnect.com/api/v1`)_
 
 ---
 
 ## Deployment Architecture
 
-| Layer | Provider | Domain | Configuration |
-|---|---|---|---|
-| **Frontend** | Vercel | `dasigconnect.com` | Vite build preset, SPA rewrite rules |
-| **Backend** | Railway | `api.dasigconnect.com` | Dockerfile builder, `/health` healthcheck, auto-restart |
-| **Database** | Supabase | Managed Cloud | PostgreSQL 15+ with `pgvector` extension |
-| **Media Storage** | Cloudflare R2 | `media.dasigconnect.com` | S3-compatible, zero-egress, presigned uploads |
+| Layer             | Provider      | Domain                   | Configuration                                           |
+| ----------------- | ------------- | ------------------------ | ------------------------------------------------------- |
+| **Frontend**      | Vercel        | `dasigconnect.com`       | Vite build preset, SPA rewrite rules                    |
+| **Backend**       | Railway       | `api.dasigconnect.com`   | Dockerfile builder, `/health` healthcheck, auto-restart |
+| **Database**      | Supabase      | Managed Cloud            | PostgreSQL 15+ with `pgvector` extension                |
+| **Media Storage** | Cloudflare R2 | `media.dasigconnect.com` | S3-compatible, zero-egress, presigned uploads           |
 
 > **Meta Graph API & Platform Access Note:**
 > During project development and academic evaluation, the Meta Developer Application operates in **Development Mode** in accordance with Meta's developer policies. Under Development Mode, posts published through the API are visible to authorized application administrators, developers, and testers on the connected Facebook Page feed. Transitioning to full public visibility across all Facebook users requires **Meta Business Verification** by the operating consortium (DOST DASIG Region 7), an external organizational process that requires no code changes to the platform.
@@ -311,11 +334,11 @@ VITE_API_URL=http://localhost:8080/api/v1
 
 ## User Roles & Permissions
 
-| Role | Operational Scope | Key Capabilities |
-|---|---|---|
-| **Contributor** | Institutional | Create and edit post drafts, upload/manage media, access AI captioning and formatting tools, pick schedule slots within guard rails. |
-| **Moderator** | Network-wide | Validate submissions in the Review Queue (Approve, Request Revision, Reject), invite Contributors, monitor the Master Calendar with capped rescheduling allowance. |
-| **Administrator** | Network-wide | Full governance: manage HEI institutions, user role promotions/demotions, System Health, immutable Audit Log, Page Settings, Watermark Configuration, and Facebook token re-authentication. |
+| Role              | Operational Scope | Key Capabilities                                                                                                                                                                            |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Contributor**   | Institutional     | Create and edit post drafts, upload/manage media, access AI captioning and formatting tools, pick schedule slots within guard rails.                                                        |
+| **Moderator**     | Network-wide      | Validate submissions in the Review Queue (Approve, Request Revision, Reject), invite Contributors, monitor the Master Calendar with capped rescheduling allowance.                          |
+| **Administrator** | Network-wide      | Full governance: manage HEI institutions, user role promotions/demotions, System Health, immutable Audit Log, Page Settings, Watermark Configuration, and Facebook token re-authentication. |
 
 ---
 
@@ -323,23 +346,23 @@ VITE_API_URL=http://localhost:8080/api/v1
 
 The system implementation maps to 22 formal, code-verified use cases:
 
-| Module | Scope | Core Use Cases |
-|---|---|---|
-| **Module 1** | Accounts, Institutions, Sessions & Drafting | `UC-1.1` Admin Account Management · `UC-1.2` Institution Management · `UC-1.3` Contributor Account Management · `UC-1.4` Login & Session Revocation · `UC-1.5` Post Drafting & Templates · `UC-1.6` AI Caption Tools & Text Formatting · `UC-1.7` Media Attachment Rules · `UC-1.8` Engagement Helpers & Peak Hours · `UC-1.9` Draft Submission & Withdraw · `UC-1.10` Moderator Account Management |
-| **Module 2** | Content Workflow, Media Library & Governance | `UC-2.1` Media Library Uploads & Albums · `UC-2.2` Semantic Search & Filtering · `UC-2.3` Media History & Asset Lifecycle · `UC-2.4` Review Queue & Approval Workflow · `UC-2.5` Automated Watermarking |
-| **Module 3** | Calendar, Publishing & Exception Handling | `UC-3.1` Master Calendar Visibility · `UC-3.2` Automated Facebook Publishing · `UC-3.3` Automated Reminders & Alerts · `UC-3.4` Engagement Analytics · `UC-3.5` System Health Analytics · `UC-3.6` Audit Log Review |
+| Module       | Scope                                        | Core Use Cases                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Module 1** | Accounts, Institutions, Sessions & Drafting  | `UC-1.1` Admin Account Management · `UC-1.2` Institution Management · `UC-1.3` Contributor Account Management · `UC-1.4` Login & Session Revocation · `UC-1.5` Post Drafting & Templates · `UC-1.6` AI Caption Tools & Text Formatting · `UC-1.7` Media Attachment Rules · `UC-1.8` Engagement Helpers & Peak Hours · `UC-1.9` Draft Submission & Withdraw · `UC-1.10` Moderator Account Management |
+| **Module 2** | Content Workflow, Media Library & Governance | `UC-2.1` Media Library Uploads & Albums · `UC-2.2` Semantic Search & Filtering · `UC-2.3` Media History & Asset Lifecycle · `UC-2.4` Review Queue & Approval Workflow · `UC-2.5` Automated Watermarking                                                                                                                                                                                             |
+| **Module 3** | Calendar, Publishing & Exception Handling    | `UC-3.1` Master Calendar Visibility · `UC-3.2` Automated Facebook Publishing · `UC-3.3` Automated Reminders & Alerts · `UC-3.4` Engagement Analytics · `UC-3.5` System Health Analytics · `UC-3.6` Audit Log Review                                                                                                                                                                                 |
 
 ---
 
 ## Team Information
 
-| Name | Role | Contact |
-|---|---|---|
-| **Richemmae V. Bigno** | Project Lead / Full Stack Developer | `richem.miccah.bigno@gmail.com` |
-| **Jay Lord C. Bayonas** | Backend Developer | Team Member |
-| **Chris Daniel P. Cabatana** | Full Stack Developer | Team Member |
-| **Mark Anton L. Camoro** | Frontend Developer | Team Member |
-| **Lerah A. Caones** | QA & Documentation | Team Member |
+| Name                         | Role                                | Contact                         |
+| ---------------------------- | ----------------------------------- | ------------------------------- |
+| **Richemmae V. Bigno**       | Project Lead / Full Stack Developer | `richemmaeb@gmail.com`          |
+| **Mark Anton L. Camoro**     | Frontend Developer                  | `markantoncamoro@gmail.com`     |
+| **Chris Daniel P. Cabatana** | Full Stack Developer                | `chrisdanielcabatana@gmail.com` |
+| **Jay Lord C. Bayonas**      | Frontend Developer                  | `jeerold1122@gmail.com`         |
+| **Lerah A. Caones**          | Full Stack Developer                | `lerahcaones18@gmail.com`       |
 
 - **Institution:** Cebu Institute of Technology – University (CIT-U)
 - **Department:** College of Computer Studies

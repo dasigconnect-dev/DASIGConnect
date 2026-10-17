@@ -679,8 +679,19 @@ public class SystemHealthService {
                 .append(escape(detail)).append('\n');
     }
 
+    // Formula-trigger characters recognized by Excel/Sheets/LibreOffice when a
+    // cell's leading character (after parsing, regardless of CSV quoting) is
+    // one of these -- CSV/Formula Injection, CWE-1236.
+    private static final String CSV_FORMULA_TRIGGER_CHARS = "=+-@\t\r";
+
     private static String escape(String value) {
-        String safe = value == null ? "" : value;
-        return "\"" + safe.replace("\"", "\"\"") + "\"";
+        String raw = value == null ? "" : value;
+        if (!raw.isEmpty() && CSV_FORMULA_TRIGGER_CHARS.indexOf(raw.charAt(0)) >= 0) {
+            // A leading apostrophe forces spreadsheet apps to treat the cell as
+            // literal text instead of evaluating it as a formula.
+            raw = "'" + raw;
+        }
+        String escaped = raw.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
 }

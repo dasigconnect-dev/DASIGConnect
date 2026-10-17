@@ -1,0 +1,63 @@
+# Release Notes
+
+All notable changes to the DASIGConnect platform are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [3.0.2] - 2026-10-17
+
+### Security
+- **CSV Formula Injection Mitigation (CWE-1236):** Neutralized potential command execution in `SystemHealthService` administrative CSV export by sanitizing cells beginning with formula trigger characters (`=`, `+`, `-`, `@`, `\t`, `\r`) with a leading apostrophe (`'`).
+- **Admin Ownership Transfer Guard:** Hardened role check logic on administrative transfer to allow transfers between existing active administrators without triggering 409 conflict errors (INC-01).
+
+### Fixed
+- **Background Escalation Transaction Boundaries:** Extracted state transitions into `PublishingStateService` with Spring `@Transactional` proxy boundaries to eliminate risk of partial commits during batch execution (INC-02).
+- **Frontend Hook Dependencies & Entity Escaping:** Resolved React `exhaustive-deps` warnings, unescaped HTML characters, and accessibility attribute mismatches across 20+ feature screens (`SubmissionScreen`, `FancyTextTool`, `CircularGallery`, `FolderFloat`, `PublishingTrendChart`, `ValidationQueueScreen`, `UserManagementScreen`).
+
+### Changed
+- **Session Re-Authentication Governance (By Design):** Formally aligned session warning behavior so that clicking "Stay Logged In" requires explicit password re-authentication via the session modal (`POST /api/v1/auth/login`) rather than silent token renewal, maintaining a strict security posture for sensitive DOST DASIG administrative actions (INC-03).
+- **Evaluator Reference Documentation:** Updated root `README.md` to reference team code `2627-sem1-it411-38` and refreshed deployment links.
+
+### Removed
+- **Development Demo Bar:** Removed `DemoBar.tsx` and legacy demo mock output from production client bundle to ensure only production UI code is served.
+
+### Added
+- **Full Backend Controller Test Suite:** Implemented unit and MockMvc integration tests across 11 core controllers:
+  - `AiTemplateControllerTest`
+  - `EngagementRecommendationControllerTest`
+  - `FacebookOAuthCallbackControllerTest`
+  - `GuardRailControllerTest`
+  - `HealthControllerTest`
+  - `MediaProcessingAdminControllerTest`
+  - `MessengerConnectionControllerTest`
+  - `PageSettingsControllerTest`
+  - `PostTemplateControllerTest`
+  - `ProofreadControllerTest`
+  - `WatermarkConfigurationControllerTest`
+  - `SystemHealthServiceTest` (CSV sanitization and metric rollup verification)
+- **Living Requirements & STD Sync:** Synchronized living SRS use cases (UC-1.1 through UC-3.6) and Software Test Document incident log with verified test runs.
+
+---
+
+## Pull Requests Included in this Release
+
+| PR | Hash | Scope | Description | Author |
+|---|---|---|---|---|
+| **#401** | `5c4d8852` | `test` | Align admin transfer authorization coverage | Chris Daniel Cabataña |
+| **#402** | `247522c6` | `refactor` | Resolve frontend lint violations and hook dependencies | Chris Daniel Cabataña |
+| **#403** | `b4fea7e8` | `chore` | Strip stale `DemoBar.tsx` and dead demo output | Chris Daniel Cabataña |
+| **#404** | `47c317f9` | `test` | Cover security-sensitive settings controllers | Chris Daniel Cabataña |
+| **#405** | `9dfd0cb0` | `test` | Cover integration and recommendation controllers | Chris Daniel Cabataña |
+| **#406** | `56a872c7` | `test` | Complete AI controller test coverage | Chris Daniel Cabataña |
+| **#407** | `f7bbad84` | `docs` | Add MVP refactoring evidence documentation | Chris Daniel Cabataña |
+| **#408** | `fc916d76` | `chore` | Consolidate documentation structure and retain deliverables | Chris Daniel Cabataña |
+| **#409** | `31dab025` | `fix/security` | Neutralize CSV formula injection in SystemHealthService and update README | Richemmae V. Bigno |
+
+---
+
+## [3.0.1] - 2026-10-16
+- Initial deployed MVP release for capstone validation and evaluator demonstration.
+

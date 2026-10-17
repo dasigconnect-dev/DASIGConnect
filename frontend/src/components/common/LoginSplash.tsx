@@ -16,20 +16,26 @@ const ROLE_LABEL: Record<string, string> = {
 }
 
 export default function LoginSplash({ user, visible }: LoginSplashProps) {
-  const [mounted, setMounted] = useState(false)
+  const [mounted, setMounted] = useState(visible)
   const [exiting, setExiting] = useState(false)
 
   useEffect(() => {
     if (visible) {
-      setMounted(true)
-      setExiting(false)
+      const frame = window.requestAnimationFrame(() => {
+        setMounted(true)
+        setExiting(false)
+      })
+      return () => window.cancelAnimationFrame(frame)
     } else if (mounted) {
-      setExiting(true)
+      const frame = window.requestAnimationFrame(() => setExiting(true))
       const t = window.setTimeout(() => {
         setMounted(false)
         setExiting(false)
       }, 380)
-      return () => window.clearTimeout(t)
+      return () => {
+        window.cancelAnimationFrame(frame)
+        window.clearTimeout(t)
+      }
     }
   }, [visible, mounted])
 
