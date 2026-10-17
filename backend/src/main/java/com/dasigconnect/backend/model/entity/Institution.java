@@ -16,6 +16,9 @@ import jakarta.persistence.Table;
 @Table(name = "institutions")
 public class Institution {
 
+    public static final UUID DEFAULT_ORGANIZATION_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @Id
     private UUID id;
 
@@ -46,6 +49,9 @@ public class Institution {
 
     @Column(name = "ai_media_hybrid_ranking_enabled", nullable = false)
     private boolean aiMediaHybridRankingEnabled = false;
+
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId = DEFAULT_ORGANIZATION_ID;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -146,6 +152,14 @@ public class Institution {
 
     public void setAiMediaHybridRankingEnabled(boolean enabled) {
         this.aiMediaHybridRankingEnabled = enabled;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 
     public Instant getCreatedAt() {
