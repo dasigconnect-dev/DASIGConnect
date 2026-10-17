@@ -5,9 +5,13 @@ import com.dasigconnect.backend.model.dto.ai.CaptionLogRequestDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.ai.CaptionRequestDto;
 import com.dasigconnect.backend.model.dto.ai.CaptionResponseDto;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.CaptionGenerationService;
+import com.dasigconnect.backend.service.SubscriptionUsageService;
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +32,9 @@ public class CaptionController {
 
     private final CaptionGenerationService captionGenerationService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionUsageService subscriptionUsageService;
+
     /** In-memory per-user sliding-window rate limiter. */
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<Instant>> userRequests =
             new ConcurrentHashMap<>();
@@ -40,7 +47,8 @@ public class CaptionController {
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
-            @AuthenticationPrincipal JwtUserDetails user) {
+            @AuthenticationPrincipal JwtUserDetails user,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
 
         UUID userId = user.userId();
         RateLimitResult limit = checkRateLimit(userId);
@@ -56,6 +64,7 @@ public class CaptionController {
             CaptionResponseDto response = captionGenerationService.generateCaptions(
                     dto.getSubmissionId(), userId, user.institutionId(),
                     dto.getExistingCaption(), dto.getPrompt(), dto.getTone());
+            recordCaptionUsage(dto.getSubmissionId(), userId, idempotencyKey);
 
             int remaining = RATE_LIMIT_PER_HOUR - countRecentRequests(userId);
             return ResponseEntity.ok()
@@ -69,6 +78,32 @@ public class CaptionController {
             }
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, msg);
         }
+    }
+
+    private void recordCaptionUsage(UUID submissionId, UUID userId, String requestKey) {
+        if (subscriptionUsageService == null) {
+            return;
+        }
+        try {
+            subscriptionUsageService.recordForSubmission(
+                    submissionId,
+                    userId,
+                    SubscriptionUsageEventType.AI_CAPTION,
+                    1,
+                    SubscriptionUsageUnit.COUNT,
+                    usageKey("ai-caption", requestKey),
+                    "AI_CAPTION_REQUEST",
+                    Instant.now());
+        } catch (RuntimeException ignored) {
+            // Shadow metering must not make a successful AI request fail.
+        }
+    }
+
+    private static String usageKey(String prefix, String requestKey) {
+        UUID key = requestKey == null || requestKey.isBlank()
+                ? UUID.randomUUID()
+                : UUID.nameUUIDFromBytes(requestKey.trim().getBytes(StandardCharsets.UTF_8));
+        return prefix + ":" + key;
     }
 
     @PostMapping("/caption/log")

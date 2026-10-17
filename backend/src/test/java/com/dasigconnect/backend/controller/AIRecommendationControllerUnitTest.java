@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.dasigconnect.backend.model.dto.ai.AiInteractionLogRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
@@ -13,10 +15,14 @@ import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
 import com.dasigconnect.backend.service.AiAdoptionTrackingService;
+import com.dasigconnect.backend.service.SubscriptionUsageService;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 class AIRecommendationControllerUnitTest {
@@ -26,6 +32,8 @@ class AIRecommendationControllerUnitTest {
         AIRecommendationService service = mock(AIRecommendationService.class);
         AIRecommendationController controller = new AIRecommendationController(
                 service, mock(AiAdoptionTrackingService.class));
+        SubscriptionUsageService usageService = mock(SubscriptionUsageService.class);
+        ReflectionTestUtils.setField(controller, "subscriptionUsageService", usageService);
         UUID submissionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
@@ -37,13 +45,23 @@ class AIRecommendationControllerUnitTest {
                 .thenReturn(new AIRecommendationService.MediaSuggestionBatch(results, true));
 
         ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> response =
-                controller.suggestMedia(submissionId, request, user);
+                controller.suggestMedia(submissionId, request, user, "client-request-1");
 
         assertEquals("true", response.getHeaders().getFirst(
                 AIRecommendationController.MEDIA_SUGGESTIONS_PROCESSING_HEADER));
         assertEquals("PROCESSING", response.getHeaders().getFirst(
                 AIRecommendationController.MEDIA_SUGGESTIONS_OUTCOME_HEADER));
         assertEquals(results, response.getBody().data());
+        verify(usageService).recordForSubmission(
+                eq(submissionId),
+                eq(userId),
+                eq(SubscriptionUsageEventType.AI_MEDIA_SUGGESTION),
+                eq(1L),
+                eq(SubscriptionUsageUnit.COUNT),
+                eq("ai-media-suggestion:" + UUID.nameUUIDFromBytes(
+                        "client-request-1".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
+                eq("AI_MEDIA_SUGGESTION_REQUEST"),
+                any(java.time.Instant.class));
 
         when(service.areSelectedImagesProcessing(submissionId, request, user)).thenReturn(true);
         ResponseEntity<ApiResponse<Boolean>> statusResponse =

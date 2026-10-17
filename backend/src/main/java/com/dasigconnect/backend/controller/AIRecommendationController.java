@@ -7,9 +7,12 @@ import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
 import com.dasigconnect.backend.service.AiAdoptionTrackingService;
+import com.dasigconnect.backend.service.SubscriptionUsageService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +21,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,6 +42,9 @@ public class AIRecommendationController {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionUsageService subscriptionUsageService;
 
     public AIRecommendationController(AIRecommendationService aiRecommendationService,
                                       AiAdoptionTrackingService adoptionTracking) {
@@ -63,12 +71,14 @@ public class AIRecommendationController {
     public ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> suggestMedia(
             @PathVariable UUID id,
             @RequestBody @Valid MediaSuggestRequestDto dto,
-            @AuthenticationPrincipal JwtUserDetails user) {
+            @AuthenticationPrincipal JwtUserDetails user,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
         long startedAt = System.nanoTime();
         try {
             AIRecommendationService.MediaSuggestionBatch batch =
                     aiRecommendationService.suggestMediaBatch(id, dto, user);
             recordSuggestionMetric(id, startedAt, batch.outcome().name());
+            recordSuggestionUsage(id, user.userId(), idempotencyKey);
             return ResponseEntity.ok()
                     .header(MEDIA_SUGGESTIONS_PROCESSING_HEADER, Boolean.toString(batch.processing()))
                     .header(MEDIA_SUGGESTIONS_OUTCOME_HEADER, batch.outcome().name())
@@ -76,6 +86,28 @@ public class AIRecommendationController {
         } catch (RuntimeException error) {
             recordSuggestionMetric(id, startedAt, "FAILURE");
             throw error;
+        }
+    }
+
+    private void recordSuggestionUsage(UUID submissionId, UUID userId, String requestKey) {
+        if (subscriptionUsageService == null) {
+            return;
+        }
+        try {
+            UUID key = requestKey == null || requestKey.isBlank()
+                    ? UUID.randomUUID()
+                    : UUID.nameUUIDFromBytes(requestKey.trim().getBytes(StandardCharsets.UTF_8));
+            subscriptionUsageService.recordForSubmission(
+                    submissionId,
+                    userId,
+                    SubscriptionUsageEventType.AI_MEDIA_SUGGESTION,
+                    1,
+                    SubscriptionUsageUnit.COUNT,
+                    "ai-media-suggestion:" + key,
+                    "AI_MEDIA_SUGGESTION_REQUEST",
+                    Instant.now());
+        } catch (RuntimeException ignored) {
+            // Shadow metering must not make a successful suggestion request fail.
         }
     }
 

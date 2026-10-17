@@ -39,6 +39,9 @@ public class InvitationService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;
     private final EntityManager entityManager;
@@ -196,6 +199,17 @@ public class InvitationService {
 
         String jwt = jwtService.generateAccessToken(user);
         UUID institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
+        if (eventPublisher != null) {
+            UUID organizationId = user.getInstitution() != null
+                    ? user.getInstitution().getOrganizationId()
+                    : Institution.DEFAULT_ORGANIZATION_ID;
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserSeatUsageChangedEvent(
+                    organizationId,
+                    institutionId,
+                    user.getId(),
+                    1,
+                    "activated:" + token.getId()));
+        }
         return new LoginResponseDto(jwt, user.getRole().name(), institutionId);
     }
 

@@ -74,6 +74,9 @@ public class MediaAssetService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
     private static final int UNIFIED_SEARCH_CANDIDATE_CAP = 200;
@@ -508,13 +511,15 @@ public class MediaAssetService {
         MediaAsset asset = loadAssetForDelete(assetId, user);
         validateDeleteReferences(assetId, force);
 
-        asset.setDeletedAt(Instant.now());
+        Instant deletedAt = Instant.now();
+        asset.setDeletedAt(deletedAt);
         asset.setDeletedByUserId(user.userId());
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
         mediaSearchCache.invalidateAll();
         recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", false, "force", force));
+        publishMediaUsage(asset, user.userId(), -asset.getFileSizeBytes(), "deleted:" + deletedAt.toEpochMilli());
     }
 
     public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
@@ -552,6 +557,7 @@ public class MediaAssetService {
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
+            publishMediaUsage(asset, user.userId(), -asset.getFileSizeBytes(), "deleted:" + deletedAt.toEpochMilli());
         }
         mediaAssetRepository.saveAll(deletable);
         mediaSearchCache.invalidateAll();
@@ -644,6 +650,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
                 "assetCode", asset.getAssetCode(),
                 "fileName", asset.getFileName()));
+        publishMediaUsage(saved, user.userId(), saved.getFileSizeBytes(), "restored:" + Instant.now().toEpochMilli());
 
         return MediaAssetDetailDto.from(saved, List.of(), currentTags(assetId));
     }
@@ -670,6 +677,7 @@ public class MediaAssetService {
                 mediaAssetRepository.save(asset);
                 mediaProcessingQueueService.enqueueAfterCommit(id);
                 restoredIds.add(id);
+                publishMediaUsage(asset, user.userId(), asset.getFileSizeBytes(), "restored:" + Instant.now().toEpochMilli());
             }
         }
         recordAssetAudit(user, "MEDIA_BULK_RESTORED", null, Map.of(
@@ -847,6 +855,7 @@ public class MediaAssetService {
         }
         auditMeta.put("tagCount", savedTags.size());
         recordAssetAudit(user, "MEDIA_ASSET_UPLOADED", asset.getId(), auditMeta);
+        publishMediaUsage(asset, user.userId(), asset.getFileSizeBytes(), "uploaded");
 
         // Register durable work after this upload transaction commits.
         final UUID savedId = asset.getId();
@@ -860,6 +869,24 @@ public class MediaAssetService {
         }
 
         return MediaAssetDetailDto.from(asset, List.of(), savedTags);
+    }
+
+    private void publishMediaUsage(
+            MediaAsset asset, UUID userId, long deltaBytes, String transition) {
+        if (eventPublisher == null
+                || asset == null
+                || asset.getInstitution() == null
+                || deltaBytes == 0) {
+            return;
+        }
+        Institution institution = asset.getInstitution();
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.MediaStorageUsageChangedEvent(
+                institution.getOrganizationId(),
+                institution.getId(),
+                userId,
+                asset.getId(),
+                deltaBytes,
+                transition));
     }
 
     @Transactional(readOnly = true)

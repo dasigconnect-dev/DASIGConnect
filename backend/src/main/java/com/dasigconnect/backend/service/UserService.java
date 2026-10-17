@@ -245,6 +245,7 @@ public class UserService {
             }
         }
 
+        UserStatus previousStatus = user.getAccountState();
         if (newStatus == UserStatus.inactive || newStatus == UserStatus.cancelled) {
             clearPendingPromotion(user);
         }
@@ -262,6 +263,17 @@ public class UserService {
                         "email", saved.getEmail(),
                         "role", saved.getRole().name(),
                         "accountState", saved.getAccountState().name()));
+        UUID institutionId = saved.getInstitution() == null ? null : saved.getInstitution().getId();
+        UUID organizationId = saved.getInstitution() == null
+                ? com.dasigconnect.backend.model.entity.Institution.DEFAULT_ORGANIZATION_ID
+                : saved.getInstitution().getOrganizationId();
+        long seatDelta = newStatus == UserStatus.active ? 1 : -1;
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserSeatUsageChangedEvent(
+                organizationId,
+                institutionId,
+                saved.getId(),
+                seatDelta,
+                previousStatus.name() + "-to-" + newStatus.name() + ":" + UUID.randomUUID()));
         return UserDto.from(saved);
     }
 
