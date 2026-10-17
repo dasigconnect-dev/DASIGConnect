@@ -284,4 +284,39 @@ class SystemHealthServiceTest {
         assertThat(crit.status()).isEqualTo(HealthStatus.UNHEALTHY);
         assertThat(crit.detail()).contains("overage");
     }
+
+    @Test
+    void exportSnapshotCsv_neutralizesCsvFormulaInjection() {
+        // CWE-1236: Prevent CSV formula injection by prepending apostrophe when
+        // leading char is =, +, -, @, \t, or \r
+        when(jdbcTemplate.queryForObject("SELECT pg_database_size(current_database())", Long.class))
+                .thenReturn(10_000L);
+        when(mediaStorage.probeUsage()).thenReturn(java.util.Optional.of(
+                new MediaStorageService.StorageUsage(100L, 1L, false, Instant.now())));
+        when(scheduledJobRunRepository.findLatestRunsByJobName()).thenReturn(List.of());
+        when(jdbcTemplate.queryForMap(anyString(), any()))
+                .thenReturn(Map.of("value", 0, "sample_size", 0))
+                .thenReturn(Map.of("approvals", 0, "edited", 0))
+                .thenReturn(Map.of("started", 0, "completed", 0))
+                .thenReturn(Map.of("missed", 0, "reviewed_in_time", 0));
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
+                .thenReturn(0L);
+        when(publishSuccessRateRepository.networkWide(any(), any()))
+                .thenReturn(new PublishSuccessRateRepository.Stats(0, 0));
+
+        when(mediaAiTelemetryService.operationalMetrics(30)).thenReturn(List.of(
+                new OperationalMetricDto(
+                        "formula_test",
+                        "=HYPERLINK(\"http://evil.example\",\"Click me\")",
+                        HealthStatus.HEALTHY,
+                        1.0,
+                        "percent",
+                        1L,
+                        "+1;DDE")));
+
+        String csv = service.exportSnapshotCsv();
+
+        assertThat(csv).contains("\"'=HYPERLINK(\"\"http://evil.example\"\",\"\"Click me\"\")\"");
+        assertThat(csv).contains("\"'+1;DDE\"");
+    }
 }
