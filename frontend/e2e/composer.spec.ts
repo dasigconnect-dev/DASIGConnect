@@ -208,7 +208,7 @@ test.describe("submission composer", () => {
     await page.getByRole("button", { name: "Live Event" }).click();
 
     await page.locator(".sub-guard-submit-btn").click();
-    await page.getByRole("button", { name: /^(Submit for Approval|Submit Anyway)$/ }).last().click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
 
     await expect(page.getByText("Submission sent!")).toBeVisible();
     const keys = state.log.map((entry) => entry.key);
@@ -444,5 +444,40 @@ test.describe("submission composer", () => {
     await expect(banner).toContainText("Revision Requested");
     await expect(banner).toContainText("Please use a clearer photo.");
     await expect(page.locator(".sub-guard-submit-btn")).toContainText("Submit for Revision");
+  });
+
+  test("Case-30a (RP-01): separates binary submission gate (Required X of 7) from optional Post Quality Tips without percentages", async ({ page }) => {
+    await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "",
+        eventDate: "2026-09-25",
+        caption: "Plain caption without hashtags",
+        albumName: "Saved Album",
+        fastTrack: true,
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    const guardPanel = page.locator(".sub-guard-panel");
+    await expect(guardPanel.locator(".sub-guard-title")).toContainText("Submission Gate");
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Required: 6 of 7");
+    await expect(guardPanel).toContainText(/Tips:\s*\d+\s*of\s*5\s*applied/);
+    await expect(guardPanel.locator(".sub-score-num")).not.toContainText("%");
+
+    // Next-missing button points to Event title and jumps to Step 2 Details
+    const nextBtn = guardPanel.locator(".sub-gate-next-btn");
+    await expect(nextBtn).toContainText("Next: Event title");
+    await nextBtn.click();
+
+    const titleInput = page.getByPlaceholder("e.g. CIT-U Innovation Summit 2026");
+    await expect(titleInput).toBeVisible();
+    await titleInput.fill("Binary Gate Verified Event");
+
+    // Gate now passes (7 of 7) even though optional tips (e.g. hashtags) are not all applied
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Required: 7 of 7 ✓ — Ready to submit");
+    await expect(page.locator(".sub-guard-submit-btn").first()).toBeEnabled();
   });
 });
