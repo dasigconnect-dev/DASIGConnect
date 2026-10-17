@@ -12,7 +12,7 @@ Main Flow
    - Review-related triggers (a new submission awaiting review, a submission returned to the queue) notify every active Moderator and every active Administrator — both roles, together, since either can act on the Approval Queue.
    - Content-outcome triggers (approved, rejected, revision requested, edited, published, publish failed) notify the submitting Contributor.
    - System/infrastructure triggers (token health, background job failures) notify Administrators only, since Moderators have no access to system configuration.
-3. The system dispatches the notification via in-app (always), email (for triggers configured to include it), and Facebook Messenger (only for a recipient who has linked their personal account, per the recipient's individual opt-in). Every status notification states in plain language what the status means and which role acts next (`BR-NOT-05`, e.g., *"Needs revision — the Moderator asked for changes on '...'. Edit and resubmit."*, *"Waiting for Moderator review"*, *"Approved — '...' is scheduled to publish automatically on the DASIG Facebook Page"*, *"Publishing slot passed"*, and *"Live event (immediate review)"*).
+3. The system dispatches the notification via in-app (always), email (for triggers configured to include it), and Facebook Messenger (only for a recipient who has linked their personal account, per the recipient's individual opt-in).
 4. The recipient's in-app notification badge updates in real time via a live connection, without requiring a page refresh, and without polling.
 5. The recipient may click a notification to navigate directly to the relevant submission, calendar entry, or settings screen.
 6. The recipient may view their full notification history, with read and unread state tracked per recipient.
@@ -31,11 +31,10 @@ Every recipient in the applicable set for a triggering event is notified via in-
 - ✅ **Implemented:** Cross-session read state synchronization (A2) via dedicated SSE `read` events.
 - ✅ **Implemented:** Messenger and Email dispatch integrations. Messenger correctly skips unlinked users.
 - ✅ **Implemented:** Review-related triggers properly fan out to both Moderators and Administrators (Fixed in PR).
-- ✅ **Implemented:** Plain-language status and next-actor wording (`BR-NOT-05`, Priority #2) across in-app, email, and Messenger notifications.
+- ✅ **Implemented (`refactor/p2-first-time-independence` — RP-02 / REQ-125):** Notification messages in `NotificationEventListener` use the shared plain-language `statusCopy` wording (`label`, `meaning`, `whoActsNext`) so notifications and UI status badges state what each status means and who acts next.
 - ❌ **Not Implemented:** None.
 - ⚠️ **Discrepancies:** None.
 - 🔍 **Undocumented Code:** None. 
 
 ## Technical Notes & Bug Findings
 - **Role Fan-out Bug:** Initially, `onSubmissionPending` and `onFastTrackSubmission` only dispatched notifications to Moderators, missing Administrators completely. A `reviewers()` helper was introduced in `NotificationEventListener` to combine both roles as explicitly mandated by the use case.
-

@@ -3419,11 +3419,11 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 ## ***4.2. RP-02 — Next action, plain-language status, task-event log (VF-02; REQ-125, REQ-126)*** {#4.2.-rp-02-—-next-action,-plain-language-status,-task-event-log-(vf-02;-req-125,-req-126)}
 
-* **Status:** **Implemented (`refactor/p2-first-time-independence`)**.  
-* **Next-action card:** `GET /api/v1/me/next-action` (`TaskTelemetryController.nextAction` / `TaskTelemetryService.getNextAction`) returns `{ kind, label, count, deepLink }` computed per role — Contributor: oldest `needs_revision` item or oldest `draft` with missing required items; Moderator: count of `pending` (Fast-Track first) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen` (`#first-login-notice`).  
-* **Status wording:** shared `statusCopy[status] = { label, meaning, whoActsNext }`, `statusLabels`, and `statusGuidance` maps in `features/submission/constants.ts` used by `DashboardScreen`, `SubmissionListScreen`, `SubmissionScreen`, `ValidationQueueScreen`, and notification templates (`NotificationEventListener` messages), so the same plain-language sentence and next actor appear everywhere.  
-* **Task-event log:** Flyway migration `V123__task_completion_telemetry.sql` introduces `task_completion_logs` and `task_events (id, user_id, role, task_type, submission_id NULL, event CHECK (event IN ('started','completed','abandoned')), occurred_at, client_session_id)`, written by `POST /api/v1/task-events` and `POST /api/v1/telemetry/tasks/{start,complete}` (`TaskTelemetryController`, `useTaskTelemetry.ts`) and summarized by `GET /api/v1/telemetry/tasks/summary`. Used to compute first-attempt completion rate and median Time-on-Task per role. No free text is stored.  
-* **Test:** STD Case-27 / Case-30b.
+* **Status:** **Implemented (`refactor/p2-first-time-independence`)**  
+* **Next-action card:** `GET /api/v1/me/next-action` (`TaskTelemetryController` → `TaskTelemetryService.getNextAction`) returns `{ kind, label, count, deepLink }` computed per role — Contributor: `needs_revision` draft first, else oldest `draft` with missing required items; Moderator: count of `pending` (Fast-Track prioritized) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen.tsx`.  
+* **Status wording:** shared `statusCopy[status] = { label, meaning, whoActsNext }`, `statusLabels`, and `statusGuidance` in `features/submission/constants.ts`, mirrored in `NotificationEventListener.java` (verified by `NotificationEventListenerTest`), so submission lists, the review queue, and in-app/email/Messenger notifications display identical plain-language status explanations.  
+* **Task-event log:** migration `V123__task_completion_telemetry.sql` creates `task_events (id, user_id, role, task_type, submission_id NULL, event CHECK ('started','completed','abandoned'), occurred_at, client_session_id)` and `task_completion_logs`, written via `POST /api/v1/task-events` and `POST /api/v1/telemetry/tasks/{start,complete}` (`useTaskTelemetry.ts` across `SubmissionScreen`, `ValidationQueueScreen`, `InvitationComposer`, `InviteScreen`) and summarized via `GET /api/v1/telemetry/tasks/summary`. No free text is stored.  
+* **Test:** STD Case-30b (**PASS**).
 
 ## ***4.3. RP-03 — Caption on upload, media-first picker, log-based GO3 (VF-03; REQ-320, REQ-321)*** {#4.3.-rp-03-—-caption-on-upload,-media-first-picker,-log-based-go3-(vf-03;-req-320,-req-321)}
 
@@ -3486,8 +3486,6 @@ DASIGConnect uses a single PostgreSQL relational database hosted on Supabase. Th
 | 29 | scheduled\_job\_runs | UC-3.5 | Background job run history |
 | 30 | media\_ai\_processing\_metrics | UC-3.5 | Media AI stage telemetry |
 | 31 | media\_ai\_ranking\_shadow\_metrics | UC-3.5 | Shadow-mode hybrid ranking evaluation |
-| 32 | task\_completion\_logs | RP-02 | Role task start/completion telemetry, first-attempt flag, and duration (V123) |
-| 33 | task\_events | RP-02 | Task lifecycle event stream (`started`, `completed`, `abandoned`) (V123) |
 
 Removed in later migrations and not part of the current schema: `override_requests` (Contributor override requests were descoped) and `media_asset_search_documents`.
 
@@ -4227,11 +4225,6 @@ All 168 endpoints exposed by the backend controllers in release v3.0.2, listed b
 | SystemHealth | `POST` | `/api/v1/system-health/jobs/{jobKey}/run` | runJob | Admin |
 | SystemHealth | `POST` | `/api/v1/system-health/tokens/recheck` | recheckTokenHealth | Admin |
 | SystemHealth | `GET` | `/api/v1/system-health/export` | exportSnapshot | Admin |
-| TaskTelemetry | `GET` | `/api/v1/me/next-action` | nextAction | Any signed-in |
-| TaskTelemetry | `POST` | `/api/v1/task-events` | recordTaskEvent | Any signed-in |
-| TaskTelemetry | `POST` | `/api/v1/telemetry/tasks/start` | startTask | Any signed-in |
-| TaskTelemetry | `POST` | `/api/v1/telemetry/tasks/complete` | completeTask | Any signed-in |
-| TaskTelemetry | `GET` | `/api/v1/telemetry/tasks/summary` | summary | Moderator, Admin |
 | User | `GET` | `/api/v1/me` | me | Any signed-in |
 | User | `PATCH` | `/api/v1/me/settings` | updateMySettings | Any signed-in |
 | User | `PATCH` | `/api/v1/me/tour-preferences` | updateMyTourPreferences | Any signed-in |
