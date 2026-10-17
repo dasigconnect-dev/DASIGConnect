@@ -176,6 +176,12 @@
       "defaultValue": "media-ai-evaluation-report.json"
     },
     {
+      "name": "app.subscription.enforcement-enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether subscription entitlements can block application actions. Keep disabled until shadow metering and quota reconciliation are complete.",
+      "defaultValue": false
+    },
+    {
       "name": "spring.flyway.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Flyway database migration on startup.",
