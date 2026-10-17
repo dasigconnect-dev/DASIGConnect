@@ -21,7 +21,10 @@ import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.CaptionGenerationService;
 import com.dasigconnect.backend.service.JWTService;
+import com.dasigconnect.backend.service.SubscriptionUsageService;
 import com.dasigconnect.backend.service.TenantScopeService;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
 
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -42,6 +45,7 @@ class CaptionControllerTest {
     @MockitoBean private CaptionGenerationService captionGenerationService;
     @MockitoBean private JWTService jwtService;
     @MockitoBean private TenantScopeService tenantScopeService;
+    @MockitoBean private SubscriptionUsageService subscriptionUsageService;
 
     // ── POST /caption ─────────────────────────────────────────────────────────
 
@@ -70,6 +74,7 @@ class CaptionControllerTest {
 
         mockMvc.perform(post("/api/v1/ai/caption")
                 .with(authentication(contributorAuth()))
+                .header("X-Idempotency-Key", "caption-request-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"submissionId":"%s"}
@@ -82,6 +87,17 @@ class CaptionControllerTest {
                 .andExpect(jsonPath("$.data.variants[0].tone").value("professional"))
                 .andExpect(jsonPath("$.data.variants[1].tone").value("community"))
                 .andExpect(jsonPath("$.data.variants[2].tone").value("energetic"));
+
+        verify(subscriptionUsageService).recordForSubmission(
+                ArgumentMatchers.eq(submissionId),
+                ArgumentMatchers.any(UUID.class),
+                ArgumentMatchers.eq(SubscriptionUsageEventType.AI_CAPTION),
+                ArgumentMatchers.eq(1L),
+                ArgumentMatchers.eq(SubscriptionUsageUnit.COUNT),
+                ArgumentMatchers.eq("ai-caption:" + UUID.nameUUIDFromBytes(
+                        "caption-request-1".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
+                ArgumentMatchers.eq("AI_CAPTION_REQUEST"),
+                ArgumentMatchers.any(java.time.Instant.class));
     }
 
     @Test

@@ -55,6 +55,9 @@ public class InstitutionService {
     private static final Logger log = LoggerFactory.getLogger(InstitutionService.class);
     private static final long MAX_LOGO_BYTES = 2L * 1024 * 1024;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     private final InstitutionRepository institutionRepository;
     private final UserRepository userRepository;
     private final SubmissionRepository submissionRepository;
@@ -119,6 +122,11 @@ public class InstitutionService {
         institution.setStatus(InstitutionStatus.active);
 
         institution = institutionRepository.save(institution);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.InstitutionUsageChangedEvent(
+                    institution.getOrganizationId(), institution.getId(), 1));
+        }
 
         workspaceProvisioner.provision(institution);
 
@@ -533,7 +541,13 @@ public class InstitutionService {
 
         String name = institution.getName();
         String code = institution.getCode();
+        UUID organizationId = institution.getOrganizationId();
         institutionRepository.delete(institution);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.InstitutionUsageChangedEvent(
+                    organizationId, institutionId, -1));
+        }
 
         auditLogService.recordSystemAction(
                 "INSTITUTION_DELETED",

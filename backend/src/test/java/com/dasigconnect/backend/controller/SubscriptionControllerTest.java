@@ -8,14 +8,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionPlanDto;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionStatusDto;
+import com.dasigconnect.backend.model.dto.subscription.SubscriptionUsageMetricDto;
+import com.dasigconnect.backend.model.dto.subscription.SubscriptionUsageSummaryDto;
 import com.dasigconnect.backend.model.entity.OrganizationStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionExportLevel;
 import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionSupportLevel;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.SubscriptionQueryService;
+import com.dasigconnect.backend.service.SubscriptionUsageService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -35,6 +39,9 @@ class SubscriptionControllerTest {
 
     @MockitoBean
     private SubscriptionQueryService subscriptionQueryService;
+
+    @MockitoBean
+    private SubscriptionUsageService subscriptionUsageService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -97,6 +104,36 @@ class SubscriptionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("Free Pilot"))
                 .andExpect(jsonPath("$.data[0].monthlyAiCaptionLimit").value(100));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void usage_asContributor_returnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/subscription/usage"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void usage_asAdmin_returnsRequestedMonthAndMetrics() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        YearMonth month = YearMonth.of(2026, 10);
+        SubscriptionUsageSummaryDto usage = new SubscriptionUsageSummaryDto(
+                organizationId,
+                month,
+                Instant.parse("2026-09-30T16:00:00Z"),
+                Instant.parse("2026-10-31T16:00:00Z"),
+                SubscriptionLifecycleStatus.ACTIVE,
+                false,
+                List.of(new SubscriptionUsageMetricDto("submissions", 12, 50, "COUNT")));
+        when(subscriptionUsageService.monthlySummary(month)).thenReturn(usage);
+
+        mockMvc.perform(get("/api/v1/subscription/usage").param("month", "2026-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizationId").value(organizationId.toString()))
+                .andExpect(jsonPath("$.data.month").value("2026-10"))
+                .andExpect(jsonPath("$.data.metrics[0].resource").value("submissions"))
+                .andExpect(jsonPath("$.data.metrics[0].used").value(12));
     }
 
     private static SubscriptionPlanDto plan() {
