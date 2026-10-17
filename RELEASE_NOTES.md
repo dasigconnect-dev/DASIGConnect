@@ -60,3 +60,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.1] - 2026-10-16
 - Initial deployed MVP release for capstone validation and evaluator demonstration.
+
