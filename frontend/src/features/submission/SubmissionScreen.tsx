@@ -44,6 +44,7 @@ import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import InfoTip from "../../components/ui/InfoTip";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
+import { useTaskTelemetry } from "../../hooks/useTaskTelemetry";
 import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
@@ -64,7 +65,7 @@ import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
-import { initialForm, postTemplates, statusLabels } from "./constants";
+import { initialForm, postTemplates, statusGuidance, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
   CAPTION_CHAR_LIMIT,
@@ -895,6 +896,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
   const proofread = useProofread(form.id);
+  const submitTaskTelemetry = useTaskTelemetry("CONTRIBUTOR_SUBMIT_POST", !isReadOnlySubmission);
 
   const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
     void applySubmission(summary);
@@ -1917,9 +1919,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       clearAssetIdParam();
       setIsEditingRejected(false);
       setModal("success");
+      submitTaskTelemetry.completeTask(submitted.data.id);
       toast.success("Submission sent for approval.");
       clearSubmissionPageCaches();
     } catch (err: unknown) {
+      submitTaskTelemetry.recordError();
       const message = getErrorMessage(err, "Submission failed.");
       // A4 — another submission claimed this slot between the last save and
       // this submit attempt. Guide the actor back to Schedule instead of just
@@ -2600,13 +2604,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               {isReadOnlySubmission && form.status === "rejected" && (
                 <div className="sub-readonly-note is-rejected-note">
                   <i className="ti ti-circle-x"></i>
-                  Rejected — review feedback below and click Edit &amp; Resubmit to make changes
+                  {statusGuidance.rejected}
                 </div>
               )}
               {isReadOnlySubmission && form.status !== "rejected" && (
                 <div className="sub-readonly-note">
                   <i className="ti ti-eye"></i>
-                  Read-only — this submission can no longer be edited
+                  {statusGuidance[form.status] ?? "Read-only — this submission can no longer be edited"}
+                </div>
+              )}
+              {!isReadOnlySubmission && isNeedsRevision && (
+                <div className="sub-readonly-note" style={{ marginTop: "6px" }}>
+                  <i className="ti ti-pencil-minus"></i>
+                  {statusGuidance.needs_revision}
                 </div>
               )}
             </div>

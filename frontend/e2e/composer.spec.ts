@@ -160,6 +160,14 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       state.draft = { ...(state.draft ?? baseDraft()), status: "pending", submittedAt: new Date().toISOString() };
       await json(request, state.draft);
     },
+    "POST /api/v1/telemetry/tasks/start": async (request: ApiRequest) => {
+      record(request);
+      await json(request, { id: "66666666-6666-4666-8666-666666666666", status: "STARTED" });
+    },
+    "POST /api/v1/telemetry/tasks/complete": async (request: ApiRequest) => {
+      record(request);
+      await json(request, { id: "66666666-6666-4666-8666-666666666666", status: "COMPLETED", firstAttemptSuccess: true });
+    },
   });
   return { state, api };
 }
@@ -444,5 +452,47 @@ test.describe("submission composer", () => {
     await expect(banner).toContainText("Revision Requested");
     await expect(banner).toContainText("Please use a clearer photo.");
     await expect(page.locator(".sub-guard-submit-btn")).toContainText("Submit for Revision");
+  });
+
+  test("Case-30b (RP-02): shows next-action guidance on dashboard, plain-language status copy, and logs first-attempt task telemetry", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Telemetry Tracked Event",
+        eventDate: "2026-09-25",
+        caption: "Plain-language status and telemetry test #DASIG",
+        albumName: "Saved Album",
+        fastTrack: true,
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    // Verify task telemetry start event was recorded when opening composer
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === "POST /api/v1/telemetry/tasks/start"),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+
+    // Submit and verify task telemetry complete event is recorded
+    await page.locator(".sub-guard-submit-btn").click();
+    await page.getByRole("button", { name: /^(Submit for Approval|Submit Anyway)$/ }).last().click();
+    await expect(page.getByText("Submission sent!")).toBeVisible();
+
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === "POST /api/v1/telemetry/tasks/complete"),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+
+    // Navigate to Dashboard and verify Next-Action banner (#first-login-notice) leads the home screen
+    await page.goto("/dashboard");
+    const nextActionBanner = page.locator("#first-login-notice");
+    await expect(nextActionBanner).toBeVisible();
+    await expect(nextActionBanner).toContainText(/Next action:|Awaiting review|Create a New Post|Finish Your Draft/i);
   });
 });

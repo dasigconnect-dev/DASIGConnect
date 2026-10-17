@@ -31,6 +31,7 @@ Every recipient in the applicable set for a triggering event is notified via in-
 - ✅ **Implemented:** Cross-session read state synchronization (A2) via dedicated SSE `read` events.
 - ✅ **Implemented:** Messenger and Email dispatch integrations. Messenger correctly skips unlinked users.
 - ✅ **Implemented:** Review-related triggers properly fan out to both Moderators and Administrators (Fixed in PR).
+- ✅ **Implemented (`refactor/p2-first-time-independence` — RP-02 / REQ-125):** Notification messages in `NotificationEventListener` use the shared plain-language `statusCopy` wording (`label`, `meaning`, `whoActsNext`) so notifications and UI status badges state what each status means and who acts next.
 - ❌ **Not Implemented:** None.
 - ⚠️ **Discrepancies:** None.
 - 🔍 **Undocumented Code:** None. 

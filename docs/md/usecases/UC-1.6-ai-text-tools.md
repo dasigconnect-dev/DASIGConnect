@@ -10,13 +10,13 @@
 
 ## Main Flow — AI Caption Generation
 
-1. The actor clicks **Suggest Caption** in the caption field's action row (**Suggest Caption** · **Templates** · **Fancy text**). While the caption is still empty, the **Let AI draft it** button in the empty-caption starter opens the same dialog (it's disabled while the AI is rate-limited or unavailable).
-2. A prompt dialog opens. The actor may optionally type instructions (tone, focus, length, details to include) and pick one of three **tones** — `professional` (default), `community`, `energetic`. The dialog can proceed as long as there is an attached image, an existing caption, **or** a typed prompt.
+1. **Background Generation on Upload (RP-03 / REQ-320):** once a saved draft has at least one attached image and an event title (while the caption is still empty), `useAiCaptionAssist` automatically triggers a background caption suggestion and offers it inline above the caption field as **"AI draft ready — Use / Edit / Dismiss"**, never inserting it automatically. The actor may also click **Suggest Caption** in the caption field's action row (**Suggest Caption** · **Templates** · **Fancy text**) or **Let AI draft it** at any time.
+2. A prompt dialog opens (on manual request). The actor may optionally type instructions (tone, focus, length, details to include) and pick one of three **tones** — `professional` (default), `community`, `energetic`. The dialog can proceed as long as there is an attached image, an existing caption, **or** a typed prompt.
 3. The actor confirms. The prompt is limited to **280 characters** — the counter turns over-limit and Generate is disabled past it (backend also enforces `@Size(max = 280)`).
 4. The system sends the submission's images (up to 4, base64-encoded; any over 5 MB downscaled in-memory to a JPEG under 5 MB), the media metadata, the event title/date/institution, the existing caption, the prompt, and the selected tone to the Anthropic Claude API (`claude-haiku-4-5-20251001`), with a **30-second timeout**.
-5. The system returns **exactly one caption** for the selected tone (the request asks Claude for a single variant). The actor inserts it into the caption field, dismisses it, or clicks **Regenerate** (optionally after revising the prompt — back to step 2).
+5. The system returns **exactly one caption** for the selected tone (the request asks Claude for a single variant). The actor inserts it into the caption field (**Use**), edits it inline before applying (**Edit**), dismisses it (**Dismiss**), or clicks **Regenerate** (optionally after revising the prompt — back to step 2).
 6. The actor edits the inserted caption freely before saving or submitting.
-7. Each outcome is recorded via `POST /api/v1/ai/caption/log` (`use` / `use_then_edited` / `dismiss` / `re_generate` + tone) into `ai_interaction_log`, best-effort — a logging failure never blocks the UI.
+7. Each outcome is recorded via `POST /api/v1/ai/caption/log` (`use` / `use_then_edited` / `dismiss` / `re_generate` + tone + optional one-click **1–5 quality rating** + **caption drafting duration in ms** from opening Post Details to decision, `V123__ai_caption_suggestions_telemetry.sql`) into `ai_interaction_log`, best-effort — a logging failure never blocks the UI.
 
 **Rate limit:** each user may make **30 caption requests per rolling hour**. Over the limit, the endpoint returns `429` with `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers, and the button switches to a "rate-limited" state showing when it will be available again.
 
