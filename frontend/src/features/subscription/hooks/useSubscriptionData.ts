@@ -1,20 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   changeSubscriptionPlan,
+  createSubscriptionPaymentLink,
   extendSubscriptionGracePeriod,
   getCurrentSubscription,
   getInstitutionSubscriptionUsage,
   getSubscriptionPlans,
+  getSubscriptionBilling,
   getSubscriptionReconciliation,
   getSubscriptionUsage,
   recordManualSubscriptionRenewal,
+  reconcileSubscriptionBilling,
 } from "../../../api/subscriptionApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys, queryRoots } from "../../../lib/queryKeys";
 
 const SUBSCRIPTION_STALE_TIME_MS = 60_000;
 
-export function useSubscriptionData(userId?: string | null) {
+export function useSubscriptionData(userId?: string | null, isOwner = false) {
   const queryClient = useQueryClient();
   const scope = { userId };
   const common = {
@@ -47,6 +50,12 @@ export function useSubscriptionData(userId?: string | null) {
     queryFn: ({ signal }) => getSubscriptionReconciliation(signal).then((response) => response.data),
     ...common,
   });
+  const billingQuery = useQuery({
+    queryKey: queryKeys.subscription.billing(scope),
+    queryFn: ({ signal }) => getSubscriptionBilling(signal).then((response) => response.data),
+    enabled: isOwner,
+    ...common,
+  });
 
   const changePlanMutation = useMutation({
     mutationFn: changeSubscriptionPlan,
@@ -69,14 +78,31 @@ export function useSubscriptionData(userId?: string | null) {
     },
   });
 
+  const createPaymentLinkMutation = useMutation({
+    mutationFn: (payerEmail?: string) => createSubscriptionPaymentLink(payerEmail),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
+    },
+  });
+
+  const reconcileBillingMutation = useMutation({
+    mutationFn: reconcileSubscriptionBilling,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
+    },
+  });
+
   return {
     statusQuery,
     plansQuery,
     usageQuery,
     institutionsQuery,
     reconciliationQuery,
+    billingQuery,
     changePlanMutation,
     renewalMutation,
     extendGraceMutation,
+    createPaymentLinkMutation,
+    reconcileBillingMutation,
   };
 }
