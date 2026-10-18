@@ -30,6 +30,7 @@ function getActiveNav(pathname: string): DashboardNavId {
   if (pathname.startsWith('/submissions')) return 'submit'
   if (pathname.startsWith('/calendar')) return 'scheduler'
   if (pathname.startsWith('/analytics')) return 'analytics'
+  if (pathname.startsWith('/upgrade-plan')) return 'upgrade-plan'
   return 'home'
 }
 

@@ -36,6 +36,7 @@ const CalendarScreen = lazy(() => import("../features/calendar/CalendarScreen"))
 const MediaRepositoryScreen = lazy(() => import("../features/media-repository/MediaRepositoryScreen"));
 const NotificationsScreen = lazy(() => import("../features/notifications/NotificationsScreen"));
 const AnalyticsDashboardPage = lazy(() => import("../features/analytics/AnalyticsDashboardPage"));
+const SubscriptionPlansScreen = lazy(() => import("../features/subscription/SubscriptionPlansScreen"));
 
 /** Routes. Session state and every auth flow live in useAuthSession. */
 function App() {
@@ -211,6 +212,7 @@ function App() {
                 <Route path="/admin/user-management" element={<UserManagementScreen user={currentUser!} />} />
                 <Route path="/admin/system-health" element={<SystemHealthScreen user={currentUser!} />} />
                 <Route path="/admin/audit-log" element={<AuditLogScreen user={currentUser!} />} />
+                <Route path="/upgrade-plan" element={<SubscriptionPlansScreen user={currentUser!} />} />
               </Route>
             </Route>
 

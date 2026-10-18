@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
-import com.dasigconnect.backend.external.ClaudeVisionClient.ClaudeApiException;
+import com.dasigconnect.backend.external.AiApiException;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.TopPostTemplateSuggestionDto;
 import com.dasigconnect.backend.repository.SubmissionEngagementMetricRepository;
 import com.dasigconnect.backend.service.FacebookEngagementAnalyticsClient.PagePostSample;
@@ -35,15 +35,15 @@ class TopPostTemplateServiceTest {
 
     private FacebookEngagementAnalyticsClient facebookClient;
     private SubmissionEngagementMetricRepository engagementRepository;
-    private ClaudeVisionClient claudeClient;
+    private AiVisionClient aiClient;
     private TopPostTemplateService service;
 
     @BeforeEach
     void setUp() {
         facebookClient = Mockito.mock(FacebookEngagementAnalyticsClient.class);
         engagementRepository = Mockito.mock(SubmissionEngagementMetricRepository.class);
-        claudeClient = Mockito.mock(ClaudeVisionClient.class);
-        service = new TopPostTemplateService(facebookClient, engagementRepository, claudeClient);
+        aiClient = Mockito.mock(AiVisionClient.class);
+        service = new TopPostTemplateService(facebookClient, engagementRepository, aiClient);
     }
 
     @Test
@@ -62,7 +62,7 @@ class TopPostTemplateServiceTest {
         assertThat(result.available()).isFalse();
         assertThat(result.reason()).contains("Only 7 of the last 27 posts");
         assertThat(result.source()).isEqualTo(TopPostTemplateService.SOURCE_FACEBOOK);
-        verify(claudeClient, never()).generateText(anyString(), anyString(), anyInt());
+        verify(aiClient, never()).generateText(anyString(), anyString(), anyInt());
     }
 
     @Test
@@ -76,12 +76,12 @@ class TopPostTemplateServiceTest {
         }
         posts.add(pagePost("Dud", 0, 0, 0));
         when(facebookClient.fetchRecentPostsWithText()).thenReturn(posts);
-        when(claudeClient.generateText(anyString(), anyString(), anyInt())).thenReturn(VALID_JSON);
+        when(aiClient.generateText(anyString(), anyString(), anyInt())).thenReturn(VALID_JSON);
 
         TopPostTemplateSuggestionDto result = service.suggest();
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(claudeClient).generateText(anyString(), prompt.capture(), anyInt());
+        verify(aiClient).generateText(anyString(), prompt.capture(), anyInt());
         assertThat(prompt.getValue().indexOf("Shared")).isLessThan(prompt.getValue().indexOf("Liked"));
         assertThat(prompt.getValue()).contains("TOP POST 1 (reactions 0, comments 0, shares 10)");
         assertThat(prompt.getValue()).contains("LOW POST").contains("Dud");
@@ -104,7 +104,7 @@ class TopPostTemplateServiceTest {
             rows.add(new Object[] {"Caption " + i, Instant.now(), 3L, 1L, null});
         }
         when(engagementRepository.findPublishedCaptionsWithEngagement(any())).thenReturn(rows);
-        when(claudeClient.generateText(anyString(), anyString(), anyInt())).thenReturn(VALID_JSON);
+        when(aiClient.generateText(anyString(), anyString(), anyInt())).thenReturn(VALID_JSON);
 
         TopPostTemplateSuggestionDto result = service.suggest();
 
@@ -125,9 +125,9 @@ class TopPostTemplateServiceTest {
     @Test
     void parseDraft_rejectsUnreadableOrEmptyOutput() {
         assertThatThrownBy(() -> service.parseDraft("I can't help with that."))
-                .isInstanceOf(ClaudeApiException.class);
+                .isInstanceOf(AiApiException.class);
         assertThatThrownBy(() -> service.parseDraft("{\"name\":\"x\",\"caption\":\"  \"}"))
-                .isInstanceOf(ClaudeApiException.class);
+                .isInstanceOf(AiApiException.class);
     }
 
     private static PagePostSample pagePost(String message, long reactions, long comments, long shares) {

@@ -47,6 +47,7 @@ class SystemHealthServiceTest {
             "",
             "",
             "",
+            "",
             "https://api.resend.com");
 
     private static ScheduledJobRun run(String jobName, String status, Instant startedAt) {

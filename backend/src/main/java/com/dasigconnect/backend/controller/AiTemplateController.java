@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiApiException;
 import com.dasigconnect.backend.model.dto.ai.TopPostTemplateSuggestionDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -66,7 +66,7 @@ public class AiTemplateController {
                 }
             }
             return ResponseEntity.ok(ApiResponse.success(suggestion));
-        } catch (ClaudeVisionClient.ClaudeApiException e) {
+        } catch (AiApiException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {
                 throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, msg);
