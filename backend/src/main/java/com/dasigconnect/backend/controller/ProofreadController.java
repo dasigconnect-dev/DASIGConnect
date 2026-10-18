@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.controller;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiApiException;
 import com.dasigconnect.backend.model.dto.ai.ProofreadAppliedRequestDto;
 import com.dasigconnect.backend.model.dto.ai.ProofreadIssueDto;
 import com.dasigconnect.backend.model.dto.ai.ProofreadRequestDto;
@@ -68,7 +68,7 @@ public class ProofreadController {
                 // Tracking must never fail the check itself.
             }
             return ResponseEntity.ok(ApiResponse.success(new ProofreadResponseDto(issues)));
-        } catch (ClaudeVisionClient.ClaudeApiException e) {
+        } catch (AiApiException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {
                 throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, msg);

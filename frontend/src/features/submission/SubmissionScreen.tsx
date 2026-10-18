@@ -2876,7 +2876,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    {canUseAiCaption && (
+                    {canUseAiCaption && !aiCaption.variants && (
                       <AiCaptionButton
                         state={aiCaption.state}
                         canSuggest={canUseAiCaption}
@@ -3004,6 +3004,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     onDismissOne={aiCaption.logDismissOne}
                     onDismissAll={aiCaption.dismissAll}
                     onRegenerate={aiCaption.regenerate}
+                    onBrowseTemplates={() => {
+                      setReadinessSheetOpen(false);
+                      setTemplatesPanelOpen(true);
+                    }}
                   />
                 </Suspense>
               )}
