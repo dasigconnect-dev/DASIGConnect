@@ -8,5 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SubscriptionPlanRepository extends JpaRepository<SubscriptionPlan, UUID> {
     List<SubscriptionPlan> findAllByActiveTrueOrderByMonthlyPriceCentavosAscVersionDesc();
+    Optional<SubscriptionPlan> findByIdAndActiveTrue(UUID id);
     Optional<SubscriptionPlan> findFirstByCodeAndActiveTrueOrderByVersionDesc(String code);
 }
