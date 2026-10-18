@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { logTaskComplete, logTaskStart } from "../api/telemetryApi";
 
 /**
@@ -6,7 +6,7 @@ import { logTaskComplete, logTaskStart } from "../api/telemetryApi";
  * so first-attempt completion and time-on-task are measured directly by the system.
  */
 export function useTaskTelemetry(taskName: string, autoStart = true) {
-  const startedAtMsRef = useRef<number>(Date.now());
+  const startedAtMsRef = useRef<number | null>(null);
   const errorCountRef = useRef<number>(0);
   const startedLoggedRef = useRef<boolean>(false);
 
@@ -34,7 +34,8 @@ export function useTaskTelemetry(taskName: string, autoStart = true) {
 
   const completeTask = useCallback(
     (targetEntityId?: string | null) => {
-      const durationMs = Math.max(0, Date.now() - startedAtMsRef.current);
+      const startedAtMs = startedAtMsRef.current;
+      const durationMs = startedAtMs === null ? 0 : Math.max(0, Date.now() - startedAtMs);
       const errors = errorCountRef.current;
       void logTaskComplete({
         taskName,
@@ -49,9 +50,8 @@ export function useTaskTelemetry(taskName: string, autoStart = true) {
     [taskName],
   );
 
-  return {
-    startTask,
-    recordError,
-    completeTask,
-  };
+  return useMemo(
+    () => ({ startTask, recordError, completeTask }),
+    [completeTask, recordError, startTask],
+  );
 }

@@ -715,7 +715,7 @@ public class AuditLogService {
         } else if (editDiffObj instanceof String diffStr && diffStr.startsWith("{")) {
             try {
                 JsonNode root = objectMapper.readTree(diffStr);
-                root.fields().forEachRemaining(field -> {
+                root.properties().forEach(field -> {
                     JsonNode val = field.getValue();
                     String from = val.has("from") ? val.get("from").asText() : "—";
                     String to = val.has("to") ? val.get("to").asText() : "—";

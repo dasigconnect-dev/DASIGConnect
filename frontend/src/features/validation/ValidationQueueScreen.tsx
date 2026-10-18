@@ -840,7 +840,7 @@ export default function ValidationQueueScreen({
       : Promise.resolve();
 
     await Promise.allSettled([detailRequest, lockRequest]);
-  }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
+  }, [fetchSubmissionDetail, queryClient, reviewTaskTelemetry, selectedId, submissionDetailQueryKey, toast, user.email]);
 
   function clearSelection() {
     const requestId = ++openRequestRef.current;

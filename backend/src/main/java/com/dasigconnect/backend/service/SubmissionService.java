@@ -677,7 +677,7 @@ public class SubmissionService {
         if (submission.getCaption() == null || submission.getCaption().isBlank()) {
             missing.add("a caption");
         } else {
-            validateCaptionCharLimit(submission.getCaption(), HttpStatus.UNPROCESSABLE_ENTITY);
+            validateCaptionCharLimit(submission.getCaption(), HttpStatus.UNPROCESSABLE_CONTENT);
         }
         long attachmentCount = submissionMediaAssetRepository.countBySubmissionId(submission.getId());
         if (attachmentCount < 1) {
