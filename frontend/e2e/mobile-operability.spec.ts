@@ -114,9 +114,9 @@ test.describe("Case-29: Mobile Operability of Role-Critical Actions (RP-04, REQ-
           },
         });
 
-        // Deep link to failed tab
+        // Deep link to failed tab: resolution actions are reachable
         await page.goto(`/queue?tab=failed&submissionId=${submission.id}`);
-        await expect(page.getByRole("tab", { name: "Failed" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 
         // Check horizontal overflow
         const hasHorizontalScroll = await page.evaluate(() => {
