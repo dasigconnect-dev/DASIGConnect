@@ -78,7 +78,7 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
     @Query("""
         SELECT asset FROM SubmissionMediaAsset sma
         JOIN sma.mediaAsset asset
-        JOIN FETCH asset.institution
+        LEFT JOIN FETCH asset.institution
         LEFT JOIN FETCH asset.uploader
         WHERE sma.submission.id = :submissionId
           AND asset.deletedAt IS NULL

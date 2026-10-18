@@ -183,6 +183,21 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
         },
       });
     },
+    "POST /api/v1/ai/caption/background": async (request: ApiRequest) => {
+      record(request);
+      await json(request, {
+        success: true,
+        data: {
+          submissionId: DRAFT_ID,
+          variants: [
+            {
+              tone: "professional",
+              caption: "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+            },
+          ],
+        },
+      });
+    },
     "POST /api/v1/ai/caption/log": async (request: ApiRequest) => {
       record(request);
       await request.route.fulfill({ status: 204, body: "" });
@@ -577,6 +592,10 @@ test.describe("submission composer", () => {
     const suggestionPanel = page.getByTestId("ai-caption-suggestion-panel");
     await expect(suggestionPanel).toBeVisible();
     await expect(suggestionPanel).toContainText("AI draft ready — Use / Edit / Dismiss");
+
+    // The automatic suggestion goes through the background endpoint (logged as auto_generated)
+    expect(state.log.some((entry) => entry.key === "POST /api/v1/ai/caption/background")).toBe(true);
+    expect(state.log.some((entry) => entry.key === "POST /api/v1/ai/caption")).toBe(false);
 
     // Select 5-star quality rating and click Use
     await suggestionPanel.getByRole("button", { name: "5★" }).click();

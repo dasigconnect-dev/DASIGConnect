@@ -3429,15 +3429,16 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 * **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).**  
 * **Background caption:** after the first image is attached to a saved draft that has an event title, `useAiCaptionAssist` triggers background caption generation (`POST /api/v1/ai/caption` / `/api/v1/ai/caption/background`, same 30/h limit and 30 s timeout); `CaptionGenerationService` and `AiCaptionSuggestion` offer the result inline as **"AI draft ready — Use / Edit / Dismiss"**, never inserting it automatically. Failure falls back silently to manual entry.  
-* **Measurement:** coverage \= suggestions generated ÷ submissions with images; acceptance \= (`used` \+ `used_edited`) ÷ generated; quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V123__ai_caption_suggestions_telemetry.sql`).  
+* **Measurement:** coverage \= background suggestions (`auto_generated`) ÷ submissions with images; acceptance \= (`use` \+ `use_then_edited`) ÷ generated (`auto_generated` \+ `re_generate`); quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V130__ai_caption_suggestions_telemetry.sql`).  
 * **Media-first:** `MediaAssetsPicker` initial tab defaults to `ai` (**AI Suggestions**) when event context (≥ 10 characters or a selected image) is present; otherwise `upload`.  
 * **Test:** STD Case-30c (**PASS**).
 
 ## ***4.4. RP-04 — Mobile operability (VF-04; REQ-218)*** {#4.4.-rp-04-—-mobile-operability-(vf-04;-req-218)}
 
-* **Persistent primary-action bar:** a shared `MobileActionBar` component (fixed bottom, ≤ 900 px) on the composer (Submit / Save Draft), review screen (Approve / Request Revision / Reject), Failed tab (Retry / Manual publish), calendar detail (Reschedule), and invite acceptance.  
-* **Deep links:** notification links include the target state, e.g. `/queue?submission={id}&mode=review`, which opens the submission and acquires the review lock on load; Messenger and email templates use the same links.  
-* **Tests:** a Playwright project with a 360×800 viewport covering the five actions (STD Case-29).
+* **Status:** **Implemented (`refactor/p4-mobile-operability`).**  
+* **Persistent primary-action bar:** each role-critical screen keeps its own sticky bottom action bar at phone/tablet widths — composer (Preview / Next / Submit for Approval), review panel (Approve / Request Revision / Reject / Edit once the lock is held), Failed publications (Retry / Start Manual Publish), Master Calendar (drag a scheduled post → Confirm Reschedule dialog), and invitation activation (Activate). No horizontal scrolling at 360 × 800 or 768 × 1024.  
+* **Deep links:** `NotificationEventListener` sends reviewers `/queue?submissionId={id}&mode=review` for T-01 (new submission) and T-11 (Fast-Track) in-app, by email and by Messenger; `ValidationQueueScreen` opens that submission, acquires the review lock for `pending`/`in_review` items (self-review and locks held by another Moderator are still rejected by `ReviewLockService`), then removes `submissionId` and `mode` from the URL. Publish-failed alerts send Administrators/Moderators `/queue?tab=failed&submissionId={id}` (in-app, email, Messenger) and the Contributor `/submissions/{id}`.  
+* **Tests:** `NotificationEventListenerTest` asserts the exact links; Playwright `e2e/mobile-operability.spec.ts` runs five role scenarios (submit, review decision with lock, reschedule, resolve a failed publication, accept an invitation) at 360 × 800 and 768 × 1024 (STD Case-29, **PASS**).
 
 ## ***4.5. RP-05 — Bulk invitations with preview and batch audit (VF-05; REQ-127)*** {#4.5.-rp-05-—-bulk-invitations-with-preview-and-batch-audit-(vf-05;-req-127)}
 
