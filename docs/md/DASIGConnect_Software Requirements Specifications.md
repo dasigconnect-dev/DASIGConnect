@@ -1857,7 +1857,7 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **Finding:** a Contributor with a complete, valid post saw "90 %" and believed submission was blocked; it was the only task failure in the study (GO1, SO 1.7, RQ2).  
 * **Requirement:** UC-1.5 and UC-1.9 "readiness" is redefined as the required-check gate only. The composer shall show a binary status ("Required: 7 of 7 — Ready to submit"), name the next missing item with a jump link while incomplete, and make Submit the primary always-visible action when the gate passes. Recommended items shall appear separately as optional tips ("Tips: 3 of 5 applied") with no percentage.  
 * **Acceptance:** STD Case-30a; re-validation first-attempt completion ≥ 95 %; share of gate-passed drafts not submitted within 24 hours.  
-* **Status:** Not implemented (blended score still shown).
+* **Status:** **Implemented (`refactor/p1-submission-gate`)** — binary 7-of-7 Required Submission Gate (`Required: 7 of 7 ✓ — Ready to submit`) separated from 5 optional Post Quality Tips (`Tips: X of 5 applied`), with no blended percentage and a primary always-visible **Submit for Approval** action once the gate passes.
 
 ### ***3.6.2. Next Action, Plain-Language Status, and Task Instrumentation — REQ-125, REQ-126 (RP-02, VF-02; High)*** {#3.6.2.-next-action,-plain-language-status,-and-task-instrumentation-—-req-125,-req-126-(rp-02,-vf-02;-high)}
 
@@ -1865,15 +1865,15 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **REQ-125:** each role's home screen shall lead with the single most important pending action (Contributor: "Finish your draft — 1 required item left"; Moderator: "3 submissions awaiting review — Review next"; Administrator: "1 failed publication needs action"). Every submission status shall state what it means and who acts next, using the same wording in the UI and notifications (e.g., "Needs revision — the Moderator asked for changes. Edit and resubmit."). The system shall record the start and finish of each role's core task to compute first-attempt completion and Time-on-Task.  
 * **REQ-126 (NFR — learnability):** see Section 3.4.8.  
 * **Acceptance:** STD Case-30b; re-validation and pilot logs.  
-* **Status:** Partially addressed by view-only guides (composer, review queue, decisions, failed recovery, editing); next-action, status wording, and task logging not implemented.
+* **Status:** **Implemented (`refactor/p2-first-time-independence`)** — role-based Next Action card (`GET /api/v1/me/next-action` + `DashboardScreen`), shared plain-language `statusCopy` across UI and `NotificationEventListener`, and V123 `task_events` / `task_completion_logs` instrumentation (`POST /api/v1/task-events`, `GET /api/v1/telemetry/tasks/summary`).
 
 ### ***3.6.3. AI Caption on Upload, Media First, Log-Based Measurement — REQ-320, REQ-321 (RP-03, VF-03; High)*** {#3.6.3.-ai-caption-on-upload,-media-first,-log-based-measurement-—-req-320,-req-321-(rp-03,-vf-03;-high)}
 
 * **Finding:** captions were generated only on request; 6 of 16 participants met any AI feature; 4 of 5 who saw a caption accepted it (GO3(c)(d), SO 1.6, RQ5).  
 * **REQ-320:** once a draft has ≥ 1 image and an event title, the system shall generate a caption suggestion in the background and offer it inline as "AI draft ready — Use / Edit / Dismiss", never inserting it automatically. For each suggestion the system shall log generated, used, used-after-edit, or dismissed, a one-click 1–5 quality rating at decision time, and the time from opening Post Details to saving a caption. Existing rate limits apply; failure falls back to manual entry without blocking.  
 * **REQ-321:** suggested media shall be the default media-picker view once there is enough event context; GO3(c) and GO3(d) shall be computed from these logs over ≥ 20 pilot submissions (coverage \= suggestions ÷ submissions with images; acceptance \= used \+ used-after-edit ÷ generated; quality \= mean rating).  
-* **Acceptance:** STD Case-30c.  
-* **Status:** Not implemented.
+* **Acceptance:** STD Case-30c (**PASS**).  
+* **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).** Background AI caption generation on first image upload + event title (`useAiCaptionAssist`), inline `"AI draft ready — Use / Edit / Dismiss"` banner with 1–5 quality rating and drafting duration telemetry (`AiCaptionSuggestion`, `CaptionController`, `V123__ai_caption_suggestions_telemetry.sql`), and media-first default tab (`MediaAssetsPicker`) are implemented and verified.
 
 ### ***3.6.4. Mobile Operability of Role-Critical Actions — REQ-218 (RP-04, VF-04; Medium)*** {#3.6.4.-mobile-operability-of-role-critical-actions-—-req-218-(rp-04,-vf-04;-medium)}
 

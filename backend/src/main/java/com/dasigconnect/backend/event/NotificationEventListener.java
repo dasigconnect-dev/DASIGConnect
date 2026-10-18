@@ -68,13 +68,14 @@ public class NotificationEventListener {
     public void onSubmissionPending(SubmissionPendingEvent event) {
         Submission s = event.submission();
         String scheduledPart = s.getScheduledAt() != null ? " (scheduled for " + fmt(s.getScheduledAt()) + ")" : "";
-        String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart + ".";
+        String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart
+                + ". Next action: Moderator review — approve or return for revision.";
         String link = "/queue?submissionId=" + s.getId() + "&mode=review";
 
         for (User reviewer : reviewers()) {
             notificationService.createNotification(reviewer, NotificationEventType.submission_pending, msg, link);
-            String messengerMsg = "New submission to review: \"" + s.getEventTitle()
-                    + "\". Open DASIGConnect: " + frontendBaseUrl + link;
+            String messengerMsg = "New submission waiting for Moderator review: \"" + s.getEventTitle()
+                    + "\". Review and approve or return for revision: " + frontendBaseUrl + link;
             messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
     }
@@ -87,14 +88,16 @@ public class NotificationEventListener {
         User contributor = s.getContributor();
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "TBD";
         String link = "/submissions/" + s.getId();
-        String msg = "'" + s.getEventTitle() + "' was approved and is scheduled for " + slot + ".";
+        String msg = "Approved — '" + s.getEventTitle()
+                + "' is scheduled to publish automatically on the DASIG Facebook Page at " + slot
+                + ". No action needed from you.";
         // Detail about *what* changed is carried by SubmissionEditedDuringReviewEvent
         // (onSubmissionEditedDuringReview), which fires alongside this on an edited approval.
 
         notificationService.createNotification(contributor, NotificationEventType.submission_approved, msg, link);
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_approved.name(),
-                "DASIGConnect — Submission approved",
+                "DASIGConnect — Submission approved & scheduled",
                 msg + "\n\nView your scheduled post: " + frontendBaseUrl + link);
     }
 
@@ -104,7 +107,8 @@ public class NotificationEventListener {
     public void onSubmissionRejected(SubmissionRejectedEvent event) {
         Submission s = event.submission();
         User contributor = s.getContributor();
-        String msg = "'" + s.getEventTitle() + "' was not approved. Open it to see the moderator's reason.";
+        String msg = "Not approved — '" + s.getEventTitle()
+                + "' was rejected by the Moderator. Open it to view the reason or edit and resubmit.";
         String link = "/submissions/" + s.getId();
 
         notificationService.createNotification(contributor, NotificationEventType.submission_rejected, msg, link);
@@ -112,7 +116,7 @@ public class NotificationEventListener {
                 + "\n\nView submission: " + frontendBaseUrl + link;
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_rejected.name(),
-                "DASIGConnect — Submission rejected",
+                "DASIGConnect — Submission not approved",
                 emailBody);
     }
 
@@ -122,16 +126,16 @@ public class NotificationEventListener {
     public void onRevisionRequested(RevisionRequestedEvent event) {
         Submission s = event.submission();
         User contributor = s.getContributor();
-        String msg = "'" + s.getEventTitle()
-                + "' needs changes before it can be approved. Open it to see the moderator's notes.";
+        String msg = "Needs revision — the Moderator asked for changes on '" + s.getEventTitle()
+                + "'. Edit and resubmit.";
         String link = "/submissions/" + s.getId();
 
         notificationService.createNotification(contributor, NotificationEventType.submission_needs_revision, msg, link);
         String emailBody = msg + "\n\nModerator notes:\n" + event.remarks()
-                + "\n\nView submission: " + frontendBaseUrl + link;
+                + "\n\nEdit and resubmit: " + frontendBaseUrl + link;
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_needs_revision.name(),
-                "DASIGConnect — Revision requested",
+                "DASIGConnect — Needs revision: edit and resubmit",
                 emailBody);
     }
 
@@ -231,9 +235,9 @@ public class NotificationEventListener {
         String adminLink = "/queue?tab=failed&submissionId=" + s.getId();
         String contributorLink = "/submissions/" + s.getId();
 
-        String adminMsg = "Automated publishing failed for '" + s.getEventTitle()
+        String adminMsg = "Publish failed — automated publishing failed for '" + s.getEventTitle()
                 + "' (scheduled " + slot + "): " + event.errorDetail()
-                + ". Recover it from the Review Queue's Failed tab.";
+                + ". Next action: Administrator or Moderator must retry or complete manual publishing from the Failed tab.";
 
         // Notify every network admin and moderator (both are network-wide roles)
         List<User> targetAdmins = new java.util.ArrayList<>(admins());
@@ -275,8 +279,8 @@ public class NotificationEventListener {
             }
         }
 
-        String contributorMsg = "'" + s.getEventTitle()
-                + "' could not be published automatically. A moderator has been notified and will follow up.";
+        String contributorMsg = "Publish failed — '" + s.getEventTitle()
+                + "' could not be published automatically. An Administrator or Moderator has been notified and will resolve it — no action needed from you.";
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_publish_failed, contributorMsg, contributorLink);
     }
@@ -289,20 +293,18 @@ public class NotificationEventListener {
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "unknown";
         String link = "/submissions/" + s.getId();
 
-        String adminMsg = "'" + s.getEventTitle() + "' missed its scheduled publication time ("
-                + slot + ") without review. Its slot has been released — assign a new schedule to"
-                + " send it back to the approval queue.";
+        String adminMsg = "Publishing slot passed — '" + s.getEventTitle() + "' reached its scheduled publication time ("
+                + slot + ") before review completed. Next action: assign a new schedule to return it to the approval queue.";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.submission_missed_review, adminMsg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_missed_review.name(),
-                    "DASIGConnect — Submission missed its review window",
+                    "DASIGConnect — Publishing slot passed before review",
                     adminMsg);
         }
 
-        String contributorMsg = "'" + s.getEventTitle()
-                + "' missed its scheduled slot before it was reviewed. A moderator will"
-                + " reschedule it for a fresh review.";
+        String contributorMsg = "Publishing slot passed — '" + s.getEventTitle()
+                + "' reached its scheduled time before review completed. A Moderator will assign a new schedule for review — no action needed from you.";
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_missed_review, contributorMsg, link);
     }
@@ -431,22 +433,22 @@ public class NotificationEventListener {
         notificationService.createNotification(s.getContributor(), NotificationEventType.submission_rescheduled, msg, link);
     }
 
-    // ── T-11 — Fast-Track Live Event Submission ───────────────────────────────
+    // ── T-11 — Live Event Immediate Review Submission ─────────────────────────
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFastTrackSubmission(FastTrackSubmissionEvent event) {
         Submission s = event.submission();
-        String msg = "Fast-track: " + who(s.getContributor()) + " submitted '"
-                + s.getEventTitle() + "' for a live event and it needs immediate review.";
+        String msg = "Live event (immediate review): " + who(s.getContributor()) + " submitted '"
+                + s.getEventTitle() + "' — publishes immediately once approved by a Moderator.";
         String link = "/submissions/" + s.getId();
 
         for (User reviewer : reviewers()) {
             notificationService.createNotification(reviewer, NotificationEventType.fast_track_submission, msg, link);
             emailDeliveryService.send(reviewer,
                     NotificationEventType.fast_track_submission.name(),
-                    "Urgent: fast-track submission needs review",
+                    "Urgent: live event submission needs immediate Moderator review",
                     msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
-            String messengerMsg = "Urgent fast-track submission: \"" + s.getEventTitle()
+            String messengerMsg = "Urgent live event submission waiting for Moderator review: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
             messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
@@ -578,6 +580,50 @@ public class NotificationEventListener {
                     + ". You remain an active Administrator.";
             notificationService.createNotification(event.previousAdminOwner(),
                     NotificationEventType.admin_transfer_confirmed, msg, "/admin/admin-management");
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubscriptionLifecycleChanged(SubscriptionLifecycleChangedEvent event) {
+        NotificationEventType type;
+        String subject;
+        String message;
+        switch (event.currentStatus()) {
+            case PAST_DUE -> {
+                type = NotificationEventType.subscription_past_due;
+                subject = "DASIGConnect - Subscription payment overdue";
+                message = "The " + event.organizationName()
+                        + " subscription is past due. Record the renewal in Subscription & Billing to prevent restrictions.";
+            }
+            case GRACE_PERIOD -> {
+                type = NotificationEventType.subscription_grace_period;
+                subject = "DASIGConnect - Subscription grace period";
+                message = "The " + event.organizationName() + " subscription is in its grace period until "
+                        + event.gracePeriodEndsAt() + ". New billable actions will be restricted after that time.";
+            }
+            case RESTRICTED -> {
+                type = NotificationEventType.subscription_restricted;
+                subject = "DASIGConnect - Subscription restricted";
+                message = "The " + event.organizationName()
+                        + " subscription is restricted. New uploads, submissions, invitations, and AI requests are blocked; existing review and publishing workflows remain available.";
+            }
+            case ACTIVE -> {
+                type = NotificationEventType.subscription_restored;
+                subject = "DASIGConnect - Subscription restored";
+                message = "The " + event.organizationName()
+                        + " subscription is active again. New billable actions are available.";
+            }
+            default -> {
+                return;
+            }
+        }
+        String link = "/settings#subscription";
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, type, message, link);
+            emailDeliveryService.send(
+                    admin, type.name(), subject,
+                    message + "\n\nManage subscription: " + frontendBaseUrl + link);
         }
     }
 

@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.service;
 
+import com.dasigconnect.backend.event.SubscriptionLifecycleChangedEvent;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionStatusDto;
 import com.dasigconnect.backend.model.entity.OrganizationSubscription;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionPlan;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
@@ -10,9 +12,12 @@ import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +32,7 @@ public class SubscriptionAdministrationService {
     private final SubscriptionQueryService queryService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public SubscriptionAdministrationService(
             OrganizationSubscriptionRepository subscriptionRepository,
@@ -34,13 +40,15 @@ public class SubscriptionAdministrationService {
             UserRepository userRepository,
             SubscriptionQueryService queryService,
             AuditLogService auditLogService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ApplicationEventPublisher eventPublisher) {
         this.subscriptionRepository = subscriptionRepository;
         this.planRepository = planRepository;
         this.userRepository = userRepository;
         this.queryService = queryService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -84,6 +92,97 @@ public class SubscriptionAdministrationService {
         return queryService.currentSubscription();
     }
 
+    @Transactional
+    public SubscriptionStatusDto recordManualRenewal(
+            int billingMonths,
+            String paymentReference,
+            JwtUserDetails actor) {
+        requireOwner(actor);
+        OrganizationSubscription subscription = lockedSubscription();
+        User actorUser = actorUser(actor);
+        SubscriptionLifecycleStatus previousStatus = subscription.getStatus();
+        Instant now = Instant.now();
+        Instant extensionStart = subscription.getCurrentPeriodEnd().isAfter(now)
+                ? subscription.getCurrentPeriodEnd() : now;
+        Instant renewedUntil = extensionStart.atZone(ZoneId.of("Asia/Manila"))
+                .plusMonths(billingMonths)
+                .toInstant();
+        if (!subscription.getCurrentPeriodEnd().isAfter(now)) {
+            subscription.setCurrentPeriodStart(now);
+        }
+        subscription.setCurrentPeriodEnd(renewedUntil);
+        subscription.setGracePeriodEndsAt(null);
+        subscription.setStatus(SubscriptionLifecycleStatus.ACTIVE);
+        subscriptionRepository.saveAndFlush(subscription);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("organizationId", subscription.getOrganization().getId().toString());
+        metadata.put("previousStatus", previousStatus.name());
+        metadata.put("billingMonths", billingMonths);
+        metadata.put("renewedUntil", renewedUntil.toString());
+        if (paymentReference != null && !paymentReference.isBlank()) {
+            metadata.put("paymentReference", paymentReference.trim());
+        }
+        auditLogService.record(
+                actorUser, "SUBSCRIPTION_MANUAL_RENEWAL_RECORDED",
+                null, null, subscription.getId(), metadata);
+        if (previousStatus != SubscriptionLifecycleStatus.ACTIVE) {
+            eventPublisher.publishEvent(new SubscriptionLifecycleChangedEvent(
+                    subscription.getId(), subscription.getOrganization().getName(),
+                    previousStatus, SubscriptionLifecycleStatus.ACTIVE,
+                    subscription.getCurrentPeriodEnd(), null));
+        }
+        return queryService.currentSubscription();
+    }
+
+    @Transactional
+    public SubscriptionStatusDto extendGracePeriod(int days, JwtUserDetails actor) {
+        requireOwner(actor);
+        OrganizationSubscription subscription = lockedSubscription();
+        SubscriptionLifecycleStatus previousStatus = subscription.getStatus();
+        if (previousStatus != SubscriptionLifecycleStatus.PAST_DUE
+                && previousStatus != SubscriptionLifecycleStatus.GRACE_PERIOD
+                && previousStatus != SubscriptionLifecycleStatus.RESTRICTED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Grace can only be extended for an overdue subscription.");
+        }
+        Instant now = Instant.now();
+        Instant base = subscription.getGracePeriodEndsAt() != null
+                && subscription.getGracePeriodEndsAt().isAfter(now)
+                        ? subscription.getGracePeriodEndsAt() : now;
+        subscription.setGracePeriodEndsAt(base.plusSeconds(days * 86_400L));
+        subscription.setStatus(SubscriptionLifecycleStatus.GRACE_PERIOD);
+        subscriptionRepository.saveAndFlush(subscription);
+
+        auditLogService.record(
+                actorUser(actor), "SUBSCRIPTION_GRACE_PERIOD_EXTENDED",
+                null, null, subscription.getId(),
+                Map.of(
+                        "organizationId", subscription.getOrganization().getId().toString(),
+                        "previousStatus", previousStatus.name(),
+                        "days", days,
+                        "gracePeriodEndsAt", subscription.getGracePeriodEndsAt().toString()));
+        eventPublisher.publishEvent(new SubscriptionLifecycleChangedEvent(
+                subscription.getId(), subscription.getOrganization().getName(),
+                previousStatus, SubscriptionLifecycleStatus.GRACE_PERIOD,
+                subscription.getCurrentPeriodEnd(), subscription.getGracePeriodEndsAt()));
+        return queryService.currentSubscription();
+    }
+
+    private OrganizationSubscription lockedSubscription() {
+        OrganizationSubscription current = subscriptionRepository.findFirstByOrderByCreatedAtAsc()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No organization subscription is configured."));
+        return subscriptionRepository.findByOrganizationIdForUpdate(current.getOrganization().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT, "The organization subscription could not be locked."));
+    }
+
+    private User actorUser(JwtUserDetails actor) {
+        return userRepository.findById(actor.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found."));
+    }
+
     private String entitlementsSnapshot(SubscriptionPlan plan) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("institutionLimit", plan.getInstitutionLimit());
@@ -106,7 +205,7 @@ public class SubscriptionAdministrationService {
     private static void requireOwner(JwtUserDetails actor) {
         if (actor == null || !"admin".equalsIgnoreCase(actor.role()) || !actor.adminOwner()) {
             throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN, "Only the Admin Owner can change the subscription plan.");
+                    HttpStatus.FORBIDDEN, "Only the Admin Owner can manage the subscription.");
         }
     }
 }

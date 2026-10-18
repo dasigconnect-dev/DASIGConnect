@@ -1,6 +1,6 @@
 import axios from "axios";
 import { useMemo, useState, type ReactNode } from "react";
-import type { SubscriptionUsageMetric } from "../../api/subscriptionApi";
+import type { SubscriptionStatus, SubscriptionUsageMetric } from "../../api/subscriptionApi";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../user-management/components/ConfirmDialog";
 import { useSubscriptionData } from "./hooks/useSubscriptionData";
@@ -28,9 +28,13 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
     institutionsQuery,
     reconciliationQuery,
     changePlanMutation,
+    renewalMutation,
+    extendGraceMutation,
   } = useSubscriptionData(userId);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [renewalConfirmOpen, setRenewalConfirmOpen] = useState(false);
+  const [graceConfirmOpen, setGraceConfirmOpen] = useState(false);
 
   const queries = [statusQuery, plansQuery, usageQuery, institutionsQuery, reconciliationQuery];
   const isLoading = queries.some((query) => query.isLoading);
@@ -54,6 +58,26 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
       toast.success(`Subscription changed to ${selectedPlan.name}.`);
     } catch (error) {
       toast.error(errorMessage(error, "The subscription plan could not be changed."));
+    }
+  }
+
+  async function confirmRenewal() {
+    try {
+      await renewalMutation.mutateAsync();
+      setRenewalConfirmOpen(false);
+      toast.success("One-month subscription renewal recorded.");
+    } catch (error) {
+      toast.error(errorMessage(error, "The subscription renewal could not be recorded."));
+    }
+  }
+
+  async function confirmGraceExtension() {
+    try {
+      await extendGraceMutation.mutateAsync();
+      setGraceConfirmOpen(false);
+      toast.success("Grace period extended by seven days.");
+    } catch (error) {
+      toast.error(errorMessage(error, "The grace period could not be extended."));
     }
   }
 
@@ -97,6 +121,7 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
           }
         />
         <div className="settings-card-body">
+          {lifecycleNotice(status)}
           <div className="subscription-plan-summary">
             <div className="subscription-current-plan">
               <span className="subscription-eyebrow">Current plan</span>
@@ -138,6 +163,35 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
               >
                 <i className="ti ti-switch-horizontal" aria-hidden="true" />
                 Change plan
+              </button>
+            </div>
+          )}
+
+          {isOwner && (
+            <div className="subscription-lifecycle-controls">
+              <div>
+                <strong>Manual billing controls</strong>
+                <span>Use only after confirming payment or an approved grace extension outside DASIGConnect.</span>
+              </div>
+              {isOverdue(status.subscriptionStatus) && (
+                <button
+                  type="button"
+                  className="settings-save-button subscription-secondary-action"
+                  disabled={extendGraceMutation.isPending || renewalMutation.isPending}
+                  onClick={() => setGraceConfirmOpen(true)}
+                >
+                  <i className="ti ti-calendar-plus" aria-hidden="true" />
+                  Extend 7 days
+                </button>
+              )}
+              <button
+                type="button"
+                className="settings-save-button"
+                disabled={renewalMutation.isPending || extendGraceMutation.isPending}
+                onClick={() => setRenewalConfirmOpen(true)}
+              >
+                <i className="ti ti-calendar-check" aria-hidden="true" />
+                Record 1-month renewal
               </button>
             </div>
           )}
@@ -213,6 +267,24 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
           onCancel={() => setConfirmOpen(false)}
         />
       )}
+      {renewalConfirmOpen && (
+        <ConfirmDialog
+          title="Record one-month renewal?"
+          message="Confirm only after payment has been verified outside DASIGConnect. This activates the subscription and extends the billing period by one month."
+          confirmLabel={renewalMutation.isPending ? "Recording..." : "Record renewal"}
+          onConfirm={() => void confirmRenewal()}
+          onCancel={() => setRenewalConfirmOpen(false)}
+        />
+      )}
+      {graceConfirmOpen && (
+        <ConfirmDialog
+          title="Extend grace period by seven days?"
+          message="New billable actions will remain available during the extended grace period. This action is recorded in the audit log."
+          confirmLabel={extendGraceMutation.isPending ? "Extending..." : "Extend grace"}
+          onConfirm={() => void confirmGraceExtension()}
+          onCancel={() => setGraceConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -243,6 +315,28 @@ function UsageMetric({ metric }: { metric: SubscriptionUsageMetric }) {
 function percentage(metric: SubscriptionUsageMetric) {
   if (metric.limit <= 0) return metric.used > 0 ? 100 : 0;
   return (metric.used / metric.limit) * 100;
+}
+
+function lifecycleNotice(status: SubscriptionStatus) {
+  const state = status.subscriptionStatus;
+  if (state === "ACTIVE" || state === "TRIAL") return null;
+  const copy = state === "PAST_DUE"
+    ? "Payment is overdue. Record the verified renewal before the grace period ends."
+    : state === "GRACE_PERIOD"
+      ? `The subscription is in its grace period${status.gracePeriodEndsAt ? ` until ${formatDateTime(status.gracePeriodEndsAt)}` : ""}.`
+      : state === "RESTRICTED"
+        ? "New uploads, submissions, invitations, and AI requests are restricted. Existing review and scheduled publishing remain available."
+        : "This subscription is cancelled. Contact the Admin Owner before creating new billable activity.";
+  return (
+    <div className={`subscription-lifecycle-notice is-${state.toLowerCase()}`} role="status">
+      <i className={state === "RESTRICTED" || state === "CANCELLED" ? "ti ti-lock" : "ti ti-alert-triangle"} aria-hidden="true" />
+      <div><strong>{formatStatus(state)}</strong><span>{copy}</span></div>
+    </div>
+  );
+}
+
+function isOverdue(status: string) {
+  return status === "PAST_DUE" || status === "GRACE_PERIOD" || status === "RESTRICTED";
 }
 
 function formatMetric(value: number, unit: SubscriptionUsageMetric["unit"]) {

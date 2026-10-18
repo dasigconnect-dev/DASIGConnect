@@ -2,7 +2,9 @@ package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.subscription.ChangeSubscriptionPlanRequestDto;
+import com.dasigconnect.backend.model.dto.subscription.ExtendGracePeriodRequestDto;
 import com.dasigconnect.backend.model.dto.subscription.InstitutionUsageDto;
+import com.dasigconnect.backend.model.dto.subscription.RecordManualRenewalRequestDto;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionPlanDto;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionReconciliationDto;
 import com.dasigconnect.backend.model.dto.subscription.SubscriptionStatusDto;
@@ -85,5 +87,22 @@ public class SubscriptionController {
             @AuthenticationPrincipal JwtUserDetails actor) {
         return ResponseEntity.ok(ApiResponse.success(
                 subscriptionAdministrationService.changePlan(request.planId(), actor)));
+    }
+
+    @PostMapping("/admin/record-renewal")
+    public ResponseEntity<ApiResponse<SubscriptionStatusDto>> recordManualRenewal(
+            @RequestBody @Valid RecordManualRenewalRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails actor) {
+        return ResponseEntity.ok(ApiResponse.success(
+                subscriptionAdministrationService.recordManualRenewal(
+                        request.billingMonths(), request.paymentReference(), actor)));
+    }
+
+    @PostMapping("/admin/extend-grace-period")
+    public ResponseEntity<ApiResponse<SubscriptionStatusDto>> extendGracePeriod(
+            @RequestBody @Valid ExtendGracePeriodRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails actor) {
+        return ResponseEntity.ok(ApiResponse.success(
+                subscriptionAdministrationService.extendGracePeriod(request.days(), actor)));
     }
 }

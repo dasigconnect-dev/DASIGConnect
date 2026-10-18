@@ -102,3 +102,14 @@ export function getSubscriptionReconciliation(signal?: AbortSignal) {
 export function changeSubscriptionPlan(planId: string) {
   return api.post<SubscriptionStatus>("/subscription/admin/change-plan", { planId });
 }
+
+export function recordManualSubscriptionRenewal(billingMonths = 1, paymentReference?: string) {
+  return api.post<SubscriptionStatus>("/subscription/admin/record-renewal", {
+    billingMonths,
+    paymentReference: paymentReference || null,
+  });
+}
+
+export function extendSubscriptionGracePeriod(days = 7) {
+  return api.post<SubscriptionStatus>("/subscription/admin/extend-grace-period", { days });
+}
