@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  changeSubscriptionPlan,
   createSubscriptionPaymentLink,
   extendSubscriptionGracePeriod,
   getCurrentSubscription,
   getInstitutionSubscriptionUsage,
-  getSubscriptionPlans,
   getSubscriptionBilling,
   getSubscriptionReconciliation,
   getSubscriptionUsage,
@@ -30,11 +28,6 @@ export function useSubscriptionData(userId?: string | null, isOwner = false) {
     queryFn: ({ signal }) => getCurrentSubscription(signal).then((response) => response.data),
     ...common,
   });
-  const plansQuery = useQuery({
-    queryKey: queryKeys.subscription.plans(scope),
-    queryFn: ({ signal }) => getSubscriptionPlans(signal).then((response) => response.data),
-    ...common,
-  });
   const usageQuery = useQuery({
     queryKey: queryKeys.subscription.usage(scope),
     queryFn: ({ signal }) => getSubscriptionUsage(signal).then((response) => response.data),
@@ -55,13 +48,6 @@ export function useSubscriptionData(userId?: string | null, isOwner = false) {
     queryFn: ({ signal }) => getSubscriptionBilling(signal).then((response) => response.data),
     enabled: isOwner,
     ...common,
-  });
-
-  const changePlanMutation = useMutation({
-    mutationFn: changeSubscriptionPlan,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
-    },
   });
 
   const renewalMutation = useMutation({
@@ -94,12 +80,10 @@ export function useSubscriptionData(userId?: string | null, isOwner = false) {
 
   return {
     statusQuery,
-    plansQuery,
     usageQuery,
     institutionsQuery,
     reconciliationQuery,
     billingQuery,
-    changePlanMutation,
     renewalMutation,
     extendGraceMutation,
     createPaymentLinkMutation,
