@@ -5,6 +5,8 @@ ALTER TABLE media_processing_jobs
     ADD CONSTRAINT chk_media_processing_job_type
         CHECK (job_type IN (
             'RETRIEVAL_EMBEDDINGS',
+            'EMBED_SEMANTIC_ONLY',
+            'ENRICH_MEDIA',
             'CLASSIFY_AND_EMBED',
             'EMBED_IMAGE_ONLY',
             'BUILD_SUBMISSION_CONTEXT'
