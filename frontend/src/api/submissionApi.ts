@@ -256,8 +256,13 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
   const responses = [];
   for (const file of files) {
     const {
-      data: { signedUrl, publicUrl },
-    } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
+      data: { signedUrl, publicUrl, reservationId },
+    } = await api.post<{
+      signedUrl: string;
+      publicUrl: string;
+      path: string;
+      reservationId?: string | null;
+    }>(
       `/submissions/${id}/media/upload-url`,
       {
         fileName: safeFileName(file.name),
@@ -285,6 +290,7 @@ export async function uploadSubmissionMedia(id: string, files: File[], signal?: 
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
         r2UploadDurationMs,
+        reservationId,
       }, { signal }),
     );
   }

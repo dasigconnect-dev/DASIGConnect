@@ -182,6 +182,30 @@
       "defaultValue": false
     },
     {
+      "name": "app.subscription.storage-warning-threshold",
+      "type": "java.lang.Double",
+      "description": "Fraction of the media-storage quota at which reservation responses report a warning.",
+      "defaultValue": 0.8
+    },
+    {
+      "name": "app.subscription.storage-reservation-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "Minutes an upload-byte reservation remains valid before orphan cleanup can claim it.",
+      "defaultValue": 20
+    },
+    {
+      "name": "app.subscription.storage-reservation-expiry-delay-ms",
+      "type": "java.lang.Long",
+      "description": "Delay in milliseconds between storage reservation cleanup runs.",
+      "defaultValue": 300000
+    },
+    {
+      "name": "app.subscription.action-reservation-ttl-minutes",
+      "type": "java.lang.Long",
+      "description": "Minutes an AI or submission quota reservation remains active before it can be retried.",
+      "defaultValue": 15
+    },
+    {
       "name": "spring.flyway.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable Flyway database migration on startup.",

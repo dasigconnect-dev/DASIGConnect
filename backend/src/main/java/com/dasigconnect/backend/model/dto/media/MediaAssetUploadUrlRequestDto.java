@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.model.dto.media;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.util.UUID;
 
 public class MediaAssetUploadUrlRequestDto {
@@ -10,6 +12,10 @@ public class MediaAssetUploadUrlRequestDto {
 
     @NotBlank
     private String fileType;
+
+    @NotNull
+    @Positive
+    private Long fileSizeBytes;
 
     @jakarta.validation.constraints.Pattern(regexp = "^[0-9a-fA-F]{64}$", message = "Content hash must be SHA-256.")
     private String contentHash;
@@ -36,6 +42,14 @@ public class MediaAssetUploadUrlRequestDto {
 
     public void setFileType(String fileType) {
         this.fileType = fileType;
+    }
+
+    public Long getFileSizeBytes() {
+        return fileSizeBytes;
+    }
+
+    public void setFileSizeBytes(Long fileSizeBytes) {
+        this.fileSizeBytes = fileSizeBytes;
     }
 
     public String getContentHash() {

@@ -57,6 +57,7 @@ import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.AssetTagRepository;
@@ -87,6 +88,12 @@ public class SubmissionService {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private StorageQuotaService storageQuotaService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionEntitlementService subscriptionEntitlementService;
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
@@ -166,20 +173,44 @@ public class SubmissionService {
     public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
-        return signedUploadUrlFor(submission, dto);
+        return signedUploadUrlFor(submission, dto, user.userId());
     }
 
     /**
      * Media-upload URL core — caller owns the auth/status checks. Reused by
      * ValidationService.
      */
-    SignedUploadUrlResponse signedUploadUrlFor(Submission submission, SignedUploadUrlRequest dto) {
+    SignedUploadUrlResponse signedUploadUrlFor(
+            Submission submission, SignedUploadUrlRequest dto, UUID userId) {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
         String objectPath = submission.getId() + "/" + UUID.randomUUID() + "-" + safeFileName;
-        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
-        String publicUrl = mediaStorage.getPublicUrl(objectPath);
-        return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
+        StorageQuotaService.ReservationResult reservation = storageQuotaService == null
+                ? null
+                : storageQuotaService.reserve(
+                        submission.getInstitution().getOrganizationId(),
+                        submission.getInstitution().getId(),
+                        userId,
+                        objectPath,
+                        dto.getFileSizeBytes());
+        try {
+            String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+            String publicUrl = mediaStorage.getPublicUrl(objectPath);
+            return reservation == null
+                    ? new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath)
+                    : new SignedUploadUrlResponse(
+                            signedUrl,
+                            publicUrl,
+                            objectPath,
+                            reservation.reservationId(),
+                            reservation.expiresAt(),
+                            reservation.warningThresholdReached());
+        } catch (RuntimeException ex) {
+            if (reservation != null) {
+                storageQuotaService.release(reservation.reservationId());
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -512,6 +543,17 @@ public class SubmissionService {
                     "At least one valid media attachment is required before submitting.");
         }
 
+        if (subscriptionEntitlementService != null) {
+            SubscriptionEntitlementService.ActionReservation reservation =
+                    subscriptionEntitlementService.reserveForSubmission(
+                            submissionId,
+                            user.userId(),
+                            SubscriptionUsageEventType.SUBMISSION,
+                            submissionId.toString(),
+                            "SUBMISSION");
+            completeActionReservationWithTransaction(reservation.reservationId());
+        }
+
         // Reconcile every attached asset with the finalised submission:
         //  - a NEW upload (STAGED, no institution/album) is bound to the
         //    submission's institution, filed into the album the contributor
@@ -598,6 +640,25 @@ public class SubmissionService {
 
         log.info("Submission {} → PENDING by user {}", submissionId, user.userId());
         return buildResponse(submission);
+    }
+
+    private void completeActionReservationWithTransaction(UUID reservationId) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager
+                .isSynchronizationActive()) {
+            subscriptionEntitlementService.consume(reservationId);
+            return;
+        }
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == STATUS_COMMITTED) {
+                            subscriptionEntitlementService.consume(reservationId);
+                        } else {
+                            subscriptionEntitlementService.release(reservationId);
+                        }
+                    }
+                });
     }
 
     /**
@@ -899,6 +960,15 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        if (storageQuotaService != null) {
+            storageQuotaService.consume(
+                    dto.getReservationId(),
+                    submission.getInstitution().getOrganizationId(),
+                    submission.getInstitution().getId(),
+                    user.userId(),
+                    dto.getFileSizeBytes(),
+                    asset.getId());
+        }
         if (mediaAiTelemetry != null) {
             if (dto.getR2UploadDurationMs() != null) {
                 mediaAiTelemetry.record("R2_UPLOAD", dto.getR2UploadDurationMs(), "SUCCESS",
