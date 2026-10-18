@@ -12,6 +12,7 @@ import com.dasigconnect.backend.model.entity.OrganizationSubscription;
 import com.dasigconnect.backend.model.entity.StorageQuotaReservation;
 import com.dasigconnect.backend.model.entity.StorageQuotaReservationStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionPlan;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
 import com.dasigconnect.backend.repository.StorageQuotaReservationRepository;
 import com.dasigconnect.backend.repository.SubscriptionUsageEventRepository;
@@ -78,6 +79,22 @@ class StorageQuotaServiceTest {
         assertThatThrownBy(() -> service.reserve(
                 organizationId, institutionId, userId, "media/example.jpg", 100L))
                 .isInstanceOf(SubscriptionLimitExceededException.class);
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void reserve_whenSubscriptionRestricted_rejectsNewUpload() {
+        service = service(true);
+        OrganizationSubscription restricted = subscription(1_000L);
+        restricted.setStatus(SubscriptionLifecycleStatus.RESTRICTED);
+        when(subscriptionRepository.findByOrganizationIdForUpdate(organizationId))
+                .thenReturn(Optional.of(restricted));
+
+        assertThatThrownBy(() -> service.reserve(
+                organizationId, institutionId, userId, "media/example.jpg", 100L))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403 FORBIDDEN");
 
         verify(reservationRepository, never()).save(any());
     }
@@ -159,6 +176,7 @@ class StorageQuotaServiceTest {
         plan.setMediaStorageBytes(storageLimit);
         OrganizationSubscription subscription = new OrganizationSubscription();
         subscription.setPlan(plan);
+        subscription.setStatus(SubscriptionLifecycleStatus.ACTIVE);
         subscription.setCurrentPeriodEnd(Instant.now().plusSeconds(3_600));
         return subscription;
     }

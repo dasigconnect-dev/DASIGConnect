@@ -4,6 +4,7 @@ import com.dasigconnect.backend.exception.SubscriptionLimitExceededException;
 import com.dasigconnect.backend.model.entity.OrganizationSubscription;
 import com.dasigconnect.backend.model.entity.SubscriptionActionReservation;
 import com.dasigconnect.backend.model.entity.SubscriptionActionReservationStatus;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionPlan;
 import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
 import com.dasigconnect.backend.model.entity.SubscriptionUsageUnit;
@@ -249,9 +250,21 @@ public class SubscriptionEntitlementService {
     }
 
     private OrganizationSubscription lockSubscription(UUID organizationId) {
-        return subscriptionRepository.findByOrganizationIdForUpdate(organizationId)
+        OrganizationSubscription subscription = subscriptionRepository.findByOrganizationIdForUpdate(organizationId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.CONFLICT, "No subscription is configured for this organization."));
+        assertLifecycleAllowsNewUsage(subscription);
+        return subscription;
+    }
+
+    private void assertLifecycleAllowsNewUsage(OrganizationSubscription subscription) {
+        if (enforcementEnabled
+                && (subscription.getStatus() == SubscriptionLifecycleStatus.RESTRICTED
+                    || subscription.getStatus() == SubscriptionLifecycleStatus.CANCELLED)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "The organization subscription is restricted. Contact the Admin Owner.");
+        }
     }
 
     private static long monthlyLimit(SubscriptionPlan plan, SubscriptionUsageEventType eventType) {

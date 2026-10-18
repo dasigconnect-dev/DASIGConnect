@@ -16,6 +16,7 @@ import com.dasigconnect.backend.model.entity.OrganizationSubscription;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubscriptionActionReservation;
 import com.dasigconnect.backend.model.entity.SubscriptionActionReservationStatus;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionPlan;
 import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
 import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
@@ -140,6 +141,22 @@ class SubscriptionEntitlementServiceTest {
     }
 
     @Test
+    void reserve_whenSubscriptionRestricted_rejectsNewBillableAction() {
+        OrganizationSubscription restricted = subscription();
+        restricted.setStatus(SubscriptionLifecycleStatus.RESTRICTED);
+        when(subscriptionRepository.findByOrganizationIdForUpdate(organizationId))
+                .thenReturn(Optional.of(restricted));
+
+        assertThatThrownBy(() -> service(true).reserveForSubmission(
+                submissionId, userId, SubscriptionUsageEventType.AI_CAPTION,
+                "caption-request", "AI_CAPTION_REQUEST"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("403 FORBIDDEN");
+
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
     void reserveCaption_duplicateRequestReturnsExistingReservationAndDailyAllowance() {
         String requestKey = "caption-request";
         String idempotencyKey = "ai-caption:" + UUID.nameUUIDFromBytes(
@@ -234,6 +251,7 @@ class SubscriptionEntitlementServiceTest {
         plan.setPerUserDailyCaptionLimit(5);
         OrganizationSubscription subscription = new OrganizationSubscription();
         subscription.setPlan(plan);
+        subscription.setStatus(SubscriptionLifecycleStatus.ACTIVE);
         subscription.setCurrentPeriodStart(Instant.now().minusSeconds(3_600));
         subscription.setCurrentPeriodEnd(Instant.now().plusSeconds(3_600));
         return subscription;

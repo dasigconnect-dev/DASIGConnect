@@ -580,6 +580,50 @@ public class NotificationEventListener {
         }
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubscriptionLifecycleChanged(SubscriptionLifecycleChangedEvent event) {
+        NotificationEventType type;
+        String subject;
+        String message;
+        switch (event.currentStatus()) {
+            case PAST_DUE -> {
+                type = NotificationEventType.subscription_past_due;
+                subject = "DASIGConnect - Subscription payment overdue";
+                message = "The " + event.organizationName()
+                        + " subscription is past due. Record the renewal in Subscription & Billing to prevent restrictions.";
+            }
+            case GRACE_PERIOD -> {
+                type = NotificationEventType.subscription_grace_period;
+                subject = "DASIGConnect - Subscription grace period";
+                message = "The " + event.organizationName() + " subscription is in its grace period until "
+                        + event.gracePeriodEndsAt() + ". New billable actions will be restricted after that time.";
+            }
+            case RESTRICTED -> {
+                type = NotificationEventType.subscription_restricted;
+                subject = "DASIGConnect - Subscription restricted";
+                message = "The " + event.organizationName()
+                        + " subscription is restricted. New uploads, submissions, invitations, and AI requests are blocked; existing review and publishing workflows remain available.";
+            }
+            case ACTIVE -> {
+                type = NotificationEventType.subscription_restored;
+                subject = "DASIGConnect - Subscription restored";
+                message = "The " + event.organizationName()
+                        + " subscription is active again. New billable actions are available.";
+            }
+            default -> {
+                return;
+            }
+        }
+        String link = "/settings#subscription";
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, type, message, link);
+            emailDeliveryService.send(
+                    admin, type.name(), subject,
+                    message + "\n\nManage subscription: " + frontendBaseUrl + link);
+        }
+    }
+
     private static String roleLabel(UserRole role) {
         if (role == null) {
             return "unknown";
