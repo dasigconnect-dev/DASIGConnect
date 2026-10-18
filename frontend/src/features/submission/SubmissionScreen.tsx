@@ -2545,11 +2545,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               disabled={Boolean(lookupsLoading || hydratingId)}
               aria-haspopup="dialog"
               aria-expanded={readinessSheetVisible}
-              aria-label={`Readiness ${readiness.score} of 100. Open readiness checklist.`}
-              title="Readiness checklist"
+              aria-label={`Required: ${readiness.requiredComplete} of ${readiness.required.length}${readiness.gatePassed ? " — Ready to submit" : ""}. Open submission checklist.`}
+              title="Submission gate & quality tips"
             >
               <i className="ti ti-shield-check" aria-hidden="true" />
-              <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
+              <span>
+                {lookupsLoading || hydratingId
+                  ? "–"
+                  : `Required: ${readiness.requiredComplete}/${readiness.required.length}${readiness.gatePassed ? " ✓" : ""}`}
+              </span>
             </button>
           )}
           {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
@@ -3329,18 +3333,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             ) : (
             <div className="sub-guard-header">
               <div className="sub-guard-title">
-                <i className="ti ti-shield-check"></i> Readiness
+                <i className="ti ti-shield-check"></i> Submission Gate
               </div>
-              <ReadinessRing score={readiness.score} />
+              <ReadinessRing
+                score={readiness.score}
+                requiredComplete={readiness.requiredComplete}
+                requiredTotal={readiness.required.length}
+                gatePassed={readiness.gatePassed}
+              />
               <div className="sub-score-grade">{readiness.grade}</div>
               <div className="sub-score-desc">{readiness.description}</div>
+              {!isReadOnlySubmission && !readiness.gatePassed && readiness.nextMissingRequired && (
+                <button
+                  type="button"
+                  className="sub-gate-next-btn"
+                  onClick={() => {
+                    setReadinessSheetOpen(false);
+                    handleReadinessJump(readiness.nextMissingRequired!.target);
+                  }}
+                >
+                  <span>
+                    Next: <strong>{readiness.nextMissingRequired.title}</strong>
+                  </span>
+                  <i className="ti ti-arrow-right" aria-hidden="true" />
+                </button>
+              )}
             </div>
             )}
 
             <GuardSection
               title="Required"
               icon="ti-list-check"
-              meta={`${readiness.requiredComplete} / ${readiness.required.length}`}
+              meta={`${readiness.requiredComplete} of ${readiness.required.length}${readiness.gatePassed ? " ✓" : ""}`}
               defaultOpen
             >
               {readiness.required.map((item) => (
@@ -3363,15 +3387,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </GuardSection>
 
             <GuardSection
-              title="Recommended"
+              title="Post Quality Tips"
               icon="ti-sparkles"
-              meta={`${readiness.recommendedComplete} / ${readiness.recommended.length}`}
+              meta={readiness.tipsSummary}
             >
               {readiness.recommended.map((item) => (
                 <CheckItem
                   key={item.title}
                   pass={item.pass}
                   idle={item.idle}
+                  optional
                   title={item.title}
                   sub={item.sub}
                   onClick={
@@ -3400,12 +3425,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {isCompactLayout ? (
               // ≤900px: the sticky bottom bar is the step navigation —
-              // Preview / Previous / Next, with Submit taking Next's place on the last
-              // step. Save Draft stays in the page header (#btn-save-draft).
+              // Preview / Previous / Next, with Submit promoted on every step once
+              // the submission gate passes. Save Draft stays in the page header (#btn-save-draft).
               <StepPanelActions
                 activeStep={activeStep}
                 hasMedia={hasMedia}
                 isDetailsComplete={isDetailsComplete}
+                gatePassed={readiness.gatePassed && previewValidation.blockingErrors.length === 0 && !hasUnaddressedRevisions}
                 onStepChange={handleStepNav}
                 finalAction={submitButton}
                 onPreview={() => {
@@ -3609,15 +3635,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
       {modal === "submit" && (
         <ConfirmModal
-          icon={hasRecommendedWarnings ? "ti-alert-triangle" : "ti-send"}
+          icon="ti-send"
           title={
             isNeedsRevision
               ? "Submit revision for approval?"
               : form.status === "rejected"
                 ? "Resubmit for approval?"
-                : hasRecommendedWarnings
-                  ? "Submit with recommended warnings?"
-                  : "Submit for Approval?"
+                : "Submit for Approval?"
           }
           description={
             isNeedsRevision
@@ -3625,10 +3649,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               : form.status === "rejected"
                 ? "Your updated submission will be sent back to moderators for review."
                 : hasRecommendedWarnings
-                  ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-                  : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
+                  ? `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). Optional quality tips (${recommendedWarnings.map((item) => item.title).join(", ")}) are non-blocking.`
+                  : `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). This submission will be sent for moderator approval.`
           }
-          cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
+          cancelLabel="Go Back"
           confirmLabel={
             submitting
               ? "Submitting..."
@@ -3636,9 +3660,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 ? "Submit Revision"
                 : form.status === "rejected"
                   ? "Resubmit Post"
-                  : hasRecommendedWarnings
-                    ? "Submit Anyway"
-                    : "Confirm Submission"
+                  : "Confirm Submission"
           }
           loading={submitting}
           disabled={busy || hasUnaddressedRevisions}

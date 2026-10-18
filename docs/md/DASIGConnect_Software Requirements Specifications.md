@@ -1857,7 +1857,7 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **Finding:** a Contributor with a complete, valid post saw "90 %" and believed submission was blocked; it was the only task failure in the study (GO1, SO 1.7, RQ2).  
 * **Requirement:** UC-1.5 and UC-1.9 "readiness" is redefined as the required-check gate only. The composer shall show a binary status ("Required: 7 of 7 — Ready to submit"), name the next missing item with a jump link while incomplete, and make Submit the primary always-visible action when the gate passes. Recommended items shall appear separately as optional tips ("Tips: 3 of 5 applied") with no percentage.  
 * **Acceptance:** STD Case-30a; re-validation first-attempt completion ≥ 95 %; share of gate-passed drafts not submitted within 24 hours.  
-* **Status:** Not implemented (blended score still shown).
+* **Status:** **Implemented (`refactor/p1-submission-gate`)** — binary 7-of-7 Required Submission Gate (`Required: 7 of 7 ✓ — Ready to submit`) separated from 5 optional Post Quality Tips (`Tips: X of 5 applied`), with no blended percentage and a primary always-visible **Submit for Approval** action once the gate passes.
 
 ### ***3.6.2. Next Action, Plain-Language Status, and Task Instrumentation — REQ-125, REQ-126 (RP-02, VF-02; High)*** {#3.6.2.-next-action,-plain-language-status,-and-task-instrumentation-—-req-125,-req-126-(rp-02,-vf-02;-high)}
 

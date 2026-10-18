@@ -78,8 +78,8 @@ export const submissionComposerTourSteps: TourStep[] = [
   {
     id: "readiness",
     target: ".sub-guard-scroll",
-    title: "Readiness checklist",
-    description: "Your post's score out of 100. Required items block submitting; recommended ones just improve the post. Tap any item to jump straight to it. On phones, open it from the score chip in the top bar.",
+    title: "Submission gate & quality tips",
+    description: "Required checks (7 of 7) control whether your post is ready to submit — tap the next missing item to jump straight to it. Post Quality Tips are shown separately and are completely optional.",
     icon: "ti ti-shield-check",
     placement: "left",
   },

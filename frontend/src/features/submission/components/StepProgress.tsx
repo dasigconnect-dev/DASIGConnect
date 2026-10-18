@@ -73,6 +73,7 @@ export function StepPanelActions({
   activeStep,
   hasMedia,
   isDetailsComplete,
+  gatePassed = false,
   onStepChange,
   finalAction,
   onPreview,
@@ -82,8 +83,9 @@ export function StepPanelActions({
   activeStep: ProgressStep;
   hasMedia: boolean;
   isDetailsComplete: boolean;
+  gatePassed?: boolean;
   onStepChange: (step: ProgressStep) => void;
-  /** Rendered in place of Next on the last step (the phone bottom bar passes Submit). */
+  /** Rendered on the last step, or on every step once gatePassed is true. */
   finalAction?: ReactNode;
   onPreview?: () => void;
   previewActive?: boolean;
@@ -130,17 +132,20 @@ export function StepPanelActions({
         </button>
       )}
       {next ? (
-        <button
-          type="button"
-          className={`sub-step-panel-btn ${nextIsLocked ? "locked" : "primary"}`}
-          onClick={() => onStepChange(next)}
-          title={nextLockedTitle ?? `Go to ${stepLabel(next)}`}
-          aria-label={nextLockedTitle ? `Next: ${nextLockedTitle}` : `Next: ${stepLabel(next)}`}
-        >
-          {nextIsLocked && <i className="ti ti-lock"></i>}
-          Next
-          {!nextIsLocked && <i className="ti ti-arrow-right"></i>}
-        </button>
+        <>
+          <button
+            type="button"
+            className={`sub-step-panel-btn ${nextIsLocked ? "locked" : gatePassed && finalAction ? "secondary" : "primary"}`}
+            onClick={() => onStepChange(next)}
+            title={nextLockedTitle ?? `Go to ${stepLabel(next)}`}
+            aria-label={nextLockedTitle ? `Next: ${nextLockedTitle}` : `Next: ${stepLabel(next)}`}
+          >
+            {nextIsLocked && <i className="ti ti-lock"></i>}
+            Next
+            {!nextIsLocked && <i className="ti ti-arrow-right"></i>}
+          </button>
+          {gatePassed && finalAction}
+        </>
       ) : finalAction ? (
         finalAction
       ) : (

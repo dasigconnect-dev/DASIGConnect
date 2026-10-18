@@ -3019,6 +3019,32 @@ textarea.sub-finput {
   line-height: 1.4;
   margin-top: 3px;
 }
+.sub-gate-next-btn {
+  margin-top: 8px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sub-gold-bdr, rgba(217, 119, 6, 0.35));
+  background: var(--sub-gold-dim, rgba(217, 119, 6, 0.08));
+  color: var(--sub-text);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.sub-gate-next-btn:hover {
+  background: rgba(217, 119, 6, 0.14);
+  border-color: var(--sub-gold, #D97706);
+}
+.sub-gate-next-btn strong {
+  font-weight: 800;
+}
 .sub-guard-section {
   padding: 0;
   border-bottom: 1px solid var(--sub-border);
