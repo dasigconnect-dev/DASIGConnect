@@ -694,6 +694,102 @@
   background: #f1f5f9;
   color: var(--sub-blue, #1877f2);
 }
+
+/* Status Guidance Callout (Option B) */
+.sub-status-callout {
+  margin: 0 16px 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.sub-status-callout i {
+  font-size: 13.5px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.sub-status-callout span {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+/* Callout status theme tints */
+.sub-status-callout.status-callout-draft {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+.sub-status-callout.status-callout-draft i {
+  color: #64748b;
+}
+
+.sub-status-callout.status-callout-needs_revision {
+  background: #fefce8;
+  border-color: #fef08a;
+  color: #854d0e;
+}
+.sub-status-callout.status-callout-needs_revision i {
+  color: #ca8a04;
+}
+
+.sub-status-callout.status-callout-pending,
+.sub-status-callout.status-callout-in_review {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+.sub-status-callout.status-callout-pending i,
+.sub-status-callout.status-callout-in_review i {
+  color: #d97706;
+}
+
+.sub-status-callout.status-callout-rejected,
+.sub-status-callout.status-callout-publish_failed,
+.sub-status-callout.status-callout-direct_post_failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+.sub-status-callout.status-callout-rejected i,
+.sub-status-callout.status-callout-publish_failed i,
+.sub-status-callout.status-callout-direct_post_failed i {
+  color: #dc2626;
+}
+
+.sub-status-callout.status-callout-scheduled,
+.sub-status-callout.status-callout-direct_post_scheduled,
+.sub-status-callout.status-callout-publishing,
+.sub-status-callout.status-callout-direct_post_publishing {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+.sub-status-callout.status-callout-scheduled i,
+.sub-status-callout.status-callout-publishing i {
+  color: #1877f2;
+}
+
+.sub-status-callout.status-callout-published,
+.sub-status-callout.status-callout-published_manual,
+.sub-status-callout.status-callout-admin_direct_post {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.sub-status-callout.status-callout-published i,
+.sub-status-callout.status-callout-published_manual i,
+.sub-status-callout.status-callout-admin_direct_post i {
+  color: #16a34a;
+}
+
 .sub-guard-panel {
   background: var(--sub-surface);
   position: sticky;
