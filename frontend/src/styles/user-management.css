@@ -2082,3 +2082,266 @@ button.um-user-avatar:focus-visible {
     animation: none;
   }
 }
+
+/* ============================================================
+   Bulk Invitations (RP-05 / REQ-127)
+   ============================================================ */
+
+.um-composer-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  background: #F1F5F9;
+  padding: 4px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.um-composer-mode-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--d-muted);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.um-composer-mode-tab:hover {
+  color: var(--d-text);
+}
+
+.um-composer-mode-tab.is-active {
+  background: #FFFFFF;
+  color: var(--d-blue);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.um-batch-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.um-batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.um-batch-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.um-batch-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--d-border);
+  background: var(--d-surface);
+  color: var(--d-text);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.um-batch-btn-secondary:hover {
+  background: #F8FAFC;
+}
+
+.um-batch-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: #FFFFFF;
+  resize: vertical;
+  min-height: 120px;
+}
+
+.um-batch-textarea:focus {
+  outline: none;
+  border-color: var(--d-blue);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
+}
+
+.um-batch-metrics {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #F8FAFC;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+}
+
+.um-batch-metric-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.um-batch-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.um-batch-pill.is-valid {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+.um-batch-pill.is-warning {
+  background: #FEF9C3;
+  color: #854D0E;
+}
+
+.um-batch-pill.is-error {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+.um-batch-preview-table-wrap {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+}
+
+.um-batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.um-batch-table th {
+  position: sticky;
+  top: 0;
+  background: #F8FAFC;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--d-muted);
+  border-bottom: 1px solid var(--d-border);
+  z-index: 1;
+}
+
+.um-batch-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.um-batch-email {
+  font-weight: 600;
+  color: var(--d-text);
+}
+
+.um-batch-role-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #EFF6FF;
+  color: var(--d-blue);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.um-batch-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.um-batch-status-badge.status-valid {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.um-batch-status-badge.status-pending_will_be_superseded {
+  background: #FEF9C3;
+  color: #A16207;
+}
+
+.um-batch-status-badge.status-duplicate_in_batch,
+.um-batch-status-badge.status-invalid_email,
+.um-batch-status-badge.status-invalid_role,
+.um-batch-status-badge.status-inactive_institution,
+.um-batch-status-badge.status-active_account_exists,
+.um-batch-status-badge.status-admin_cap_exceeded,
+.um-batch-status-badge.status-role_not_permitted {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.um-batch-status-badge.status-deactivated_use_reactivation {
+  background: #FFEDD5;
+  color: #C2410C;
+}
+
+.um-batch-reason {
+  color: var(--d-muted);
+  font-size: 11.5px;
+}
+
+.um-batch-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 10px;
+}
+
+.um-batch-success-icon {
+  font-size: 28px;
+  color: #16A34A;
+  flex-shrink: 0;
+}
+
+.um-batch-success-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #15803D;
+  margin-bottom: 4px;
+}
+
+.um-batch-success-desc {
+  font-size: 13.5px;
+  color: #166534;
+  margin-bottom: 6px;
+}
+
+.um-batch-success-meta {
+  font-size: 11.5px;
+  color: #4ADE80;
+  margin-bottom: 14px;
+  font-family: monospace;
+}
+

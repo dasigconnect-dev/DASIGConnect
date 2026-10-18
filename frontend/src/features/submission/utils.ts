@@ -605,10 +605,9 @@ export function getReadinessChecklist(
 
   const requiredComplete = required.filter((item) => item.pass).length;
   const recommendedComplete = recommended.filter((item) => item.pass).length;
-  const score = Math.round(
-    (requiredComplete / required.length) * 75
-      + (recommendedComplete / recommended.length) * 25,
-  );
+  const gatePassed = requiredComplete === required.length;
+  const nextMissingRequired = required.find((item) => !item.pass) ?? null;
+  const score = Math.round((requiredComplete / required.length) * 100);
 
   const isSubmitted = isAlreadySubmitted ?? (
     Boolean(form.id) &&
@@ -617,22 +616,32 @@ export function getReadinessChecklist(
   );
   const isRejected = form.status === "rejected" && isSubmitted;
 
-  let grade = "Incomplete";
-  let description = "Complete the required items before sending for approval.";
+  const remaining = required.length - requiredComplete;
+  let grade = remaining === 1 ? "1 item remaining" : `${remaining} items remaining`;
+  let description = nextMissingRequired
+    ? remaining === 1
+      ? "Complete 1 more required item to unlock submission."
+      : `Complete ${remaining} more required items to unlock submission.`
+    : "Complete the required items before sending for approval.";
 
   if (isRejected) {
     grade = "Rejected";
     description = "This submission was reviewed and rejected.";
   } else if (isSubmitted) {
     grade = "Submitted";
-    description = "Required checks passed. Post has been submitted.";
-  } else if (requiredComplete === required.length) {
+    description = "All required checks passed. Post has been submitted.";
+  } else if (gatePassed) {
     grade = "Ready to submit";
-    description = "Required checks pass. Recommended items can still improve the post.";
+    description = "All required checks passed. You can submit now, or apply optional quality tips below.";
   }
+
+  const tipsSummary = `Tips: ${recommendedComplete} of ${recommended.length} applied`;
 
   return {
     score,
+    gatePassed,
+    nextMissingRequired,
+    tipsSummary,
     required,
     recommended,
     requiredComplete,
@@ -872,9 +881,9 @@ export function stepLabel(step: ProgressStep) {
   return "Preferred Schedule";
 }
 
-/** Same thresholds as ReadinessRing's colors: ≥80 good, ≥60 fair, else low. */
+/** Binary gate tone: 'good' only when all required checks pass (100), 'fair' while in progress, 'low' when empty. */
 export function readinessTone(score: number): "good" | "fair" | "low" {
-  return score >= 80 ? "good" : score >= 60 ? "fair" : "low";
+  return score >= 100 ? "good" : score > 0 ? "fair" : "low";
 }
 
 

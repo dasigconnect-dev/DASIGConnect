@@ -47,6 +47,7 @@ class SystemHealthServiceTest {
             "",
             "",
             "",
+            "",
             "https://api.resend.com");
 
     private static ScheduledJobRun run(String jobName, String status, Instant startedAt) {
@@ -173,11 +174,12 @@ class SystemHealthServiceTest {
 
         List<BackgroundJobHealthDto> jobs = service.backgroundJobs();
 
-        assertThat(jobs).hasSize(16);
+        assertThat(jobs).hasSize(19);
         assertThat(jobs).extracting(BackgroundJobHealthDto::jobName)
                 .contains("Review Lock Cleanup", "Validation Deadline Notification",
                         "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention",
-                        "Generated Watermark Purge");
+                        "Generated Watermark Purge", "Storage Quota Reservation Expiry",
+                        "Subscription Lifecycle");
         assertThat(jobs).allSatisfy(j
                 -> assertThat(j.status()).isIn(HealthStatus.UNAVAILABLE, HealthStatus.SCHEDULED));
     }

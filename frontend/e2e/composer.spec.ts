@@ -160,6 +160,48 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       state.draft = { ...(state.draft ?? baseDraft()), status: "pending", submittedAt: new Date().toISOString() };
       await json(request, state.draft);
     },
+    "POST /api/v1/telemetry/tasks/start": async (request: ApiRequest) => {
+      record(request);
+      await json(request, { id: "66666666-6666-4666-8666-666666666666", status: "STARTED" });
+    },
+    "POST /api/v1/telemetry/tasks/complete": async (request: ApiRequest) => {
+      record(request);
+      await json(request, { id: "66666666-6666-4666-8666-666666666666", status: "COMPLETED", firstAttemptSuccess: true });
+    },
+    "POST /api/v1/ai/caption": async (request: ApiRequest) => {
+      record(request);
+      await json(request, {
+        success: true,
+        data: {
+          submissionId: DRAFT_ID,
+          variants: [
+            {
+              tone: "professional",
+              caption: "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+            },
+          ],
+        },
+      });
+    },
+    "POST /api/v1/ai/caption/background": async (request: ApiRequest) => {
+      record(request);
+      await json(request, {
+        success: true,
+        data: {
+          submissionId: DRAFT_ID,
+          variants: [
+            {
+              tone: "professional",
+              caption: "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+            },
+          ],
+        },
+      });
+    },
+    "POST /api/v1/ai/caption/log": async (request: ApiRequest) => {
+      record(request);
+      await request.route.fulfill({ status: 204, body: "" });
+    },
   });
   return { state, api };
 }
@@ -208,7 +250,7 @@ test.describe("submission composer", () => {
     await page.getByRole("button", { name: "Live Event" }).click();
 
     await page.locator(".sub-guard-submit-btn").click();
-    await page.getByRole("button", { name: /^(Submit for Approval|Submit Anyway)$/ }).last().click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
 
     await expect(page.getByText("Submission sent!")).toBeVisible();
     const keys = state.log.map((entry) => entry.key);
@@ -221,8 +263,7 @@ test.describe("submission composer", () => {
     });
     expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/media/upload-url`);
     expect(keys).toContain("PUT storage");
-    expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/media`);
-    expect(keys.at(-1)).toBe(`POST /api/v1/submissions/${DRAFT_ID}/submit`);
+    expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/submit`);
     expect(state.draft?.status).toBe("pending");
   });
 
@@ -272,6 +313,7 @@ test.describe("submission composer", () => {
       }),
     );
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "autosaved.png",
       mimeType: "image/png",
@@ -303,6 +345,7 @@ test.describe("submission composer", () => {
       await route.fallback();
     });
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "cancelled.png",
       mimeType: "image/png",
@@ -349,6 +392,7 @@ test.describe("submission composer", () => {
       await route.fallback();
     });
 
+    await page.getByRole("tab", { name: "Upload Files" }).click();
     await page.locator("input.umt-input").setInputFiles({
       name: "retry.png",
       mimeType: "image/png",
@@ -445,4 +489,139 @@ test.describe("submission composer", () => {
     await expect(banner).toContainText("Please use a clearer photo.");
     await expect(page.locator(".sub-guard-submit-btn")).toContainText("Submit for Revision");
   });
+
+  test("Case-30a (RP-01): separates binary submission gate (Required X of 7) from optional Post Quality Tips without percentages", async ({ page }) => {
+    await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "",
+        eventDate: "2026-09-25",
+        caption: "Plain caption without hashtags",
+        albumName: "Saved Album",
+        fastTrack: true,
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    const guardPanel = page.locator(".sub-guard-panel");
+    await expect(guardPanel.locator(".sub-guard-title")).toContainText("Submission Gate");
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("1 item remaining");
+    await expect(guardPanel).toContainText(/Tips:\s*\d+\s*of\s*5\s*applied/);
+    await expect(guardPanel.locator(".sub-score-num")).not.toContainText("%");
+
+    // Next-missing button points to Event title and jumps to Step 2 Details
+    const nextBtn = guardPanel.locator(".sub-gate-next-btn");
+    await expect(nextBtn).toContainText("Next: Event title");
+    await nextBtn.click();
+
+    const titleInput = page.getByPlaceholder("e.g. CIT-U Innovation Summit 2026");
+    await expect(titleInput).toBeVisible();
+    await titleInput.fill("Binary Gate Verified Event");
+
+    // Gate now passes (7 of 7) even though optional tips (e.g. hashtags) are not all applied
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Ready to submit");
+    await expect(page.locator(".sub-guard-submit-btn").first()).toBeEnabled();
+  });
+
+  test("Case-30b (RP-02): shows next-action guidance on dashboard, plain-language status copy, and logs first-attempt task telemetry", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Telemetry Tracked Event",
+        eventDate: "2026-09-25",
+        caption: "Plain-language status and telemetry test #DASIG",
+        albumName: "Saved Album",
+        fastTrack: true,
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    // Verify task telemetry start event was recorded when opening composer
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === "POST /api/v1/telemetry/tasks/start"),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+
+    // Submit and verify task telemetry complete event is recorded
+    await page.locator(".sub-guard-submit-btn").click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
+    await expect(page.getByText("Submission sent!")).toBeVisible();
+
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === "POST /api/v1/telemetry/tasks/complete"),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+
+    // Navigate to Dashboard and verify Next-Action banner (#first-login-notice) leads the home screen
+    await page.goto("/dashboard");
+    const nextActionBanner = page.locator("#first-login-notice");
+    await expect(nextActionBanner).toBeVisible();
+    await expect(nextActionBanner).toContainText(/Next action:|Awaiting review|Create a New Post|Finish Your Draft/i);
+  });
+
+  test("Case-30c (RP-03): defaults media picker to AI Suggestions when context exists, auto-generates caption in background without auto-inserting, and logs 1-5 rating & drafting duration", async ({ page }) => {
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "CIT-U Innovation Summit 2026",
+        eventDate: "2026-09-25",
+        caption: "",
+        albumName: "Saved Album",
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    // Media-first: AI Suggestions tab is selected by default when event context exists
+    await expect(page.getByRole("tab", { name: /AI Suggestions/ })).toHaveAttribute("aria-selected", "true");
+
+    // Step 2 — Post Details: background AI caption suggestion was generated but NOT auto-inserted
+    const captionInput = page.getByPlaceholder("Write a compelling caption for the DASIG Facebook page...");
+    await goToStep(page, /Step 2 Post Details/, captionInput);
+    await expect(captionInput).toHaveValue("");
+
+    const suggestionPanel = page.getByTestId("ai-caption-suggestion-panel");
+    await expect(suggestionPanel).toBeVisible();
+    await expect(suggestionPanel).toContainText("AI draft ready — Use / Edit / Dismiss");
+
+    // The automatic suggestion goes through the background endpoint (logged as auto_generated)
+    expect(state.log.some((entry) => entry.key === "POST /api/v1/ai/caption/background")).toBe(true);
+    expect(state.log.some((entry) => entry.key === "POST /api/v1/ai/caption")).toBe(false);
+
+    // Select 5-star quality rating and click Use
+    await suggestionPanel.getByRole("button", { name: "5★" }).click();
+    await suggestionPanel.getByRole("button", { name: "Use", exact: true }).click();
+
+    await expect(captionInput).toHaveValue(
+      "AI-drafted caption for CIT-U Innovation Summit #DASIG #Innovation",
+    );
+
+    await expect
+      .poll(
+        () =>
+          state.log.some((entry) => {
+            if (entry.key !== "POST /api/v1/ai/caption/log") return false;
+            const body = entry.body as Record<string, unknown>;
+            return (
+              body.actionTaken === "use" &&
+              body.toneSelected === "professional" &&
+              body.qualityRating === 5 &&
+              typeof body.draftingDurationMs === "number"
+            );
+          }),
+        { timeout: 5_000 },
+      )
+      .toBe(true);
+  });
 });
+
+

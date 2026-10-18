@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   connectFacebookPage,
@@ -19,6 +19,7 @@ import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import type { User } from "../../types/auth.types";
+import "../../styles/user-management.css";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
 
@@ -51,14 +52,28 @@ export default function SystemHealthScreen({ user }: Props) {
   const [connectAccessToken, setConnectAccessToken] = useState("");
   const [connectingPage, setConnectingPage] = useState(false);
 
-  // Active top-level tab (jobs | integrations | performance | storage)
+  // Active top-level tab (integrations | storage | jobs | performance)
   const [activeTab, setActiveTab] = useState<SystemHealthTab>(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "integrations" || hash === "performance" || hash === "storage" || hash === "jobs") {
       return hash as SystemHealthTab;
     }
-    return "performance";
+    return "integrations";
   });
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileNavRef.current && !mobileNavRef.current.contains(e.target as Node)) {
+        setMobileNavOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [mobileNavOpen]);
 
   // Background Jobs search & status filter
   const [jobSearch, setJobSearch] = useState("");
@@ -244,6 +259,42 @@ export default function SystemHealthScreen({ user }: Props) {
     };
   }, [summary, tokens]);
 
+  const tabsConfig = useMemo(() => {
+    if (!summary) return [];
+    return [
+      {
+        id: "integrations" as SystemHealthTab,
+        label: "Services & AI Integrations",
+        icon: "ti ti-plug-connected",
+        count: summary.externalServices.length + tokens.length,
+        hasAlert: !!tabAlerts.integrations,
+      },
+      {
+        id: "storage" as SystemHealthTab,
+        label: "Storage & Capacity",
+        icon: "ti ti-database",
+        count: summary.storage.length,
+        hasAlert: !!tabAlerts.storage,
+      },
+      {
+        id: "jobs" as SystemHealthTab,
+        label: "Background Jobs",
+        icon: "ti ti-cpu",
+        count: summary.backgroundJobs.length,
+        hasAlert: !!tabAlerts.jobs,
+      },
+      {
+        id: "performance" as SystemHealthTab,
+        label: "Operational Telemetry",
+        icon: "ti ti-chart-dots",
+        count: summary.operationalMetrics.length,
+        hasAlert: !!tabAlerts.performance,
+      },
+    ];
+  }, [summary, tokens, tabAlerts]);
+
+  const currentTabConfig = tabsConfig.find((t) => t.id === activeTab) || tabsConfig[0];
+
   const filteredJobs = useMemo(() => {
     if (!summary) return [];
     return summary.backgroundJobs.filter((job) => {
@@ -306,17 +357,21 @@ export default function SystemHealthScreen({ user }: Props) {
         {/* Page Header */}
         <div className="dash-view-header sys-header">
           <div>
-            <h1 className="dash-view-title">System Health</h1>
-            <p className="dash-view-desc">Infrastructure, integrations, capacity telemetry, and background jobs</p>
+            <h1 className="dash-view-title sys-title">System Health & Diagnostics</h1>
+            <p className="dash-view-desc">Infrastructure probes, AI vision quotas, capacity telemetry, and background automation</p>
             {summary && (
               <div className="sys-meta-row">
                 <span className="sys-meta-pill">
                   <i className="ti ti-clock" aria-hidden="true" />
-                  Updated {formatDate(summary.generatedAt)}
+                  Telemetry Snapshot: {formatDate(summary.generatedAt)}
                 </span>
                 <span className="sys-meta-pill">
                   <i className="ti ti-shield-check" aria-hidden="true" />
-                  Diagnostics Active
+                  Monitoring Active
+                </span>
+                <span className="sys-meta-pill sys-meta-pill-institution">
+                  <i className="ti ti-building" aria-hidden="true" />
+                  DASIG Regional Hub
                 </span>
               </div>
             )}
@@ -324,7 +379,7 @@ export default function SystemHealthScreen({ user }: Props) {
           <div className="sys-toolbar">
             <button
               type="button"
-              className="notif-btn notif-btn-ghost"
+              className="sys-btn sys-btn-ghost"
               onClick={refreshHealth}
               disabled={loading}
               title="Refresh system health metrics"
@@ -334,7 +389,7 @@ export default function SystemHealthScreen({ user }: Props) {
             </button>
             <button
               type="button"
-              className="notif-btn notif-btn-ghost"
+              className="sys-btn sys-btn-ghost"
               onClick={() => void handleExport()}
               disabled={exporting}
               title="Export health snapshot CSV"
@@ -364,83 +419,134 @@ export default function SystemHealthScreen({ user }: Props) {
               ))}
             </div>
 
-            {/* ── 4-Tab Segmented Navigation Bar (Separated Performance & Storage) ── */}
+            {/* ── 4-Tab Segmented Navigation Bar (Desktop) & Tab-Styled Dropdown (Mobile) ── */}
             <div className="sys-main-tabs-wrapper">
+              {/* Responsive Mobile / Tablet Tab-Styled Dropdown */}
+              <div className="sys-mobile-tab-dropdown" ref={mobileNavRef}>
+                <button
+                  type="button"
+                  className="sys-mobile-tab-trigger"
+                  onClick={() => setMobileNavOpen((prev) => !prev)}
+                  aria-expanded={mobileNavOpen}
+                  aria-haspopup="listbox"
+                  aria-label="Select System Health Section"
+                >
+                  <div className="sys-mobile-trigger-content">
+                    <i className={currentTabConfig.icon} aria-hidden="true" />
+                    <span className="sys-mobile-trigger-label">{currentTabConfig.label}</span>
+                    <span className={`sys-main-tab-badge${currentTabConfig.hasAlert ? " has-alert" : ""}`}>
+                      {currentTabConfig.hasAlert && <span className="sys-tab-alert-dot" aria-hidden="true" />}
+                      {currentTabConfig.count}
+                    </span>
+                  </div>
+                  <i className={`ti ti-chevron-${mobileNavOpen ? "up" : "down"} sys-mobile-trigger-arrow`} aria-hidden="true" />
+                </button>
+
+                {mobileNavOpen && (
+                  <div className="sys-mobile-tab-menu" role="listbox">
+                    {tabsConfig.map((tab) => {
+                      const isSelected = tab.id === activeTab;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`sys-mobile-tab-item${isSelected ? " is-active" : ""}`}
+                          onClick={() => {
+                            handleTabChange(tab.id);
+                            setMobileNavOpen(false);
+                          }}
+                        >
+                          <div className="sys-mobile-item-left">
+                            <i className={tab.icon} aria-hidden="true" />
+                            <span>{tab.label}</span>
+                          </div>
+                          <div className="sys-mobile-item-right">
+                            <span className={`sys-main-tab-badge${tab.hasAlert ? " has-alert" : ""}`}>
+                              {tab.hasAlert && <span className="sys-tab-alert-dot" aria-hidden="true" />}
+                              {tab.count}
+                            </span>
+                            {isSelected && <i className="ti ti-check sys-mobile-item-check" aria-hidden="true" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop Segmented Tablist */}
               <div className="sys-main-tabs" role="tablist" aria-label="System Health Navigation">
-                <button
-                  type="button"
-                  role="tab"
-                  className={`sys-main-tab${activeTab === "performance" ? " is-active" : ""}`}
-                  onClick={() => handleTabChange("performance")}
-                  aria-selected={activeTab === "performance"}
-                >
-                  <i className="ti ti-chart-dots" aria-hidden="true" />
-                  <span>Operational Performance</span>
-                  <span className={`sys-main-tab-badge${tabAlerts.performance ? " has-alert" : ""}`}>
-                    {tabAlerts.performance && <span className="sys-tab-alert-dot" aria-hidden="true" />}
-                    {summary.operationalMetrics.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  role="tab"
-                  className={`sys-main-tab${activeTab === "storage" ? " is-active" : ""}`}
-                  onClick={() => handleTabChange("storage")}
-                  aria-selected={activeTab === "storage"}
-                >
-                  <i className="ti ti-database" aria-hidden="true" />
-                  <span>Storage & Capacity</span>
-                  <span className={`sys-main-tab-badge${tabAlerts.storage ? " has-alert" : ""}`}>
-                    {tabAlerts.storage && <span className="sys-tab-alert-dot" aria-hidden="true" />}
-                    {summary.storage.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  role="tab"
-                  className={`sys-main-tab${activeTab === "integrations" ? " is-active" : ""}`}
-                  onClick={() => handleTabChange("integrations")}
-                  aria-selected={activeTab === "integrations"}
-                >
-                  <i className="ti ti-plug-connected" aria-hidden="true" />
-                  <span>Integrations & Tokens</span>
-                  <span className={`sys-main-tab-badge${tabAlerts.integrations ? " has-alert" : ""}`}>
-                    {tabAlerts.integrations && <span className="sys-tab-alert-dot" aria-hidden="true" />}
-                    {summary.externalServices.length + tokens.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  role="tab"
-                  className={`sys-main-tab${activeTab === "jobs" ? " is-active" : ""}`}
-                  onClick={() => handleTabChange("jobs")}
-                  aria-selected={activeTab === "jobs"}
-                >
-                  <i className="ti ti-cpu" aria-hidden="true" />
-                  <span>Background Jobs</span>
-                  <span className={`sys-main-tab-badge${tabAlerts.jobs ? " has-alert" : ""}`}>
-                    {tabAlerts.jobs && <span className="sys-tab-alert-dot" aria-hidden="true" />}
-                    {summary.backgroundJobs.length}
-                  </span>
-                </button>
+                {tabsConfig.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    className={`sys-main-tab${activeTab === tab.id ? " is-active" : ""}`}
+                    onClick={() => handleTabChange(tab.id)}
+                    aria-selected={activeTab === tab.id}
+                  >
+                    <i className={tab.icon} aria-hidden="true" />
+                    <span>{tab.label}</span>
+                    <span className={`sys-main-tab-badge${tab.hasAlert ? " has-alert" : ""}`}>
+                      {tab.hasAlert && <span className="sys-tab-alert-dot" aria-hidden="true" />}
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* ── TAB 1: Operational Performance (Expanded, Large High-Fidelity Cards) ── */}
+            {/* ── TAB: Operational Performance (Split into Editorial SLAs & AI Pipeline Diagnostics) ── */}
             {activeTab === "performance" && (
-              <div className="sys-tab-content">
+              <div className="sys-tab-content sys-grouped-content">
+                {/* 1. Core Editorial & Publishing Benchmarks */}
                 <Section
-                  title="Operational Performance Telemetry · Last 30 Days"
-                  icon="ti ti-chart-dots"
-                  subtitle="Key operational benchmarks across moderation, editorial approval, publication throughput, and fast-track routing"
+                  title="Editorial & Moderation Benchmarks · Last 30 Days"
+                  icon="ti ti-checklist"
+                  subtitle="Monitors submission review turnaround times, editorial approval rates, and automated Facebook publishing reliability"
                 >
-                  <div className="sys-perf-large-grid">
-                    {summary.operationalMetrics.map((item) => (
-                      <LargePerformanceCard item={item} key={item.key} />
-                    ))}
+                  <div className="sys-perf-compact-grid">
+                    {summary.operationalMetrics
+                      .filter((item) =>
+                        [
+                          "approval_turnaround_time",
+                          "edit_approve_rate",
+                          "manual_fallback_resolution_rate",
+                          "publish_success_rate",
+                          "live_event_fast_track_volume",
+                          "missed_review_rate",
+                        ].includes(item.key)
+                      )
+                      .map((item) => (
+                        <CompactMetricCard item={item} key={item.key} />
+                      ))}
+                  </div>
+                </Section>
+
+                {/* 2. Background AI Pipeline Diagnostics */}
+                <Section
+                  title="Background AI Pipeline & Embedding Telemetry"
+                  icon="ti ti-sparkles"
+                  subtitle="Tracks background worker queues for caption generation, Voyage semantic embeddings, and recommendation accuracy"
+                >
+                  <div className="sys-perf-compact-grid">
+                    {summary.operationalMetrics
+                      .filter(
+                        (item) =>
+                          ![
+                            "approval_turnaround_time",
+                            "edit_approve_rate",
+                            "manual_fallback_resolution_rate",
+                            "publish_success_rate",
+                            "live_event_fast_track_volume",
+                            "missed_review_rate",
+                          ].includes(item.key)
+                      )
+                      .map((item) => (
+                        <CompactMetricCard item={item} key={item.key} />
+                      ))}
                   </div>
                 </Section>
               </div>
@@ -481,7 +587,7 @@ export default function SystemHealthScreen({ user }: Props) {
                   ) : tokensQuery.isError && !tokensQuery.data ? (
                     <div className="alert alert-err" role="alert">
                       <span>Unable to load Facebook access tokens.</span>
-                      <button type="button" className="btn-ghost" onClick={() => void tokensQuery.refetch()}>
+                      <button type="button" className="sys-btn sys-btn-ghost sys-btn-sm" onClick={() => void tokensQuery.refetch()}>
                         Retry
                       </button>
                     </div>
@@ -509,7 +615,7 @@ export default function SystemHealthScreen({ user }: Props) {
                   >
                     <div className="card-wrap sys-manual-token-row" style={{ padding: 16 }}>
                       <input
-                        className="settings-input"
+                        className="sys-input"
                         placeholder="Facebook Page ID"
                         value={connectPageId}
                         onChange={(e) => setConnectPageId(e.target.value)}
@@ -517,7 +623,7 @@ export default function SystemHealthScreen({ user }: Props) {
                       />
                       <input
                         type="password"
-                        className="settings-input"
+                        className="sys-input"
                         placeholder="Page Access Token for that page"
                         value={connectAccessToken}
                         onChange={(e) => setConnectAccessToken(e.target.value)}
@@ -525,7 +631,7 @@ export default function SystemHealthScreen({ user }: Props) {
                       />
                       <button
                         type="button"
-                        className="notif-btn notif-btn-ghost notif-btn-sm"
+                        className="sys-btn sys-btn-primary sys-btn-sm"
                         disabled={!connectPageId.trim() || !connectAccessToken.trim() || connectingPage}
                         onClick={() => void handleConnectPage()}
                       >
@@ -539,16 +645,33 @@ export default function SystemHealthScreen({ user }: Props) {
                   </Section>
                 )}
 
-                {/* External API Services */}
+                {/* 1. Generative AI Vision Models & Quotas */}
                 <Section
-                  title="External Integrations & Services"
-                  icon="ti ti-plug-connected"
-                  subtitle="Reachability and probe status of external third-party APIs connected to the DASIGConnect platform"
+                  title="AI Vision & Multimodal Intelligence"
+                  icon="ti ti-sparkles"
+                  subtitle="Active multimodal vision models, daily generation credit quotas, and provider failover"
                 >
-                  <div className="sys-services-grid">
-                    {summary.externalServices.map((item) => (
-                      <ServiceCard item={item} key={item.service} />
-                    ))}
+                  <div className="sys-ai-services-grid">
+                    {summary.externalServices
+                      .filter((s) => s.service.toLowerCase().includes("gemini") || s.service.toLowerCase().includes("claude"))
+                      .map((item) => (
+                        <AiServiceCard item={item} key={item.service} />
+                      ))}
+                  </div>
+                </Section>
+
+                {/* 2. Platform Infrastructure & Cloud Connections */}
+                <Section
+                  title="Platform Infrastructure & Cloud Connections"
+                  icon="ti ti-server-2"
+                  subtitle="Live reachability status and round-trip probe latency across storage, database, and messaging channels"
+                >
+                  <div className="sys-infra-services-grid">
+                    {summary.externalServices
+                      .filter((s) => !s.service.toLowerCase().includes("gemini") && !s.service.toLowerCase().includes("claude"))
+                      .map((item) => (
+                        <InfraServiceCard item={item} key={item.service} />
+                      ))}
                   </div>
                 </Section>
               </div>
@@ -557,47 +680,80 @@ export default function SystemHealthScreen({ user }: Props) {
             {/* ── TAB 4: Scheduled Background Jobs ── */}
             {activeTab === "jobs" && (
               <div className="sys-tab-content">
-                <div className="card-wrap sys-jobs-card">
-                  {/* Jobs Toolbar: Status Filter Tabs & Search */}
-                  <div className="dash-card-toolbar sys-jobs-toolbar">
-                    <div className="im-status-tabs" role="group" aria-label="Filter background jobs by status">
-                      {(["ALL", "HEALTHY", "SCHEDULED", "WARNING", "UNHEALTHY"] as const).map((st) => {
-                        const count = jobCounts[st] ?? 0;
-                        if (st !== "ALL" && count === 0) return null;
-                        return (
-                          <button
-                            key={st}
-                            type="button"
-                            className={`im-status-tab${jobStatusFilter === st ? " is-active" : ""}`}
-                            onClick={() => setJobStatusFilter(st)}
-                            aria-pressed={jobStatusFilter === st}
-                          >
-                            {st === "ALL" ? "All Jobs" : labelStatus(st as HealthStatus)}
-                            <span className="im-status-tab-count">{count}</span>
-                          </button>
-                        );
-                      })}
+                {/* Admin Management Directory Toolbar */}
+                <section
+                  className="um-data-card is-directory is-headerless"
+                  style={{ marginTop: 0, marginBottom: "16px" }}
+                >
+                  <div className="um-filter-bar um-users-filter-bar">
+                    <div className="um-filter-pills-wrap">
+                      <div className="um-filter-pills" role="group" aria-label="Filter background jobs by status">
+                        {(["ALL", "HEALTHY", "SCHEDULED", "WARNING", "UNHEALTHY"] as const).map((st) => {
+                          const count = jobCounts[st] ?? 0;
+                          if (st !== "ALL" && count === 0) return null;
+                          return (
+                            <button
+                              key={st}
+                              type="button"
+                              className={`um-filter-pill${jobStatusFilter === st ? " is-active" : ""}`}
+                              onClick={() => setJobStatusFilter(st)}
+                              aria-pressed={jobStatusFilter === st}
+                            >
+                              <span>{st === "ALL" ? "All Jobs" : labelStatus(st as HealthStatus)}</span>
+                              <span className="um-filter-pill-count">{count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <div className="im-search-wrap">
-                      <i className="ti ti-search im-search-icon" aria-hidden="true" />
+                    <div className="um-search-wrap">
+                      <i className="ti ti-search um-search-icon" aria-hidden="true" />
                       <input
-                        className="im-search-input"
+                        className="um-search-input"
                         type="search"
                         placeholder="Search jobs..."
                         value={jobSearch}
                         onChange={(e) => setJobSearch(e.target.value)}
                         aria-label="Search background jobs"
                       />
+                      {jobSearch && (
+                        <button
+                          type="button"
+                          className="um-search-clear"
+                          onClick={() => setJobSearch("")}
+                          aria-label="Clear search"
+                          style={{
+                            position: "absolute",
+                            right: 12,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            color: "var(--d-muted, #94a3b8)",
+                            cursor: "pointer",
+                            padding: 4,
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <i className="ti ti-x" aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </div>
+                </section>
 
-                  <JobTable
-                    jobs={filteredJobs}
-                    runningJobKey={runningJobKey}
-                    onRun={(job) => void handleRunJob(job)}
-                  />
-                </div>
+                <JobTable
+                  jobs={filteredJobs}
+                  runningJobKey={runningJobKey}
+                  hasFilters={jobSearch !== "" || jobStatusFilter !== "ALL"}
+                  onClearFilters={() => {
+                    setJobSearch("");
+                    setJobStatusFilter("ALL");
+                  }}
+                  onRun={(job) => void handleRunJob(job)}
+                />
               </div>
             )}
           </>
@@ -606,7 +762,7 @@ export default function SystemHealthScreen({ user }: Props) {
             <i className="ti ti-alert-circle sys-error-icon" aria-hidden="true" />
             <h3>System Health Unavailable</h3>
             <p>{loadError || "Unable to retrieve real-time system health metrics from the backend."}</p>
-            <button type="button" className="notif-btn notif-btn-ghost" onClick={refreshHealth}>
+            <button type="button" className="sys-btn sys-btn-ghost" onClick={refreshHealth}>
               <i className="ti ti-refresh" aria-hidden="true" />
               <span>Retry Connection</span>
             </button>
@@ -642,344 +798,54 @@ function Section({
   );
 }
 
-/* ---------- Large Informative Performance Graph Card ---------- */
-function LargePerformanceCard({ item }: { item: OperationalMetric }) {
+/* ---------- Compact Informative Metric Card ---------- */
+function CompactMetricCard({ item }: { item: OperationalMetric }) {
   const unavailable = item.status === "UNAVAILABLE";
   const noActivity = isNoActivityMetric(item);
+  const percentCapped = item.unit === "percent" ? Math.min(Math.max(item.value, 0), 100) : null;
+  const isPercentMetric = percentCapped !== null && !noActivity && !unavailable;
 
   return (
-    <div className={`card-wrap sys-perf-large-card sys-perf-${item.status.toLowerCase()}`}>
-      <div className="sys-perf-top-row">
-        <div className="sys-perf-title-group">
-          <span className="sys-card-icon-box">
+    <div className={`card-wrap sys-perf-card sys-perf-${item.status.toLowerCase()}`}>
+      <div className="sys-perf-card-top">
+        <div className="sys-perf-card-header">
+          <span className="sys-card-icon-box sys-card-icon-sm">
             <i className={metricIcon(item.key)} aria-hidden="true" />
           </span>
-          <div>
-            <h3 className="sys-perf-name">{item.label}</h3>
-            <span className="sys-perf-meta-sub">{sampleLabel(item)}</span>
+          <div className="sys-perf-name-wrap">
+            <h4 className="sys-perf-title">{item.label}</h4>
+            <span className="sys-perf-sample-meta">{sampleLabel(item)}</span>
           </div>
         </div>
         <StatusBadge status={item.status} />
       </div>
 
-      <div className="sys-perf-main-body">
-        <div className="sys-perf-hero-value">
-          <span className="sys-perf-num">
-            {unavailable ? "No data" : noActivity ? "No activity" : formatMetricValue(item)}
+      <div className="sys-perf-card-body">
+        <div className="sys-perf-val-row">
+          <span className={`sys-perf-value ${noActivity || unavailable ? "is-muted" : ""}`}>
+            {unavailable ? "No data" : noActivity ? "— No activity" : formatMetricValue(item)}
           </span>
-          <span className="sys-perf-target-badge">{getMetricBenchmark(item)}</span>
+          <span className="sys-perf-benchmark-pill">{getMetricBenchmark(item)}</span>
         </div>
 
-        {/* Detailed High-Resolution Graph */}
-        {!unavailable && !noActivity && (
-          <div className="sys-perf-graph-container">
-            <HighResMetricGraph item={item} />
+        {isPercentMetric && (
+          <div className="sys-perf-meter-wrap">
+            <div className="sys-perf-meter-track" title={`${percentCapped}%`}>
+              <div
+                className={`sys-perf-meter-fill sys-meter-${item.status.toLowerCase()}`}
+                style={{ width: `${percentCapped}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
 
-      <div className="sys-perf-footer-note">
+      <div className="sys-perf-card-footer">
         <i className="ti ti-info-circle" aria-hidden="true" />
         <span>{getMetricExplanation(item)}</span>
       </div>
     </div>
   );
-}
-
-function HighResMetricGraph({ item }: { item: OperationalMetric }) {
-  if (item.key === "approval_turnaround_time") {
-    // 0h to 48h SLA Gauge
-    const maxScale = 48;
-    const value = Math.min(Math.max(item.value, 0), maxScale);
-    const percent = (value / maxScale) * 100;
-    const targetPercent = (24 / maxScale) * 100;
-
-    return (
-      <div className="sys-hires-sla-wrap">
-        <div className="sys-hires-sla-bar-bg">
-          {/* Healthy zone 0 to 24h */}
-          <div className="sys-sla-zone sys-sla-zone-healthy" style={{ width: "50%" }} />
-          {/* Warning zone 24 to 36h */}
-          <div className="sys-sla-zone sys-sla-zone-warning" style={{ width: "25%" }} />
-          {/* Critical zone 36 to 48h */}
-          <div className="sys-sla-zone sys-sla-zone-critical" style={{ width: "25%" }} />
-
-          {/* Current Indicator Marker */}
-          <div className="sys-sla-needle" style={{ left: `${percent}%` }}>
-            <span className="sys-sla-needle-badge">{item.value.toFixed(1)}h</span>
-            <div className="sys-sla-needle-pin" />
-          </div>
-
-          {/* Target Pinned Line */}
-          <div className="sys-sla-target-marker" style={{ left: `${targetPercent}%` }}>
-            <span className="sys-sla-target-tag">Target SLA (24h)</span>
-          </div>
-        </div>
-
-        <div className="sys-hires-scale-labels">
-          <span>0h (Instant)</span>
-          <span>12h</span>
-          <span className="sys-bold-label">24h SLA</span>
-          <span>36h</span>
-          <span>48h+</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.key === "edit_approve_rate") {
-    const percent = Math.min(Math.max(item.value, 0), 100);
-    const editedCount = Math.round((percent / 100) * item.sampleSize);
-    const directCount = Math.max(item.sampleSize - editedCount, 0);
-
-    // SVG Donut calculation: Radius = 30, Circumference ≈ 188.5
-    const radius = 30;
-    const circumference = 2 * Math.PI * radius;
-    const editedDash = (percent / 100) * circumference;
-
-    return (
-      <div className="sys-hires-donut-layout">
-        <div className="sys-hires-donut-chart">
-          <svg viewBox="0 0 76 76" className="sys-hires-svg-donut">
-            {/* Background circle (Direct approval) */}
-            <circle
-              cx="38"
-              cy="38"
-              r={radius}
-              fill="none"
-              stroke="#dbeafe"
-              strokeWidth="7"
-            />
-            {/* Foreground circle (Edited) */}
-            <circle
-              cx="38"
-              cy="38"
-              r={radius}
-              fill="none"
-              stroke="#1877f2"
-              strokeWidth="7"
-              strokeDasharray={`${editedDash} ${circumference}`}
-              strokeDashoffset="0"
-              strokeLinecap="round"
-              transform="rotate(-90 38 38)"
-            />
-          </svg>
-          <div className="sys-donut-center-stat">
-            <strong>{percent.toFixed(1)}%</strong>
-            <small>Edited</small>
-          </div>
-        </div>
-
-        <div className="sys-hires-donut-legend">
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-blue" />
-            <div>
-              <strong>{editedCount} Submissions Edited</strong>
-              <span>Adjusted by moderators prior to approval</span>
-            </div>
-          </div>
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-light-blue" />
-            <div>
-              <strong>{directCount} Approved As-Is</strong>
-              <span>Passed review with zero revisions</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.key === "publish_success_rate") {
-    const percent = Math.min(Math.max(item.value, 0), 100);
-    const succeeded = Math.round((percent / 100) * item.sampleSize);
-    const failed = Math.max(item.sampleSize - succeeded, 0);
-    const allClean = failed === 0;
-    const radius = 30;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDash = (percent / 100) * circumference;
-
-    return (
-      <div className="sys-hires-donut-layout">
-        <div className="sys-hires-donut-chart">
-          <svg viewBox="0 0 76 76" className="sys-hires-svg-donut">
-            <circle
-              cx="38"
-              cy="38"
-              r={radius}
-              fill="none"
-              stroke="#f1f5f9"
-              strokeWidth="7"
-            />
-            <circle
-              cx="38"
-              cy="38"
-              r={radius}
-              fill="none"
-              stroke={allClean ? "#10b981" : "#f59e0b"}
-              strokeWidth="7"
-              strokeDasharray={`${strokeDash} ${circumference}`}
-              strokeDashoffset="0"
-              strokeLinecap="round"
-              transform="rotate(-90 38 38)"
-            />
-          </svg>
-          <div className="sys-donut-center-stat">
-            {allClean && <i className="ti ti-check sys-check-green" />}
-            <strong>{percent.toFixed(0)}%</strong>
-          </div>
-        </div>
-
-        <div className="sys-hires-donut-legend">
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-emerald" />
-            <div>
-              <strong>{succeeded} of {item.sampleSize} Published Successfully</strong>
-              <span>Direct automated Facebook Graph API dispatches</span>
-            </div>
-          </div>
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-slate" />
-            <div>
-              <strong>{failed} Failed Post Attempt{failed === 1 ? "" : "s"}</strong>
-              <span>
-                {allClean
-                  ? "Zero network timeouts or API rejections recorded"
-                  : "Network timeouts or Graph API rejections — see the Review Queue's Failed tab"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.key === "manual_fallback_resolution_rate") {
-    const percent = Math.min(Math.max(item.value, 0), 100);
-    const resolved = Math.round((percent / 100) * item.sampleSize);
-    const pending = item.sampleSize - resolved;
-
-    return (
-      <div className="sys-hires-fallback-layout">
-        <div className="sys-fallback-progress-bar">
-          <div className="sys-fallback-track">
-            <div
-              className="sys-fallback-fill"
-              style={{
-                width: `${percent}%`,
-                background: percent === 100 ? "#10b981" : percent > 0 ? "#f59e0b" : "#ef4444",
-              }}
-            />
-          </div>
-          <div className="sys-fallback-markers">
-            <span>0% Resolution</span>
-            <span>Target: 100% Resolved</span>
-          </div>
-        </div>
-
-        <div className="sys-fallback-stats-grid">
-          <div className="sys-fallback-stat-box sys-stat-pending">
-            <span className="sys-stat-title">Pending Incidents</span>
-            <strong className="sys-stat-number">{pending}</strong>
-            <small>Requires admin action</small>
-          </div>
-          <div className="sys-fallback-stat-box sys-stat-resolved">
-            <span className="sys-stat-title">Resolved Fallbacks</span>
-            <strong className="sys-stat-number">{resolved}</strong>
-            <small>Manually remediated</small>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.key === "missed_review_rate") {
-    const percent = Math.min(Math.max(item.value, 0), 100);
-    const missed = Math.round((percent / 100) * item.sampleSize);
-    const reviewedInTime = Math.max(item.sampleSize - missed, 0);
-    const allClean = missed === 0;
-    const radius = 30;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDash = (percent / 100) * circumference;
-
-    return (
-      <div className="sys-hires-donut-layout">
-        <div className="sys-hires-donut-chart">
-          <svg viewBox="0 0 76 76" className="sys-hires-svg-donut">
-            <circle cx="38" cy="38" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="7" />
-            <circle
-              cx="38"
-              cy="38"
-              r={radius}
-              fill="none"
-              stroke={allClean ? "#10b981" : "#ef4444"}
-              strokeWidth="7"
-              strokeDasharray={`${strokeDash} ${circumference}`}
-              strokeDashoffset="0"
-              strokeLinecap="round"
-              transform="rotate(-90 38 38)"
-            />
-          </svg>
-          <div className="sys-donut-center-stat">
-            {allClean && <i className="ti ti-check sys-check-green" />}
-            <strong>{percent.toFixed(0)}%</strong>
-          </div>
-        </div>
-
-        <div className="sys-hires-donut-legend">
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-slate" />
-            <div>
-              <strong>{reviewedInTime} Reviewed On Time</strong>
-              <span>Approved or rejected before the scheduled deadline</span>
-            </div>
-          </div>
-          <div className="sys-legend-item">
-            <span className="sys-legend-dot sys-dot-emerald" />
-            <div>
-              <strong>{missed} Missed Deadline{missed === 1 ? "" : "s"}</strong>
-              <span>
-                {allClean
-                  ? "No submissions missed their review window"
-                  : "Never reviewed before the scheduled post time — see the Review Queue's history"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.key === "live_event_fast_track_volume") {
-    const count = item.value;
-    return (
-      <div className="sys-hires-fasttrack-layout">
-        <div className="sys-fasttrack-bars">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="sys-ft-bar-col">
-              <div
-                className={`sys-ft-bar-fill${i < count ? " is-active" : ""}`}
-                style={{ height: `${28 + i * 8}px` }}
-              />
-              <span className="sys-ft-bar-label">Slot {i + 1}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="sys-fasttrack-summary-card">
-          <div className="sys-ft-icon-box">
-            <i className="ti ti-bolt" />
-          </div>
-          <div>
-            <strong>{count} Fast-Track Posts Dispatched</strong>
-            <p>Expedited past normal approval queues for real-time live institution coverage.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
 }
 
 function getMetricExplanation(item: OperationalMetric): string {
@@ -1027,6 +893,18 @@ function getMetricBenchmark(item: OperationalMetric): string {
   return "Operational Benchmark";
 }
 
+function getServiceCategory(serviceName: string): string {
+  const name = serviceName.toLowerCase();
+  if (name.includes("gemini")) return "Multimodal AI Vision";
+  if (name.includes("claude") || name.includes("anthropic")) return "AI Vision (Fallback)";
+  if (name.includes("voyage")) return "Vector Embeddings";
+  if (name.includes("facebook") || name.includes("meta")) return "Graph API Publishing";
+  if (name.includes("postgres") || name.includes("database") || name.includes("sql")) return "Relational DB";
+  if (name.includes("r2") || name.includes("cloudflare") || name.includes("storage")) return "Object Media Storage";
+  if (name.includes("email") || name.includes("resend") || name.includes("smtp")) return "Transactional Mail";
+  return "Infrastructure";
+}
+
 function StorageCard({ item }: { item: StorageMetric }) {
   const percentCapped = Math.min(Math.max(item.usedPercent, 0), 100);
   return (
@@ -1048,7 +926,7 @@ function StorageCard({ item }: { item: StorageMetric }) {
         <div className="sys-storage-val">
           {formatBytes(item.usedBytes)} <span className="sys-storage-sub">/ {formatBytes(item.limitBytes)}</span>
         </div>
-        <span className="sys-percent-tag">{item.usedPercent}%</span>
+        <span className="sys-percent-tag">{item.usedPercent}% used</span>
       </div>
 
       <div className={`sys-meter sys-meter-${item.status.toLowerCase()}`} aria-label={`${item.usedPercent}% used`}>
@@ -1058,25 +936,103 @@ function StorageCard({ item }: { item: StorageMetric }) {
   );
 }
 
-function ServiceCard({ item }: { item: ExternalServiceHealth }) {
+function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
+  const hasQuota = item.quotaLimit !== null && item.quotaLimit !== undefined && item.quotaLimit > 0;
+  const quotaRemaining = item.quotaRemaining ?? 0;
+  const quotaLimit = item.quotaLimit ?? 1;
+  const percentLeft = Math.min(100, Math.max(0, Math.round((quotaRemaining / quotaLimit) * 100)));
+  const isGemini = item.service.toLowerCase().includes("gemini");
+
   return (
-    <div className="card-wrap sys-card sys-service-card">
-      <div className="sys-card-header-row">
-        <span className="sys-card-icon-box">
-          <i className={serviceIcon(item.service)} aria-hidden="true" />
-        </span>
+    <div className={`card-wrap sys-ai-card sys-ai-${item.status.toLowerCase()}`}>
+      <div className="sys-ai-card-top">
+        <div className="sys-ai-header-left">
+          <span className="sys-ai-icon-box">
+            <i className="ti ti-sparkles" aria-hidden="true" />
+          </span>
+          <div>
+            <div className="sys-ai-tag-row">
+              <span className="sys-service-category-tag">
+                {isGemini ? "Primary Vision Provider" : "Standby Failover Vision"}
+              </span>
+            </div>
+            <h3 className="sys-ai-title">{item.service}</h3>
+          </div>
+        </div>
         <StatusBadge status={item.status} />
       </div>
 
-      <div className="sys-service-content">
-        <h3 className="sys-card-title">{item.service}</h3>
-        <p className="sys-service-detail">{item.detail || "Connected and responsive"}</p>
-        {item.expiresAt && (
-          <div className="sys-service-expiry">
-            <i className="ti ti-calendar-time" aria-hidden="true" />
-            <span>Expires {formatDate(item.expiresAt)}</span>
+      <p className="sys-ai-detail">{item.detail || "Connected and responsive"}</p>
+
+      {hasQuota ? (
+        <div className="sys-service-quota-block">
+          <div className="sys-quota-header-row">
+            <span className="sys-quota-label">
+              <i className="ti ti-coins" aria-hidden="true" /> Daily API Free-Tier Quota
+            </span>
+            <span
+              className={`sys-quota-pill ${
+                quotaRemaining === 0 ? "is-empty" : quotaRemaining <= 5 ? "is-low" : "is-healthy"
+              }`}
+            >
+              <strong>{quotaRemaining}</strong> / {quotaLimit} Left ({percentLeft}%)
+            </span>
+          </div>
+          <div
+            className={`sys-meter sys-meter-quota sys-meter-${
+              quotaRemaining === 0 ? "unhealthy" : quotaRemaining <= 5 ? "warning" : "healthy"
+            }`}
+            aria-label={`${quotaRemaining}/${quotaLimit} credits remaining`}
+          >
+            <span style={{ width: `${percentLeft}%` }} />
+          </div>
+        </div>
+      ) : (
+        <div className="sys-ai-standby-block">
+          <i className="ti ti-shield-check" aria-hidden="true" />
+          <span>Active fallback provider — processes captions when Gemini quota is exhausted.</span>
+        </div>
+      )}
+
+      <div className="sys-service-meta-footer">
+        {item.resetAt && (
+          <div className="sys-service-expiry sys-service-reset-pill" title={`Quota resets at ${formatDate(item.resetAt)}`}>
+            <i className="ti ti-clock-hour-4" aria-hidden="true" />
+            <span>
+              Resets {item.secondsUntilExpiry ? `in ${formatDurationSeconds(item.secondsUntilExpiry)}` : formatDate(item.resetAt)}
+            </span>
           </div>
         )}
+
+        {isGemini && (
+          <span className="sys-service-fallback-badge">
+            <i className="ti ti-arrows-exchange" aria-hidden="true" />
+            Auto-routing to Claude Active
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfraServiceCard({ item }: { item: ExternalServiceHealth }) {
+  const categoryTag = getServiceCategory(item.service);
+  return (
+    <div className="card-wrap sys-infra-card">
+      <div className="sys-infra-left">
+        <span className="sys-card-icon-box sys-infra-icon">
+          <i className={serviceIcon(item.service)} aria-hidden="true" />
+        </span>
+        <div className="sys-infra-info">
+          <div className="sys-infra-title-row">
+            <h4 className="sys-infra-title">{item.service}</h4>
+            <span className="sys-service-category-tag">{categoryTag}</span>
+          </div>
+          <p className="sys-infra-detail">{item.detail || "Connected and operational"}</p>
+        </div>
+      </div>
+      <div className="sys-infra-right">
+        <StatusBadge status={item.status} />
       </div>
     </div>
   );
@@ -1085,78 +1041,102 @@ function ServiceCard({ item }: { item: ExternalServiceHealth }) {
 function JobTable({
   jobs,
   runningJobKey,
+  hasFilters,
+  onClearFilters,
   onRun,
 }: {
   jobs: BackgroundJobHealth[];
   runningJobKey: string | null;
+  hasFilters: boolean;
+  onClearFilters: () => void;
   onRun: (job: BackgroundJobHealth) => void;
 }) {
-  if (jobs.length === 0) {
-    return (
-      <div className="sys-table-empty">
-        <i className="ti ti-search-off" aria-hidden="true" />
-        <p>No background jobs match your current filter.</p>
-      </div>
-    );
-  }
-
   const anyRunning = runningJobKey !== null;
 
   return (
-    <table className="data-table sys-jobs-table">
-      <thead>
-        <tr>
-          <th style={{ width: "30%" }}>JOB NAME</th>
-          <th style={{ width: "14%" }}>STATUS</th>
-          <th style={{ width: "16%" }}>LAST RUN</th>
-          <th style={{ width: "16%" }}>LAST SUCCESS</th>
-          <th style={{ width: "12%" }}>DURATION</th>
-          <th style={{ width: "12%", textAlign: "right" }}>ACTIONS</th>
-        </tr>
-      </thead>
-      <tbody>
-        {jobs.map((job) => {
-          const running = runningJobKey === job.key;
-          return (
-            <tr key={job.key} className="notif-table-row">
-              <td>
-                <div className="sys-job-cell">
-                  <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
-                  <div>
-                    <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
-                    {job.lastError && (
-                      <span className="sys-job-error-hint" title={job.lastError}>
-                        <i className="ti ti-alert-triangle" /> {job.lastError}
+    <div className="um-data-card um-table-card is-directory" style={{ marginTop: 0 }}>
+      {jobs.length === 0 ? (
+        <div className="um-empty-state">
+          <div className="um-empty-icon" aria-hidden="true">
+            <i className="ti ti-cpu" />
+          </div>
+          <p className="um-empty-title">
+            {hasFilters ? "No matching background jobs found" : "No background jobs found"}
+          </p>
+          <p className="um-empty-sub">
+            {hasFilters
+              ? "Try changing your search terms or status filter."
+              : "Background jobs will appear here once scheduled."}
+          </p>
+          {hasFilters && (
+            <button
+              type="button"
+              className="um-empty-clear"
+              onClick={onClearFilters}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="um-table-wrap">
+          <table className="um-table sys-jobs-table">
+            <thead>
+              <tr>
+                <th style={{ width: "32%", paddingLeft: "24px" }}>JOB NAME</th>
+                <th style={{ width: "14%" }}>STATUS</th>
+                <th style={{ width: "16%" }}>LAST RUN</th>
+                <th style={{ width: "16%" }}>LAST SUCCESS</th>
+                <th style={{ width: "10%" }}>DURATION</th>
+                <th style={{ width: "12%", textAlign: "right", paddingRight: "24px" }}>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.map((job) => {
+                const running = runningJobKey === job.key;
+                return (
+                  <tr key={job.key}>
+                    <td style={{ paddingLeft: "24px" }}>
+                      <div className="sys-job-cell">
+                        <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
+                        <div>
+                          <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
+                          {job.lastError && (
+                            <span className="sys-job-error-hint" title={job.lastError}>
+                              <i className="ti ti-alert-triangle" /> {job.lastError}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td><StatusBadge status={job.status} /></td>
+                    <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
+                    <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
+                    <td>
+                      <span className="sys-duration-pill">
+                        {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
                       </span>
-                    )}
-                  </div>
-                </div>
-              </td>
-              <td><StatusBadge status={job.status} /></td>
-              <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
-              <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
-              <td>
-                <span className="sys-duration-pill">
-                  {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
-                </span>
-              </td>
-              <td style={{ textAlign: "right" }}>
-                <button
-                  type="button"
-                  className="notif-btn notif-btn-ghost notif-btn-sm"
-                  onClick={() => onRun(job)}
-                  disabled={anyRunning}
-                  title={`Run ${formatJobName(job.jobName)} now instead of waiting for its schedule`}
-                >
-                  <i className={running ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
-                  <span>{running ? "Running..." : "Re-run"}</span>
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                    </td>
+                    <td style={{ textAlign: "right", paddingRight: "24px", whiteSpace: "nowrap" }}>
+                      <button
+                        type="button"
+                        className="sys-btn sys-btn-ghost sys-btn-sm"
+                        onClick={() => onRun(job)}
+                        disabled={anyRunning}
+                        title={`Run ${formatJobName(job.jobName)} now instead of waiting for its schedule`}
+                      >
+                        <i className={running ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
+                        <span>{running ? "Running..." : "Re-run"}</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1183,100 +1163,106 @@ function TokenTable({
 }) {
   if (tokens.length === 0) {
     return (
-      <div className="card-wrap sys-token-empty-card">
-        <i className="ti ti-brand-facebook" aria-hidden="true" />
-        <div>
-          <strong>No Facebook Page Tokens Configured</strong>
-          <p>Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in the backend environment to connect a page — it appears here once the app restarts.</p>
+      <div className="um-data-card is-directory" style={{ marginTop: 0 }}>
+        <div className="um-empty-state">
+          <div className="um-empty-icon" aria-hidden="true">
+            <i className="ti ti-brand-facebook" />
+          </div>
+          <p className="um-empty-title">No Facebook Page Tokens Configured</p>
+          <p className="um-empty-sub">
+            Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in the backend environment to connect a page — it appears here once the app restarts.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card-wrap">
-      <table className="data-table sys-token-table">
-        <thead>
-          <tr>
-            <th style={{ width: "30%" }}>CONNECTED PAGE</th>
-            <th style={{ width: "20%" }}>STATUS</th>
-            <th style={{ width: "22%" }}>EXPIRATION</th>
-            <th style={{ width: "16%" }}>LAST VALIDATED</th>
-            <th style={{ width: "12%", textAlign: "right" }}>ACTION</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tokens.map((token) => (
-            <Fragment key={token.id}>
-              <tr>
-                <td>
-                  <div className="sys-page-cell">
-                    <i className="ti ti-brand-facebook" />
-                    <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
-                  </div>
-                </td>
-                <td title={token.validationFailureReason ?? undefined}>
-                  <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
-                </td>
-                <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
-                <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
-                <td style={{ textAlign: "right" }}>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      className="notif-btn notif-btn-ghost notif-btn-sm"
-                      disabled={!canReauthorize || busyTokenId === token.id}
-                      onClick={() => onReauthorize(token)}
-                      title="Renew Facebook Page Access Token via Facebook OAuth"
-                    >
-                      <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
-                      <span>Reauthorize</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="notif-btn notif-btn-ghost notif-btn-sm"
-                      disabled={!canReauthorize}
-                      onClick={() => onToggleManualEntry(token.id)}
-                      title="Paste a Page Access Token directly, without the OAuth flow"
-                    >
-                      <i className="ti ti-key" aria-hidden="true" />
-                      <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              {manualEntryTokenId === token.id && (
+    <div className="um-data-card um-table-card is-directory" style={{ marginTop: 0 }}>
+      <div className="um-table-wrap">
+        <table className="um-table sys-token-table">
+          <thead>
+            <tr>
+              <th style={{ width: "30%", paddingLeft: "24px" }}>CONNECTED PAGE</th>
+              <th style={{ width: "18%" }}>STATUS</th>
+              <th style={{ width: "20%" }}>EXPIRATION</th>
+              <th style={{ width: "16%" }}>LAST VALIDATED</th>
+              <th style={{ width: "16%", textAlign: "right", paddingRight: "24px" }}>ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map((token) => (
+              <Fragment key={token.id}>
                 <tr>
-                  <td colSpan={5}>
-                    <div className="sys-manual-token-row">
-                      <input
-                        type="password"
-                        className="settings-input"
-                        placeholder="Paste the Page Access Token"
-                        value={manualTokenValue}
-                        onChange={(e) => onManualTokenValueChange(e.target.value)}
-                        autoComplete="off"
-                      />
+                  <td style={{ paddingLeft: "24px" }}>
+                    <div className="sys-page-cell">
+                      <i className="ti ti-brand-facebook" />
+                      <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                    </div>
+                  </td>
+                  <td title={token.validationFailureReason ?? undefined}>
+                    <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
+                  </td>
+                  <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
+                  <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
+                  <td style={{ textAlign: "right", paddingRight: "24px", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
                       <button
                         type="button"
-                        className="notif-btn notif-btn-ghost notif-btn-sm"
-                        disabled={!manualTokenValue.trim() || busyTokenId === token.id}
-                        onClick={() => onSetManualToken(token.id)}
+                        className="sys-btn sys-btn-ghost sys-btn-sm"
+                        disabled={!canReauthorize || busyTokenId === token.id}
+                        onClick={() => onReauthorize(token)}
+                        title="Renew Facebook Page Access Token via Facebook OAuth"
                       >
-                        <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
-                        <span>Save</span>
+                        <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
+                        <span>Reauthorize</span>
                       </button>
-                      <span className="sys-manual-token-hint">
-                        Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
-                      </span>
+                      <button
+                        type="button"
+                        className="sys-btn sys-btn-ghost sys-btn-sm"
+                        disabled={!canReauthorize}
+                        onClick={() => onToggleManualEntry(token.id)}
+                        title="Paste a Page Access Token directly, without the OAuth flow"
+                      >
+                        <i className="ti ti-key" aria-hidden="true" />
+                        <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
+                      </button>
                     </div>
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+                {manualEntryTokenId === token.id && (
+                  <tr>
+                    <td colSpan={5} style={{ paddingLeft: "24px", paddingRight: "24px" }}>
+                      <div className="sys-manual-token-row">
+                        <input
+                          type="password"
+                          className="sys-input"
+                          placeholder="Paste the Page Access Token"
+                          value={manualTokenValue}
+                          onChange={(e) => onManualTokenValueChange(e.target.value)}
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          className="sys-btn sys-btn-primary sys-btn-sm"
+                          disabled={!manualTokenValue.trim() || busyTokenId === token.id}
+                          onClick={() => onSetManualToken(token.id)}
+                        >
+                          <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
+                          <span>Save</span>
+                        </button>
+                        <span className="sys-manual-token-hint">
+                          Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1346,6 +1332,16 @@ function formatDate(value: string | null) {
   });
 }
 
+function formatDurationSeconds(seconds: number) {
+  if (seconds <= 0) return "now";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${Math.max(1, minutes)}m`;
+}
+
 function formatMetricValue(item: OperationalMetric) {
   if (item.unit === "percent") return `${item.value}%`;
   if (item.unit === "hours") return `${item.value}h`;
@@ -1389,6 +1385,7 @@ function metricIcon(key: string) {
 
 function serviceIcon(service: string) {
   const name = service.toLowerCase();
+  if (name.includes("gemini") || name.includes("google")) return "ti ti-sparkles";
   if (name.includes("claude") || name.includes("anthropic")) return "ti ti-sparkles";
   if (name.includes("voyage")) return "ti ti-vector";
   if (name.includes("email") || name.includes("smtp") || name.includes("mail") || name.includes("resend")) return "ti ti-mail";
@@ -1402,13 +1399,16 @@ function sampleLabel(item: OperationalMetric) {
   if (item.status === "UNAVAILABLE") return "No current sample";
   if (isNoActivityMetric(item)) return "No records in period";
   if (item.key === "live_event_fast_track_volume") {
-    return `${item.sampleSize} fast-track submission${item.sampleSize === 1 ? "" : "s"}`;
+    return `${item.value} fast-track submission${item.value === 1 ? "" : "s"}`;
   }
   return `${item.sampleSize} record${item.sampleSize === 1 ? "" : "s"}`;
 }
 
 function isNoActivityMetric(item: OperationalMetric) {
-  return item.sampleSize === 0 && item.key !== "live_event_fast_track_volume";
+  if (item.key === "live_event_fast_track_volume") {
+    return item.value === 0 && item.sampleSize === 0;
+  }
+  return item.sampleSize === 0;
 }
 
 function formatJobName(jobName: string) {

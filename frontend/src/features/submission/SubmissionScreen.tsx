@@ -44,6 +44,7 @@ import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import InfoTip from "../../components/ui/InfoTip";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
+import { useTaskTelemetry } from "../../hooks/useTaskTelemetry";
 import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
@@ -64,7 +65,7 @@ import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
-import { initialForm, postTemplates, statusLabels } from "./constants";
+import { initialForm, postTemplates, statusGuidance, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
   CAPTION_CHAR_LIMIT,
@@ -893,8 +894,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ),
     [form.files, form.savedAssets],
   );
-  const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
+  const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption, form.eventTitle);
   const proofread = useProofread(form.id);
+  const isAiUnavailable = aiCaption.state === "error-unavailable" || proofread.state === "error";
+  const submitTaskTelemetry = useTaskTelemetry("CONTRIBUTOR_SUBMIT_POST", !isReadOnlySubmission);
+
+  // RP-03 (REQ-320): caption drafting time is measured from opening Post Details.
+  const startCaptionDraftingTimer = useEffectEvent(() => aiCaption.markDraftingStarted());
+  useEffect(() => {
+    if (activeStep === "details") startCaptionDraftingTimer();
+  }, [activeStep, form.id]);
 
   const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
     void applySubmission(summary);
@@ -1771,6 +1780,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
+      if (!routeSubmissionId || routeSubmissionId === "new") {
+        routedSubmissionRef.current = finalResponse.data.id;
+        navigate(`/submissions/${finalResponse.data.id}${location.search}`, { replace: true });
+      }
       return finalResponse.data.id;
     } catch (err: unknown) {
       setSaveState("idle");
@@ -1917,9 +1930,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       clearAssetIdParam();
       setIsEditingRejected(false);
       setModal("success");
+      submitTaskTelemetry.completeTask(submitted.data.id);
       toast.success("Submission sent for approval.");
       clearSubmissionPageCaches();
     } catch (err: unknown) {
+      submitTaskTelemetry.recordError();
       const message = getErrorMessage(err, "Submission failed.");
       // A4 — another submission claimed this slot between the last save and
       // this submit attempt. Guide the actor back to Schedule instead of just
@@ -2470,11 +2485,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ) : (
         <i className="ti ti-send"></i>
       )}
-      {isNeedsRevision
-        ? "Submit for Revision"
-        : form.status === "rejected"
-          ? "Resubmit for Review"
-          : "Submit for Approval"}
+      <span className="sub-submit-label-full">
+        {isNeedsRevision
+          ? "Submit for Revision"
+          : form.status === "rejected"
+            ? "Resubmit for Review"
+            : "Submit for Approval"}
+      </span>
+      <span className="sub-submit-label-short">
+        {isNeedsRevision
+          ? "Submit"
+          : form.status === "rejected"
+            ? "Resubmit"
+            : "Submit"}
+      </span>
     </button>
   );
 
@@ -2514,6 +2538,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     ? "All draft changes saved"
                     : "You have unsaved changes"
               }
+              aria-label={
+                saveState === "saving"
+                  ? "Saving draft changes"
+                  : saveState === "saved" && !isDirty
+                    ? "All draft changes saved"
+                    : "You have unsaved changes"
+              }
             >
               <i
                 className={
@@ -2525,7 +2556,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 }
                 aria-hidden="true"
               ></i>
-              <span>
+              <span className="sub-nav-save-text">
                 {saveState === "saving"
                   ? "Saving..."
                   : saveState === "saved" && !isDirty
@@ -2545,25 +2576,30 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               disabled={Boolean(lookupsLoading || hydratingId)}
               aria-haspopup="dialog"
               aria-expanded={readinessSheetVisible}
-              aria-label={`Readiness ${readiness.score} of 100. Open readiness checklist.`}
-              title="Readiness checklist"
+              aria-label={`Required: ${readiness.requiredComplete} of ${readiness.required.length}${readiness.gatePassed ? " — Ready to submit" : ""}. Open submission checklist.`}
+              title="Submission gate & quality tips"
             >
               <i className="ti ti-shield-check" aria-hidden="true" />
-              <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
+              <span>
+                {lookupsLoading || hydratingId
+                  ? "–"
+                  : readiness.gatePassed
+                    ? `${readiness.requiredComplete}/${readiness.required.length} ✓`
+                    : `${readiness.requiredComplete}/${readiness.required.length}`}
+              </span>
             </button>
           )}
           {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
           {!isReadOnlySubmission && (
             <button
               type="button"
-              className="sub-btn-ghost"
-              style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              className="sub-btn-ghost sub-btn-guide"
               onClick={() => startComposerTour(true)}
               title="How to use the composer"
               aria-label="How to use the composer"
             >
-              <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-              <span>Guide</span>
+              <i className="ti ti-help-circle" aria-hidden="true" />
+              <span className="sub-btn-guide-text">Guide</span>
             </button>
           )}
         </div>
@@ -2600,13 +2636,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               {isReadOnlySubmission && form.status === "rejected" && (
                 <div className="sub-readonly-note is-rejected-note">
                   <i className="ti ti-circle-x"></i>
-                  Rejected — review feedback below and click Edit &amp; Resubmit to make changes
+                  {statusGuidance.rejected}
                 </div>
               )}
               {isReadOnlySubmission && form.status !== "rejected" && (
                 <div className="sub-readonly-note">
                   <i className="ti ti-eye"></i>
-                  Read-only — this submission can no longer be edited
+                  {statusGuidance[form.status] ?? "Read-only — this submission can no longer be edited"}
+                </div>
+              )}
+              {!isReadOnlySubmission && isNeedsRevision && (
+                <div className="sub-readonly-note" style={{ marginTop: "6px" }}>
+                  <i className="ti ti-pencil-minus"></i>
+                  {statusGuidance.needs_revision}
                 </div>
               )}
             </div>
@@ -2857,12 +2899,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    {canUseAiCaption && (
+                    {canUseAiCaption && !aiCaption.variants && (
                       <AiCaptionButton
                         state={aiCaption.state}
                         canSuggest={canUseAiCaption}
                         rateLimitReset={aiCaption.rateLimitReset}
                         notice={aiCaption.notice}
+                        isUnavailable={isAiUnavailable}
                         onSuggest={() => setCaptionPromptOpen(true)}
                       />
                     )}
@@ -2899,6 +2942,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <CheckWritingButton
                       state={proofread.state}
                       disabled={!form.caption.trim()}
+                      isUnavailable={isAiUnavailable}
                       onCheck={() => void proofread.check(form.caption)}
                     />
                   </div>
@@ -2975,14 +3019,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                   <AiCaptionSuggestion
                     variants={aiCaption.variants}
-                    onApply={(caption, tone, action) => {
+                    onApply={(caption, tone, action, qualityRating) => {
                       if (!canUseAiCaption) return;
                       updateCaption(caption);
-                      aiCaption.logApply(tone, action);
+                      aiCaption.logApply(tone, action, qualityRating);
                     }}
                     onDismissOne={aiCaption.logDismissOne}
                     onDismissAll={aiCaption.dismissAll}
                     onRegenerate={aiCaption.regenerate}
+                    onBrowseTemplates={() => {
+                      setReadinessSheetOpen(false);
+                      setTemplatesPanelOpen(true);
+                    }}
                   />
                 </Suspense>
               )}
@@ -3329,18 +3377,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             ) : (
             <div className="sub-guard-header">
               <div className="sub-guard-title">
-                <i className="ti ti-shield-check"></i> Readiness
+                <i className="ti ti-shield-check"></i> Submission Gate
               </div>
-              <ReadinessRing score={readiness.score} />
+              <ReadinessRing
+                score={readiness.score}
+                requiredComplete={readiness.requiredComplete}
+                requiredTotal={readiness.required.length}
+                gatePassed={readiness.gatePassed}
+              />
               <div className="sub-score-grade">{readiness.grade}</div>
               <div className="sub-score-desc">{readiness.description}</div>
+              {!isReadOnlySubmission && !readiness.gatePassed && readiness.nextMissingRequired && (
+                <button
+                  type="button"
+                  className="sub-gate-next-btn"
+                  onClick={() => {
+                    setReadinessSheetOpen(false);
+                    handleReadinessJump(readiness.nextMissingRequired!.target);
+                  }}
+                >
+                  <span>
+                    Next: <strong>{readiness.nextMissingRequired.title}</strong>
+                  </span>
+                  <i className="ti ti-arrow-right" aria-hidden="true" />
+                </button>
+              )}
             </div>
             )}
 
             <GuardSection
               title="Required"
               icon="ti-list-check"
-              meta={`${readiness.requiredComplete} / ${readiness.required.length}`}
+              meta={`${readiness.requiredComplete} of ${readiness.required.length}${readiness.gatePassed ? " ✓" : ""}`}
               defaultOpen
             >
               {readiness.required.map((item) => (
@@ -3363,15 +3431,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </GuardSection>
 
             <GuardSection
-              title="Recommended"
+              title="Post Quality Tips"
               icon="ti-sparkles"
-              meta={`${readiness.recommendedComplete} / ${readiness.recommended.length}`}
+              meta={readiness.tipsSummary}
             >
               {readiness.recommended.map((item) => (
                 <CheckItem
                   key={item.title}
                   pass={item.pass}
                   idle={item.idle}
+                  optional
                   title={item.title}
                   sub={item.sub}
                   onClick={
@@ -3400,12 +3469,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {isCompactLayout ? (
               // ≤900px: the sticky bottom bar is the step navigation —
-              // Preview / Previous / Next, with Submit taking Next's place on the last
-              // step. Save Draft stays in the page header (#btn-save-draft).
+              // Preview / Previous / Next, with Submit promoted on every step once
+              // the submission gate passes. Save Draft stays in the page header (#btn-save-draft).
               <StepPanelActions
                 activeStep={activeStep}
                 hasMedia={hasMedia}
                 isDetailsComplete={isDetailsComplete}
+                gatePassed={readiness.gatePassed && previewValidation.blockingErrors.length === 0 && !hasUnaddressedRevisions}
                 onStepChange={handleStepNav}
                 finalAction={submitButton}
                 onPreview={() => {
@@ -3609,15 +3679,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
       {modal === "submit" && (
         <ConfirmModal
-          icon={hasRecommendedWarnings ? "ti-alert-triangle" : "ti-send"}
+          icon="ti-send"
           title={
             isNeedsRevision
               ? "Submit revision for approval?"
               : form.status === "rejected"
                 ? "Resubmit for approval?"
-                : hasRecommendedWarnings
-                  ? "Submit with recommended warnings?"
-                  : "Submit for Approval?"
+                : "Submit for Approval?"
           }
           description={
             isNeedsRevision
@@ -3625,10 +3693,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               : form.status === "rejected"
                 ? "Your updated submission will be sent back to moderators for review."
                 : hasRecommendedWarnings
-                  ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-                  : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
+                  ? `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). Optional quality tips (${recommendedWarnings.map((item) => item.title).join(", ")}) are non-blocking.`
+                  : `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). This submission will be sent for moderator approval.`
           }
-          cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
+          cancelLabel="Go Back"
           confirmLabel={
             submitting
               ? "Submitting..."
@@ -3636,9 +3704,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 ? "Submit Revision"
                 : form.status === "rejected"
                   ? "Resubmit Post"
-                  : hasRecommendedWarnings
-                    ? "Submit Anyway"
-                    : "Confirm Submission"
+                  : "Confirm Submission"
           }
           loading={submitting}
           disabled={busy || hasUnaddressedRevisions}

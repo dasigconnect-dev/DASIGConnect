@@ -3,12 +3,17 @@ package com.dasigconnect.backend.controller;
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.InvitationService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +39,31 @@ public class InvitationController {
 
     public InvitationController(InvitationService invitationService) {
         this.invitationService = invitationService;
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PostMapping("/batch/preview")
+    public ResponseEntity<ApiResponse<BatchInvitationPreviewResponseDto>> previewBatch(
+            @RequestBody @Valid BatchInvitationPreviewRequestDto dto,
+            Authentication authentication) {
+        JwtUserDetails inviter = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails principal
+                ? principal
+                : null;
+        return ResponseEntity.ok(ApiResponse.success(invitationService.previewBatch(dto, inviter)));
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
+    @PostMapping("/batch")
+    public ResponseEntity<ApiResponse<BatchInvitationSendResponseDto>> sendBatch(
+            @RequestBody @Valid BatchInvitationSendRequestDto dto,
+            Authentication authentication,
+            HttpServletRequest request) {
+        JwtUserDetails inviter = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails principal
+                ? principal
+                : null;
+        String ipAddress = request != null ? request.getRemoteAddr() : null;
+        String userAgent = request != null ? request.getHeader("User-Agent") : null;
+        return ResponseEntity.status(201).body(ApiResponse.success(invitationService.sendBatch(dto, inviter, ipAddress, userAgent)));
     }
 
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")

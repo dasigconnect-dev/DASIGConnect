@@ -8,7 +8,7 @@ import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import { submissionListTourSteps } from "../onboarding/tours/submissionTour";
 import type { QueueFilter } from "./types";
-import { statusLabels } from "./constants";
+import { statusGuidance, statusLabels } from "./constants";
 import { formatDate, getSubmissionStatusIcon } from "./utils";
 import { QueueLoadingState, QueueState } from "./components/SharedPrimitives";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
@@ -261,6 +261,14 @@ export default function SubmissionListScreen({ user }: { user: User }) {
                         </span>
                       </div>
                     </div>
+
+                    {/* Status Guidance Callout (Option B) */}
+                    {statusGuidance[item.status] && (
+                      <div className={`sub-status-callout status-callout-${item.status}`}>
+                        <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true" />
+                        <span>{statusGuidance[item.status]}</span>
+                      </div>
+                    )}
 
                     {/* Post Content: Event Title & Caption */}
                     <div className="sub-fb-card-content">

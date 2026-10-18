@@ -21,7 +21,13 @@ import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.CaptionGenerationService;
 import com.dasigconnect.backend.service.JWTService;
+import com.dasigconnect.backend.service.SubscriptionEntitlementService;
 import com.dasigconnect.backend.service.TenantScopeService;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+
+import java.time.Instant;
+
+import org.junit.jupiter.api.BeforeEach;
 
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -42,6 +48,22 @@ class CaptionControllerTest {
     @MockitoBean private CaptionGenerationService captionGenerationService;
     @MockitoBean private JWTService jwtService;
     @MockitoBean private TenantScopeService tenantScopeService;
+    @MockitoBean private SubscriptionEntitlementService subscriptionEntitlementService;
+
+    private UUID reservationId;
+
+    @BeforeEach
+    void setUpEntitlementReservation() {
+        reservationId = UUID.randomUUID();
+        when(subscriptionEntitlementService.reserveForSubmission(
+                ArgumentMatchers.any(UUID.class),
+                ArgumentMatchers.any(UUID.class),
+                ArgumentMatchers.eq(SubscriptionUsageEventType.AI_CAPTION),
+                ArgumentMatchers.nullable(String.class),
+                ArgumentMatchers.eq("AI_CAPTION_REQUEST")))
+                .thenReturn(new SubscriptionEntitlementService.ActionReservation(
+                        reservationId, 4, Instant.now().plusSeconds(3600), false, false));
+    }
 
     // ── POST /caption ─────────────────────────────────────────────────────────
 
@@ -65,11 +87,13 @@ class CaptionControllerTest {
         );
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, variants));
 
         mockMvc.perform(post("/api/v1/ai/caption")
                 .with(authentication(contributorAuth()))
+                .header("X-Idempotency-Key", "caption-request-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"submissionId":"%s"}
@@ -82,6 +106,8 @@ class CaptionControllerTest {
                 .andExpect(jsonPath("$.data.variants[0].tone").value("professional"))
                 .andExpect(jsonPath("$.data.variants[1].tone").value("community"))
                 .andExpect(jsonPath("$.data.variants[2].tone").value("energetic"));
+
+        verify(subscriptionEntitlementService).consume(reservationId);
     }
 
     @Test
@@ -89,7 +115,8 @@ class CaptionControllerTest {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -109,7 +136,8 @@ class CaptionControllerTest {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -137,7 +165,8 @@ class CaptionControllerTest {
     void generateCaption_claudeTimeout_returns504() throws Exception {
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API timed out after 10 seconds."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -147,13 +176,16 @@ class CaptionControllerTest {
                         {"submissionId":"%s"}
                         """.formatted(UUID.randomUUID())))
                 .andExpect(status().isGatewayTimeout());
+
+        verify(subscriptionEntitlementService).release(reservationId);
     }
 
     @Test
     void generateCaption_claudeUnavailable_returns503() throws Exception {
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API error (HTTP 500)."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -171,7 +203,8 @@ class CaptionControllerTest {
     void logCaptionInteraction_asContributor_returns204() throws Exception {
         UUID submissionId = UUID.randomUUID();
         doNothing().when(captionGenerationService).logInteraction(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
 
         mockMvc.perform(post("/api/v1/ai/caption/log")
                 .with(authentication(contributorAuth()))
@@ -185,7 +218,85 @@ class CaptionControllerTest {
                 ArgumentMatchers.eq(submissionId),
                 ArgumentMatchers.any(),
                 ArgumentMatchers.eq("use"),
-                ArgumentMatchers.eq("professional"));
+                ArgumentMatchers.eq("professional"),
+                ArgumentMatchers.isNull(),
+                ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void logCaptionInteraction_withQualityRatingAndDraftingDuration_passesTelemetry() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        doNothing().when(captionGenerationService).logInteraction(
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+
+        mockMvc.perform(post("/api/v1/ai/caption/log")
+                .with(authentication(contributorAuth()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"submissionId":"%s","actionTaken":"use_then_edited","toneSelected":"community","qualityRating":5,"draftingDurationMs":14250}
+                        """.formatted(submissionId)))
+                .andExpect(status().isNoContent());
+
+        verify(captionGenerationService).logInteraction(
+                ArgumentMatchers.eq(submissionId),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.eq("use_then_edited"),
+                ArgumentMatchers.eq("community"),
+                ArgumentMatchers.eq(5),
+                ArgumentMatchers.eq(14250L));
+    }
+
+    @Test
+    void generateCaption_backgroundEndpoint_returnsVariant() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(captionGenerationService.generateCaptions(
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
+                .thenReturn(new CaptionResponseDto(submissionId, List.of(
+                        new CaptionVariantDto("professional", "Auto-generated background caption #DASIG")
+                )));
+
+        mockMvc.perform(post("/api/v1/ai/caption/background")
+                .with(authentication(contributorAuth()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"submissionId":"%s","tone":"professional"}
+                        """.formatted(submissionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.submissionId").value(submissionId.toString()))
+                .andExpect(jsonPath("$.data.variants[0].caption").value("Auto-generated background caption #DASIG"));
+
+        verify(captionGenerationService).generateCaptions(
+                ArgumentMatchers.eq(submissionId), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.eq("professional"),
+                ArgumentMatchers.eq(CaptionGenerationService.ACTION_GENERATED_IN_BACKGROUND));
+    }
+
+    @Test
+    void generateCaption_onRequest_logsAsReGenerate() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(captionGenerationService.generateCaptions(
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
+                .thenReturn(new CaptionResponseDto(submissionId, List.of(
+                        new CaptionVariantDto("professional", "On-request caption")
+                )));
+
+        mockMvc.perform(post("/api/v1/ai/caption")
+                .with(authentication(contributorAuth()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"submissionId":"%s","tone":"professional"}
+                        """.formatted(submissionId)))
+                .andExpect(status().isOk());
+
+        verify(captionGenerationService).generateCaptions(
+                ArgumentMatchers.eq(submissionId), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.eq("professional"),
+                ArgumentMatchers.eq(CaptionGenerationService.ACTION_GENERATED_ON_REQUEST));
     }
 
     @Test

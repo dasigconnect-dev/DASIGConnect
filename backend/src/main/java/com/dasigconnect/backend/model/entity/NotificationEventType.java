@@ -30,5 +30,11 @@ public enum NotificationEventType {
     admin_transfer_requested,
     admin_transfer_confirmed,
     watermark_apply_failed,
+    subscription_past_due,
+    subscription_grace_period,
+    subscription_restricted,
+    subscription_restored,
+    subscription_payment_received,
+    subscription_payment_attention,
     generic
 }

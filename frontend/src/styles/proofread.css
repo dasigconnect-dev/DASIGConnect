@@ -52,6 +52,13 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+.proof-check-btn--unavailable {
+  border-color: var(--proof-border, #e2e8f0);
+  background: var(--proof-surface, #f8fafc);
+  color: var(--proof-muted, #64748b);
+  cursor: not-allowed;
+  opacity: 0.85;
+}
 .proof-check-btn i { font-size: 14px; }
 
 .proof-spin {

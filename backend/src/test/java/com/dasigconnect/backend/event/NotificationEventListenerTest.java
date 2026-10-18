@@ -17,6 +17,7 @@ import org.mockito.Mockito;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.UserRepository;
@@ -94,13 +95,16 @@ class NotificationEventListenerTest {
 
         listener.onSubmissionPending(new SubmissionPendingEvent(s));
 
+        String expectedLink = "/queue?submissionId=" + s.getId() + "&mode=review";
         verify(notificationService).createNotification(
-                eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+                eq(admin), eq(NotificationEventType.submission_pending), contains("AI Expo"), eq(expectedLink));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("AI Expo"));
 
         verify(notificationService).createNotification(
-                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), contains(s.getId().toString()));
+                eq(superAdmin), eq(NotificationEventType.submission_pending), contains("AI Expo"), eq(expectedLink));
         verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("AI Expo"));
+        verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains(expectedLink));
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains(expectedLink));
     }
 
     @Test
@@ -118,6 +122,27 @@ class NotificationEventListenerTest {
                 eq(contributor), eq(NotificationEventType.submission_approved), contains("Tech Summit"), any());
         verify(emailDeliveryService).send(
                 eq(contributor), eq(NotificationEventType.submission_approved.name()), any(), any());
+    }
+
+    @Test
+    void onSubscriptionLifecycleChanged_restrictedNotifiesAdministrators() {
+        SubscriptionLifecycleChangedEvent event = new SubscriptionLifecycleChangedEvent(
+                UUID.randomUUID(),
+                "DASIG Central Visayas",
+                SubscriptionLifecycleStatus.GRACE_PERIOD,
+                SubscriptionLifecycleStatus.RESTRICTED,
+                Instant.now().minusSeconds(86_400),
+                Instant.now().minusSeconds(1));
+
+        listener.onSubscriptionLifecycleChanged(event);
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.subscription_restricted),
+                contains("existing review and publishing workflows remain available"),
+                eq("/settings#subscription"));
+        verify(emailDeliveryService).send(
+                eq(superAdmin), eq(NotificationEventType.subscription_restricted.name()),
+                contains("Subscription restricted"), contains("Manage subscription"));
     }
 
     @Test
@@ -195,13 +220,17 @@ class NotificationEventListenerTest {
 
         listener.onPublishFailed(new PublishFailedEvent(s, "Graph API Error 190"));
 
+        String expectedAdminLink = "/queue?tab=failed&submissionId=" + s.getId();
         verify(notificationService).createNotification(
-                eq(admin), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), any());
+                eq(admin), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), eq(expectedAdminLink));
         verify(emailDeliveryService).send(
                 eq(admin), eq(NotificationEventType.submission_publish_failed.name()), any(), contains("Graph API Error 190"));
+        verify(emailDeliveryService).send(
+                eq(admin), eq(NotificationEventType.submission_publish_failed.name()), any(), contains(expectedAdminLink));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("Webinar"));
+        verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains(expectedAdminLink));
         verify(notificationService).createNotification(
-                eq(contributor), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), any());
+                eq(contributor), eq(NotificationEventType.submission_publish_failed), contains("Webinar"), eq("/submissions/" + s.getId()));
     }
 
     @Test
@@ -224,17 +253,20 @@ class NotificationEventListenerTest {
 
         listener.onFastTrackSubmission(new FastTrackSubmissionEvent(s));
 
+        // RP-04 (REQ-218): in-app, email and Messenger all open the submission in review mode
+        String expectedLink = "/queue?submissionId=" + s.getId() + "&mode=review";
         verify(notificationService).createNotification(
-                eq(admin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), any());
+                eq(admin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), eq(expectedLink));
         verify(emailDeliveryService).send(
-                eq(admin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
+                eq(admin), eq(NotificationEventType.fast_track_submission.name()), any(), contains(expectedLink));
         verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains("Breaking Science News"));
+        verify(messengerDeliveryService).sendToUser(eq(admin.getId()), contains(expectedLink));
 
         verify(notificationService).createNotification(
-                eq(superAdmin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), any());
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission), contains("Breaking Science News"), eq(expectedLink));
         verify(emailDeliveryService).send(
-                eq(superAdmin), eq(NotificationEventType.fast_track_submission.name()), any(), any());
-        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains("Breaking Science News"));
+                eq(superAdmin), eq(NotificationEventType.fast_track_submission.name()), any(), contains(expectedLink));
+        verify(messengerDeliveryService).sendToUser(eq(superAdmin.getId()), contains(expectedLink));
     }
 
     @Test

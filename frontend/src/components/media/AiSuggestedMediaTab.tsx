@@ -166,6 +166,16 @@ export default function AiSuggestedMediaTab({
         </div>
       )}
 
+      {state === "rate_limited" && (
+        <div className="ast-error" role="alert">
+          <i className="ti ti-clock-pause" aria-hidden />
+          <span>AI suggestion limit reached. Pick files from Upload or My Library, or try again later.</span>
+          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {state === "embedding_error" && (
         <div className="ast-error" role="alert">
           <i className="ti ti-alert-circle" aria-hidden />

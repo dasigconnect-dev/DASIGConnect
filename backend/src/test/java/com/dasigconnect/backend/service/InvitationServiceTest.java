@@ -2,16 +2,24 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationRowDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
+import com.dasigconnect.backend.model.entity.InvitationBatch;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.InvitationBatchRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -65,6 +73,10 @@ class InvitationServiceTest {
     InstitutionService institutionService;
     @Mock
     AdminCapPolicy adminCapPolicy;
+    @Mock
+    InstitutionRepository institutionRepository;
+    @Mock
+    InvitationBatchRepository invitationBatchRepository;
     @InjectMocks
     InvitationService invitationService;
 
@@ -830,6 +842,103 @@ class InvitationServiceTest {
 
         assertThat(expired).isZero();
         assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.pending);
+    }
+
+    @Test
+    void previewBatch_validContributor_returnsValid() {
+        when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
+        when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.empty());
+
+        BatchInvitationRowDto row = new BatchInvitationRowDto(
+                "student@example.com", "contributor", institutionId, null);
+        BatchInvitationPreviewResponseDto response = invitationService.previewBatch(
+                new BatchInvitationPreviewRequestDto(List.of(row)), adminPrincipal);
+
+        assertThat(response.totalRows()).isEqualTo(1);
+        assertThat(response.validCount()).isEqualTo(1);
+        assertThat(response.invalidCount()).isZero();
+        assertThat(response.rows().get(0).status()).isEqualTo("valid");
+    }
+
+    @Test
+    void previewBatch_duplicateInBatch_marksDuplicate() {
+        when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
+        when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.empty());
+
+        BatchInvitationRowDto row1 = new BatchInvitationRowDto("student@example.com", "contributor", institutionId, null);
+        BatchInvitationRowDto row2 = new BatchInvitationRowDto("student@example.com", "contributor", institutionId, null);
+
+        BatchInvitationPreviewResponseDto response = invitationService.previewBatch(
+                new BatchInvitationPreviewRequestDto(List.of(row1, row2)), adminPrincipal);
+
+        assertThat(response.totalRows()).isEqualTo(2);
+        assertThat(response.validCount()).isEqualTo(1);
+        assertThat(response.invalidCount()).isEqualTo(1);
+        assertThat(response.rows().get(0).status()).isEqualTo("valid");
+        assertThat(response.rows().get(1).status()).isEqualTo("duplicate_in_batch");
+    }
+
+    @Test
+    void previewBatch_moderatorInvitingAdmin_marksRoleNotPermitted() {
+        BatchInvitationRowDto row = new BatchInvitationRowDto("newadmin@example.com", "admin", null, null);
+
+        BatchInvitationPreviewResponseDto response = invitationService.previewBatch(
+                new BatchInvitationPreviewRequestDto(List.of(row)), validatorPrincipal);
+
+        assertThat(response.totalRows()).isEqualTo(1);
+        assertThat(response.validCount()).isZero();
+        assertThat(response.invalidCount()).isEqualTo(1);
+        assertThat(response.rows().get(0).status()).isEqualTo("role_not_permitted");
+        assertThat(response.rows().get(0).reason()).contains("Moderators may only invite Contributors");
+    }
+
+    @Test
+    void previewBatch_adminCapExceeded_marksAdminCapExceeded() {
+        when(adminCapPolicy.slotsInUse(null, null)).thenReturn(3L);
+        when(adminCapPolicy.maxAdmins()).thenReturn(3L);
+
+        BatchInvitationRowDto row = new BatchInvitationRowDto("admin4@example.com", "admin", null, null);
+
+        BatchInvitationPreviewResponseDto response = invitationService.previewBatch(
+                new BatchInvitationPreviewRequestDto(List.of(row)), adminPrincipal);
+
+        assertThat(response.totalRows()).isEqualTo(1);
+        assertThat(response.validCount()).isZero();
+        assertThat(response.invalidCount()).isEqualTo(1);
+        assertThat(response.rows().get(0).status()).isEqualTo("admin_cap_exceeded");
+    }
+
+    @Test
+    void sendBatch_createsBatchAndAuditRecord() {
+        when(userRepository.findById(adminPrincipal.userId())).thenReturn(Optional.of(new User()));
+        when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
+        when(entityManager.find(eq(Institution.class), eq(institutionId))).thenReturn(institution);
+        when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.empty());
+
+        BatchInvitationRowDto row = new BatchInvitationRowDto(
+                "student@example.com", "contributor", institutionId, null);
+
+        BatchInvitationSendResponseDto response = invitationService.sendBatch(
+                new BatchInvitationSendRequestDto(List.of(row)),
+                adminPrincipal,
+                "127.0.0.1",
+                "Mozilla/5.0"
+        );
+
+        assertThat(response.rowCount()).isEqualTo(1);
+        assertThat(response.sentCount()).isEqualTo(1);
+        assertThat(response.rejectedCount()).isZero();
+
+        verify(invitationBatchRepository, atLeastOnce()).save(any(InvitationBatch.class));
+        verify(invitationTokenRepository).save(any(InvitationToken.class));
+        verify(auditLogService).recordByActorId(
+                eq(adminPrincipal.userId()),
+                eq("INVITATION_BATCH_SENT"),
+                eq("127.0.0.1"),
+                eq("Mozilla/5.0"),
+                any(),
+                any()
+        );
     }
 
     private static JwtUserDetails principal(String role, UUID institutionId) {

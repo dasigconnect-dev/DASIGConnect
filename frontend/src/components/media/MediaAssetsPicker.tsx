@@ -72,23 +72,21 @@ export default function MediaAssetsPicker({
   }
 
   const selectedImageCount = items.filter((item) => item.mediaType === "image").length;
-  const attachedAssetIdSet = new Set(
-    attachedAssetIds ?? items.flatMap((item) => item.assetId ? [item.assetId] : []),
-  );
+  const attachedAssetIdSet = new Set(attachedAssetIds ?? []);
   const selectedImageAssetIds = items
     .filter(
       (item) => item.mediaType === "image" && item.assetId && attachedAssetIdSet.has(item.assetId),
     )
     .map((item) => item.assetId!);
-  // No source tabs means no AI tab to show results in - don't fetch. This is
-  // used by the moderator review editor, which must keep its established media
-  // permissions and controls.
+  // Only fetch AI suggestions when the AI Suggestions tab is open (or opened).
+  const isAiTabActive = Boolean(sourceTabs && activeTab === "ai");
   const aiSuggestions = useAiMediaSuggestions(
     sourceTabs ? submissionId : null,
     eventTitle,
     caption,
     tags,
     selectedImageAssetIds,
+    isAiTabActive,
   );
 
   const alreadyAddedIds = new Set(items.filter((i) => i.assetId).map((i) => i.assetId!));

@@ -535,6 +535,11 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               }
               onRoleChange={setInviteRole}
               onSubmit={(event) => void handleSendInvitations(event)}
+              onBatchSuccess={() => {
+                if (selectedInstitutionId) {
+                  void loadManagementLists(selectedInstitutionId)
+                }
+              }}
             />
 
             {inviteResults && (

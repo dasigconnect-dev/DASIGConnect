@@ -24,6 +24,9 @@ import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
 import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
 import com.dasigconnect.backend.schedule.InvitationExpiryJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
+import com.dasigconnect.backend.schedule.StorageQuotaReservationExpiryJob;
+import com.dasigconnect.backend.schedule.SubscriptionLifecycleJob;
+import com.dasigconnect.backend.schedule.SubscriptionBillingReconciliationJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
 import com.dasigconnect.backend.schedule.ScheduledJobRunRetentionJob;
@@ -47,6 +50,9 @@ class ManualJobRunnerTest {
     @Mock private EmbeddingReconciliationJob embeddingReconciliationJob;
     @Mock private SocialEngagementSyncJob socialEngagementSyncJob;
     @Mock private MediaAssetRetentionPurgeJob mediaAssetRetentionPurgeJob;
+    @Mock private StorageQuotaReservationExpiryJob storageQuotaReservationExpiryJob;
+    @Mock private SubscriptionLifecycleJob subscriptionLifecycleJob;
+    @Mock private SubscriptionBillingReconciliationJob subscriptionBillingReconciliationJob;
     @Mock private StaleDraftSlotReleaseJob staleDraftSlotReleaseJob;
     @Mock private TokenHealthCheckJob tokenHealthCheckJob;
     @Mock private ScheduledJobRunRetentionJob scheduledJobRunRetentionJob;
@@ -72,6 +78,9 @@ class ManualJobRunnerTest {
                 embeddingFailureDigestJob,
                 emptyScheduleWarningJob,
                 generatedWatermarkPurgeJob,
+                storageQuotaReservationExpiryJob,
+                subscriptionLifecycleJob,
+                subscriptionBillingReconciliationJob,
                 invitationExpiryJob);
     }
 
@@ -102,6 +111,22 @@ class ManualJobRunnerTest {
         assertThat(runner.runsAsynchronously("TokenPublishingEscalationJob")).isTrue();
         assertThat(runner.runsAsynchronously("ReviewLockCleanupJob")).isFalse();
         assertThat(runner.runsAsynchronously("EmptyScheduleWarningJob")).isFalse();
+        assertThat(runner.runsAsynchronously("SubscriptionLifecycleJob")).isFalse();
+        assertThat(runner.runsAsynchronously("SubscriptionBillingReconciliationJob")).isFalse();
+    }
+
+    @Test
+    void run_subscriptionLifecycleJob_runsRegisteredOperation() {
+        runner().run("SubscriptionLifecycleJob");
+
+        verify(subscriptionLifecycleJob).advanceLifecycle();
+    }
+
+    @Test
+    void run_subscriptionBillingReconciliationJob_runsRegisteredOperation() {
+        runner().run("SubscriptionBillingReconciliationJob");
+
+        verify(subscriptionBillingReconciliationJob).reconcile();
     }
 
     @Test

@@ -36,7 +36,12 @@ import javax.imageio.ImageIO;
  * Times out after 30 seconds to honour the UC-1.6 timeout path.
  */
 @Service
-public class ClaudeVisionClient {
+public class ClaudeVisionClient implements AiVisionClient {
+
+    @Override
+    public String providerName() {
+        return "claude";
+    }
 
     static {
         // Required for ImageIO/Graphics2D on headless servers (e.g. Render)
@@ -936,7 +941,7 @@ public class ClaudeVisionClient {
         return List.copyOf(hypotheses);
     }
 
-    public static class ClaudeApiException extends RuntimeException {
+    public static class ClaudeApiException extends AiApiException {
         public ClaudeApiException(String message) { super(message); }
     }
 }
