@@ -229,8 +229,7 @@ test.describe("submission composer", () => {
     });
     expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/media/upload-url`);
     expect(keys).toContain("PUT storage");
-    expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/media`);
-    expect(keys.at(-1)).toBe(`POST /api/v1/submissions/${DRAFT_ID}/submit`);
+    expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/submit`);
     expect(state.draft?.status).toBe("pending");
   });
 

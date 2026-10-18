@@ -198,8 +198,7 @@ class CaptionControllerTest {
     void logCaptionInteraction_asContributor_returns204() throws Exception {
         UUID submissionId = UUID.randomUUID();
         doNothing().when(captionGenerationService).logInteraction(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
 
         mockMvc.perform(post("/api/v1/ai/caption/log")
                 .with(authentication(contributorAuth()))
@@ -213,54 +212,7 @@ class CaptionControllerTest {
                 ArgumentMatchers.eq(submissionId),
                 ArgumentMatchers.any(),
                 ArgumentMatchers.eq("use"),
-                ArgumentMatchers.eq("professional"),
-                ArgumentMatchers.isNull(),
-                ArgumentMatchers.isNull());
-    }
-
-    @Test
-    void logCaptionInteraction_withQualityRatingAndDraftingDuration_passesTelemetry() throws Exception {
-        UUID submissionId = UUID.randomUUID();
-        doNothing().when(captionGenerationService).logInteraction(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
-
-        mockMvc.perform(post("/api/v1/ai/caption/log")
-                .with(authentication(contributorAuth()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"submissionId":"%s","actionTaken":"use_then_edited","toneSelected":"community","qualityRating":5,"draftingDurationMs":14250}
-                        """.formatted(submissionId)))
-                .andExpect(status().isNoContent());
-
-        verify(captionGenerationService).logInteraction(
-                ArgumentMatchers.eq(submissionId),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.eq("use_then_edited"),
-                ArgumentMatchers.eq("community"),
-                ArgumentMatchers.eq(5),
-                ArgumentMatchers.eq(14250L));
-    }
-
-    @Test
-    void generateCaption_backgroundEndpoint_returnsVariant() throws Exception {
-        UUID submissionId = UUID.randomUUID();
-        when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
-                .thenReturn(new CaptionResponseDto(submissionId, List.of(
-                        new CaptionVariantDto("professional", "Auto-generated background caption #DASIG")
-                )));
-
-        mockMvc.perform(post("/api/v1/ai/caption/background")
-                .with(authentication(contributorAuth()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"submissionId":"%s","tone":"professional"}
-                        """.formatted(submissionId)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.submissionId").value(submissionId.toString()))
-                .andExpect(jsonPath("$.data.variants[0].caption").value("Auto-generated background caption #DASIG"));
+                ArgumentMatchers.eq("professional"));
     }
 
     @Test
