@@ -400,6 +400,24 @@ public class MediaStorageService {
         }
     }
 
+    /** Deletes an object by its trusted internal key. Used for abandoned upload reservations. */
+    public boolean deleteObject(String objectPath) {
+        if (!configured) {
+            log.debug("Media storage is not configured; treating reserved object cleanup as complete.");
+            return true;
+        }
+        if (objectPath == null || objectPath.isBlank()) {
+            return false;
+        }
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectPath).build());
+            return true;
+        } catch (Exception ex) {
+            log.warn("Failed to delete abandoned upload object {}: {}", objectPath, ex.getMessage());
+            return false;
+        }
+    }
+
     private String objectPathFromPublicUrl(String publicUrl) {
         if (publicUrl == null || publicUrl.isBlank()) {
             return null;
