@@ -74,6 +74,12 @@ public class MediaAssetService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private StorageQuotaService storageQuotaService;
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
     private static final int UNIFIED_SEARCH_CANDIDATE_CAP = 200;
@@ -508,13 +514,15 @@ public class MediaAssetService {
         MediaAsset asset = loadAssetForDelete(assetId, user);
         validateDeleteReferences(assetId, force);
 
-        asset.setDeletedAt(Instant.now());
+        Instant deletedAt = Instant.now();
+        asset.setDeletedAt(deletedAt);
         asset.setDeletedByUserId(user.userId());
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
         mediaSearchCache.invalidateAll();
         recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", false, "force", force));
+        publishMediaUsage(asset, user.userId(), -asset.getFileSizeBytes(), "deleted:" + deletedAt.toEpochMilli());
     }
 
     public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
@@ -552,6 +560,7 @@ public class MediaAssetService {
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
+            publishMediaUsage(asset, user.userId(), -asset.getFileSizeBytes(), "deleted:" + deletedAt.toEpochMilli());
         }
         mediaAssetRepository.saveAll(deletable);
         mediaSearchCache.invalidateAll();
@@ -644,6 +653,7 @@ public class MediaAssetService {
         recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
                 "assetCode", asset.getAssetCode(),
                 "fileName", asset.getFileName()));
+        publishMediaUsage(saved, user.userId(), saved.getFileSizeBytes(), "restored:" + Instant.now().toEpochMilli());
 
         return MediaAssetDetailDto.from(saved, List.of(), currentTags(assetId));
     }
@@ -670,6 +680,7 @@ public class MediaAssetService {
                 mediaAssetRepository.save(asset);
                 mediaProcessingQueueService.enqueueAfterCommit(id);
                 restoredIds.add(id);
+                publishMediaUsage(asset, user.userId(), asset.getFileSizeBytes(), "restored:" + Instant.now().toEpochMilli());
             }
         }
         recordAssetAudit(user, "MEDIA_BULK_RESTORED", null, Map.of(
@@ -825,6 +836,15 @@ public class MediaAssetService {
         // async pending, so it shouldn't sit on "Processing…" forever either.
         asset.setStatus(fileType.isImage() ? MediaAssetStatus.PROCESSING : MediaAssetStatus.READY);
         asset = mediaAssetRepository.save(asset);
+        if (storageQuotaService != null) {
+            storageQuotaService.consume(
+                    dto.getReservationId(),
+                    asset.getInstitution().getOrganizationId(),
+                    institutionId,
+                    user.userId(),
+                    dto.getFileSizeBytes(),
+                    asset.getId());
+        }
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
         mediaSearchCache.invalidateAll();
 
@@ -847,6 +867,7 @@ public class MediaAssetService {
         }
         auditMeta.put("tagCount", savedTags.size());
         recordAssetAudit(user, "MEDIA_ASSET_UPLOADED", asset.getId(), auditMeta);
+        publishMediaUsage(asset, user.userId(), asset.getFileSizeBytes(), "uploaded");
 
         // Register durable work after this upload transaction commits.
         final UUID savedId = asset.getId();
@@ -860,6 +881,24 @@ public class MediaAssetService {
         }
 
         return MediaAssetDetailDto.from(asset, List.of(), savedTags);
+    }
+
+    private void publishMediaUsage(
+            MediaAsset asset, UUID userId, long deltaBytes, String transition) {
+        if (eventPublisher == null
+                || asset == null
+                || asset.getInstitution() == null
+                || deltaBytes == 0) {
+            return;
+        }
+        Institution institution = asset.getInstitution();
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.MediaStorageUsageChangedEvent(
+                institution.getOrganizationId(),
+                institution.getId(),
+                userId,
+                asset.getId(),
+                deltaBytes,
+                transition));
     }
 
     @Transactional(readOnly = true)
@@ -1236,6 +1275,9 @@ public class MediaAssetService {
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
         UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
         rejectDuplicate(institutionId, dto.getContentHash(), dto.isAllowDuplicate());
+        if (dto.getFileSizeBytes() > 50L * 1024L * 1024L) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File exceeds the 50 MB limit.");
+        }
 
         // Opaque, immutable key. The folder tree lives in the database (media_albums),
         // never in the storage key, so folder rename/move/re-home never has to touch the store.
@@ -1248,9 +1290,34 @@ public class MediaAssetService {
                 + UUID.randomUUID() + "/"
                 + safeFileName;
 
-        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
-        String publicUrl = mediaStorage.getPublicUrl(objectPath);
-        return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
+        StorageQuotaService.ReservationResult reservation = null;
+        if (storageQuotaService != null) {
+            Institution institution = institutionRepository.findById(institutionId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Institution not found."));
+            reservation = storageQuotaService.reserve(
+                    institution.getOrganizationId(), institutionId, user.userId(),
+                    objectPath, dto.getFileSizeBytes());
+        }
+
+        try {
+            String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+            String publicUrl = mediaStorage.getPublicUrl(objectPath);
+            return reservation == null
+                    ? new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath)
+                    : new MediaAssetUploadUrlResponseDto(
+                            signedUrl,
+                            publicUrl,
+                            objectPath,
+                            reservation.reservationId(),
+                            reservation.expiresAt(),
+                            reservation.warningThresholdReached());
+        } catch (RuntimeException ex) {
+            if (reservation != null) {
+                storageQuotaService.release(reservation.reservationId());
+            }
+            throw ex;
+        }
     }
 
     private void rejectDuplicate(UUID institutionId, String contentHash, boolean allowDuplicate) {

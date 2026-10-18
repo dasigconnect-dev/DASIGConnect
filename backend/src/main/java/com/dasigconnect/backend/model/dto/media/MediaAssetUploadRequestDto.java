@@ -29,6 +29,7 @@ public class MediaAssetUploadRequestDto {
     private Long r2UploadDurationMs;
 
     private UUID institutionId;
+    private UUID reservationId;
     private UUID albumId;
 
     @Size(max = 255)
@@ -101,6 +102,14 @@ public class MediaAssetUploadRequestDto {
 
     public void setInstitutionId(UUID institutionId) {
         this.institutionId = institutionId;
+    }
+
+    public UUID getReservationId() {
+        return reservationId;
+    }
+
+    public void setReservationId(UUID reservationId) {
+        this.reservationId = reservationId;
     }
 
     public UUID getAlbumId() {

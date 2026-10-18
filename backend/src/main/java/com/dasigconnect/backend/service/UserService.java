@@ -70,6 +70,9 @@ public class UserService {
     private final AdminCapPolicy adminCapPolicy;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionEntitlementService subscriptionEntitlementService;
+
     public UserService(
             UserRepository userRepository,
             NotificationRepository notificationRepository,
@@ -237,6 +240,12 @@ public class UserService {
             if (user.getRole() == UserRole.admin) {
                 adminCapPolicy.assertHasFreeSlot(null, null);
             }
+            if (subscriptionEntitlementService != null) {
+                UUID organizationId = user.getInstitution() == null
+                        ? com.dasigconnect.backend.model.entity.Institution.DEFAULT_ORGANIZATION_ID
+                        : user.getInstitution().getOrganizationId();
+                subscriptionEntitlementService.assertCanCommitSeat(organizationId, user.getEmail());
+            }
         } else if (newStatus == UserStatus.cancelled) {
             if (user.getAccountState() != UserStatus.pending
                     && user.getAccountState() != UserStatus.pending_email_undelivered
@@ -245,6 +254,7 @@ public class UserService {
             }
         }
 
+        UserStatus previousStatus = user.getAccountState();
         if (newStatus == UserStatus.inactive || newStatus == UserStatus.cancelled) {
             clearPendingPromotion(user);
         }
@@ -262,6 +272,17 @@ public class UserService {
                         "email", saved.getEmail(),
                         "role", saved.getRole().name(),
                         "accountState", saved.getAccountState().name()));
+        UUID institutionId = saved.getInstitution() == null ? null : saved.getInstitution().getId();
+        UUID organizationId = saved.getInstitution() == null
+                ? com.dasigconnect.backend.model.entity.Institution.DEFAULT_ORGANIZATION_ID
+                : saved.getInstitution().getOrganizationId();
+        long seatDelta = newStatus == UserStatus.active ? 1 : -1;
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserSeatUsageChangedEvent(
+                organizationId,
+                institutionId,
+                saved.getId(),
+                seatDelta,
+                previousStatus.name() + "-to-" + newStatus.name() + ":" + UUID.randomUUID()));
         return UserDto.from(saved);
     }
 

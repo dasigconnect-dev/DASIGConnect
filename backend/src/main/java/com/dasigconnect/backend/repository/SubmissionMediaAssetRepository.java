@@ -76,9 +76,12 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
     long countDraftSubmissionsByAssetId(@Param("assetId") UUID assetId);
 
     @Query("""
-        SELECT sma.mediaAsset FROM SubmissionMediaAsset sma
+        SELECT asset FROM SubmissionMediaAsset sma
+        JOIN sma.mediaAsset asset
+        JOIN FETCH asset.institution
+        LEFT JOIN FETCH asset.uploader
         WHERE sma.submission.id = :submissionId
-          AND sma.mediaAsset.deletedAt IS NULL
+          AND asset.deletedAt IS NULL
         ORDER BY sma.displayOrder ASC
         """)
     List<MediaAsset> findMediaAssetsBySubmissionId(@Param("submissionId") UUID submissionId);

@@ -21,7 +21,13 @@ import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.CaptionGenerationService;
 import com.dasigconnect.backend.service.JWTService;
+import com.dasigconnect.backend.service.SubscriptionEntitlementService;
 import com.dasigconnect.backend.service.TenantScopeService;
+import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
+
+import java.time.Instant;
+
+import org.junit.jupiter.api.BeforeEach;
 
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -42,6 +48,22 @@ class CaptionControllerTest {
     @MockitoBean private CaptionGenerationService captionGenerationService;
     @MockitoBean private JWTService jwtService;
     @MockitoBean private TenantScopeService tenantScopeService;
+    @MockitoBean private SubscriptionEntitlementService subscriptionEntitlementService;
+
+    private UUID reservationId;
+
+    @BeforeEach
+    void setUpEntitlementReservation() {
+        reservationId = UUID.randomUUID();
+        when(subscriptionEntitlementService.reserveForSubmission(
+                ArgumentMatchers.any(UUID.class),
+                ArgumentMatchers.any(UUID.class),
+                ArgumentMatchers.eq(SubscriptionUsageEventType.AI_CAPTION),
+                ArgumentMatchers.nullable(String.class),
+                ArgumentMatchers.eq("AI_CAPTION_REQUEST")))
+                .thenReturn(new SubscriptionEntitlementService.ActionReservation(
+                        reservationId, 4, Instant.now().plusSeconds(3600), false, false));
+    }
 
     // ── POST /caption ─────────────────────────────────────────────────────────
 
@@ -70,6 +92,7 @@ class CaptionControllerTest {
 
         mockMvc.perform(post("/api/v1/ai/caption")
                 .with(authentication(contributorAuth()))
+                .header("X-Idempotency-Key", "caption-request-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"submissionId":"%s"}
@@ -82,6 +105,8 @@ class CaptionControllerTest {
                 .andExpect(jsonPath("$.data.variants[0].tone").value("professional"))
                 .andExpect(jsonPath("$.data.variants[1].tone").value("community"))
                 .andExpect(jsonPath("$.data.variants[2].tone").value("energetic"));
+
+        verify(subscriptionEntitlementService).consume(reservationId);
     }
 
     @Test
@@ -147,6 +172,8 @@ class CaptionControllerTest {
                         {"submissionId":"%s"}
                         """.formatted(UUID.randomUUID())))
                 .andExpect(status().isGatewayTimeout());
+
+        verify(subscriptionEntitlementService).release(reservationId);
     }
 
     @Test

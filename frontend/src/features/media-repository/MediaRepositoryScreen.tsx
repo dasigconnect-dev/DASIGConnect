@@ -981,6 +981,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        fileSizeBytes: file.size,
         contentHash,
         allowDuplicate: metadata.allowDuplicate,
         institutionId,
@@ -1003,6 +1004,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        reservationId: urlData.reservationId,
         r2UploadDurationMs,
         contentHash,
         allowDuplicate: metadata.allowDuplicate,
