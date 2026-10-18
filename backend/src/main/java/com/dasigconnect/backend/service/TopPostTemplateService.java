@@ -13,8 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
-import com.dasigconnect.backend.external.ClaudeVisionClient.ClaudeApiException;
+import com.dasigconnect.backend.external.AiApiException;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.TopPostTemplateSuggestionDto;
 import com.dasigconnect.backend.model.dto.ai.TopPostTemplateSuggestionDto.SourcePost;
 import com.dasigconnect.backend.repository.SubmissionEngagementMetricRepository;
@@ -38,7 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * noise dressed up as insight.
  *
  * <p>Nothing is persisted here; the caller saves the draft through
- * {@code POST /post-templates} after reviewing it. The Claude call runs outside
+ * {@code POST /post-templates} after reviewing it. The AI call runs outside
  * any transaction so no pooled connection is held during it.
  */
 @Service
@@ -63,16 +63,16 @@ public class TopPostTemplateService {
 
     private final FacebookEngagementAnalyticsClient facebookClient;
     private final SubmissionEngagementMetricRepository engagementRepository;
-    private final ClaudeVisionClient claudeClient;
+    private final AiVisionClient aiClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TopPostTemplateService(
             FacebookEngagementAnalyticsClient facebookClient,
             SubmissionEngagementMetricRepository engagementRepository,
-            ClaudeVisionClient claudeClient) {
+            AiVisionClient aiClient) {
         this.facebookClient = facebookClient;
         this.engagementRepository = engagementRepository;
-        this.claudeClient = claudeClient;
+        this.aiClient = aiClient;
     }
 
     public TopPostTemplateSuggestionDto suggest() {
@@ -99,7 +99,7 @@ public class TopPostTemplateService {
                 ? ranked.subList(ranked.size() - CONTRAST_POSTS, ranked.size())
                 : List.of();
 
-        String response = claudeClient.generateText(systemPrompt(), buildPrompt(top, contrast), MAX_OUTPUT_TOKENS);
+        String response = aiClient.generateText(systemPrompt(), buildPrompt(top, contrast), MAX_OUTPUT_TOKENS);
         Draft draft = parseDraft(response);
 
         List<SourcePost> sources = top.stream()
@@ -208,14 +208,14 @@ public class TopPostTemplateService {
         try {
             root = objectMapper.readTree(extractJsonObject(response));
         } catch (Exception ex) {
-            throw new ClaudeApiException("AI returned a template that couldn't be read. Please try again.");
+            throw new AiApiException("AI returned a template that couldn't be read. Please try again.");
         }
         String caption = root.path("caption").asText("").strip();
         if (caption.isEmpty()) {
-            throw new ClaudeApiException("AI returned an empty template. Please try again.");
+            throw new AiApiException("AI returned an empty template. Please try again.");
         }
         if (caption.codePointCount(0, caption.length()) > MAX_CAPTION_CODE_POINTS) {
-            throw new ClaudeApiException("AI returned a template longer than the caption limit. Please try again.");
+            throw new AiApiException("AI returned a template longer than the caption limit. Please try again.");
         }
         String name = root.path("name").asText("").strip();
         if (name.isEmpty()) name = "Top Posts Template";

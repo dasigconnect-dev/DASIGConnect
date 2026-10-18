@@ -1427,6 +1427,10 @@ body {
   border: 1px solid #bfdbfe;
 }
 
+.dash-avatar-wrapper {
+  position: relative;
+}
+
 .dash-avatar {
   min-width: 52px;
   height: 36px;
@@ -1439,6 +1443,7 @@ body {
   gap: 4px;
   padding: 0 8px 0 10px;
   font-size: 13px;
+  font-family: var(--ff-body);
   font-weight: 700;
   color: white;
   cursor: pointer;

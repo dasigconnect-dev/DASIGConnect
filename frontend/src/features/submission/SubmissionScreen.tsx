@@ -896,6 +896,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption, form.eventTitle);
   const proofread = useProofread(form.id);
+  const isAiUnavailable = aiCaption.state === "error-unavailable" || proofread.state === "error";
   const submitTaskTelemetry = useTaskTelemetry("CONTRIBUTOR_SUBMIT_POST", !isReadOnlySubmission);
 
   const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
@@ -1773,6 +1774,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
+      if (!routeSubmissionId || routeSubmissionId === "new") {
+        routedSubmissionRef.current = finalResponse.data.id;
+        navigate(`/submissions/${finalResponse.data.id}${location.search}`, { replace: true });
+      }
       return finalResponse.data.id;
     } catch (err: unknown) {
       setSaveState("idle");
@@ -2871,12 +2876,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    {canUseAiCaption && (
+                    {canUseAiCaption && !aiCaption.variants && (
                       <AiCaptionButton
                         state={aiCaption.state}
                         canSuggest={canUseAiCaption}
                         rateLimitReset={aiCaption.rateLimitReset}
                         notice={aiCaption.notice}
+                        isUnavailable={isAiUnavailable}
                         onSuggest={() => setCaptionPromptOpen(true)}
                       />
                     )}
@@ -2913,6 +2919,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <CheckWritingButton
                       state={proofread.state}
                       disabled={!form.caption.trim()}
+                      isUnavailable={isAiUnavailable}
                       onCheck={() => void proofread.check(form.caption)}
                     />
                   </div>
@@ -2997,6 +3004,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     onDismissOne={aiCaption.logDismissOne}
                     onDismissAll={aiCaption.dismissAll}
                     onRegenerate={aiCaption.regenerate}
+                    onBrowseTemplates={() => {
+                      setReadinessSheetOpen(false);
+                      setTemplatesPanelOpen(true);
+                    }}
                   />
                 </Suspense>
               )}
