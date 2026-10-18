@@ -513,7 +513,7 @@ test.describe("submission composer", () => {
 
     // Submit and verify task telemetry complete event is recorded
     await page.locator(".sub-guard-submit-btn").click();
-    await page.getByRole("button", { name: /^(Submit for Approval|Submit Anyway)$/ }).last().click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
     await expect(page.getByText("Submission sent!")).toBeVisible();
 
     await expect
