@@ -59,12 +59,6 @@ export default function MediaAssetsPicker({
   sourceTabs = true,
   institutions,
 }: MediaAssetsPickerProps) {
-  const hasEventContext =
-    [eventTitle.trim(), caption.trim(), ...tags.map((t) => t.trim())]
-      .filter(Boolean)
-      .join(" ").length >= 10 ||
-    items.some((item) => item.mediaType === "image");
-
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
   // Keep a tab mounted once it has been opened (hidden via the panel's
   // `hidden` attribute) instead of unmounting it on every switch. Otherwise
