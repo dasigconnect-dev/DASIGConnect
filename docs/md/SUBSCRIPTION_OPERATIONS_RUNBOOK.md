@@ -36,12 +36,21 @@ Recommended rollout:
 ### PayMongo test rollout
 
 1. Keep `PAYMONGO_MODE=TEST` and use only test credentials.
-2. In PayMongo, create one webhook endpoint at `https://<backend-host>/api/v1/webhooks/paymongo`.
-3. Subscribe it to `link.payment.paid`, `payment.refund.updated`, and `payment.refunded`.
-4. Store the returned test webhook secret in `PAYMONGO_WEBHOOK_SECRET_TEST` and set the test secret API key in `PAYMONGO_SK_TEST`.
-5. Set `PAYMONGO_ENABLED=true`, restart the backend, and create a payment link from `Settings > Subscription & Billing` as the Admin Owner.
-6. Complete a test QRPh payment and confirm the invoice, subscription period, notification, and audit log update.
-7. Enable `PAYMONGO_RECONCILIATION_ENABLED=true` only after the direct webhook flow is verified.
+2. Deploy the billing build and verify `https://<backend-host>/health` before registering a webhook.
+3. In PayMongo test mode, create one webhook endpoint at `https://<backend-host>/api/v1/webhooks/paymongo`.
+   - Development: `https://api-dev.dasigconnect.com/api/v1/webhooks/paymongo`
+   - Production: register a separate live-mode endpoint only during the approved go-live procedure.
+4. Subscribe it to `link.payment.paid`, `payment.refund.updated`, and `payment.refunded`.
+5. Immediately store the returned test webhook secret as `PAYMONGO_WEBHOOK_SECRET_TEST` in Railway. Do not register an endpoint unless the secret can be stored during the same deployment task.
+6. Set `PAYMONGO_SK_TEST`, `PAYMONGO_ENABLED=true`, and restart the backend.
+7. Create a payment link from `Settings > Subscription & Billing` as the Admin Owner.
+8. Complete a test QRPh payment and confirm the invoice, subscription period, notification, and audit log update.
+9. Redeliver the same event from PayMongo and confirm the subscription period does not advance again.
+10. Enable `PAYMONGO_RECONCILIATION_ENABLED=true` only after the direct webhook flow is verified.
+
+The backend uses PayMongo's current `/v1/payment_links` API. Do not reintroduce the deprecated `/v1/links` endpoints. Current Payment Links return a flat link object, and reconciliation retrieves payments separately from `/v1/payment_links/{id}/payments`.
+
+PayMongo documents provider refunds as a live-transaction operation. Validate refund request, persistence, webhook synchronization, and amount checks through the automated test suite in TEST environments. Perform a real refund smoke test only after account activation, with an approved low-value live transaction and authorization from the project owner.
 
 Test and live webhook endpoints have different signing secrets. Do not reuse a test secret in live mode. Browser redirects and frontend state never activate a subscription; activation requires a verified webhook or server-to-server reconciliation.
 

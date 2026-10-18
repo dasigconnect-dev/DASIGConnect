@@ -35,21 +35,25 @@ public class PaymongoClient {
     }
 
     public PaymentLink createPaymentLink(long amountCentavos, String description, String remarks) {
-        ObjectNode attributes = objectMapper.createObjectNode();
-        attributes.put("amount", amountCentavos);
-        attributes.put("description", description);
-        attributes.put("remarks", remarks);
         ObjectNode payload = objectMapper.createObjectNode();
-        payload.putObject("data").set("attributes", attributes);
-        return parseLink(send("POST", "/links", payload));
+        payload.put("amount", amountCentavos);
+        payload.put("currency", "PHP");
+        payload.put("description", description);
+        payload.put("remarks", remarks);
+        return parseLink(send("POST", "/payment_links", payload), List.of());
     }
 
     public PaymentLink retrievePaymentLink(String externalLinkId) {
-        return parseLink(send("GET", "/links/" + externalLinkId, null));
+        JsonNode link = send("GET", "/payment_links/" + externalLinkId, null);
+        List<Payment> payments = parsePayments(
+                send("GET", "/payment_links/" + externalLinkId + "/payments", null));
+        return parseLink(link, payments);
     }
 
     public PaymentLink archivePaymentLink(String externalLinkId) {
-        return parseLink(send("POST", "/links/" + externalLinkId + "/archive", null));
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("archive", true);
+        return parseLink(send("PATCH", "/payment_links/" + externalLinkId, payload), List.of());
     }
 
     public Refund createRefund(String externalPaymentId, long amountCentavos, String reason, String notes) {
@@ -99,12 +103,29 @@ public class PaymongoClient {
         }
     }
 
-    private PaymentLink parseLink(JsonNode root) {
+    private PaymentLink parseLink(JsonNode root, List<Payment> payments) {
         JsonNode data = root.path("data");
-        JsonNode attributes = data.path("attributes");
+        JsonNode value = data.path("attributes").isObject() ? data.path("attributes") : data;
+        String checkoutUrl = value.path("url").asText(value.path("checkout_url").asText(""));
+        if (checkoutUrl.isBlank()) {
+            throw new PaymongoApiException("PayMongo response is missing url.");
+        }
+        return new PaymentLink(
+                requiredText(data, "id"),
+                checkoutUrl,
+                value.path("reference_number").asText(null),
+                value.path("amount").asLong(),
+                value.path("status").asText("active"),
+                value.path("livemode").asBoolean(properties.liveMode()),
+                payments);
+    }
+
+    private List<Payment> parsePayments(JsonNode root) {
         List<Payment> payments = new ArrayList<>();
-        for (JsonNode payment : attributes.path("payments")) {
-            JsonNode value = payment.path("attributes").isMissingNode() ? payment : payment.path("attributes");
+        JsonNode data = root.path("data");
+        if (!data.isArray()) return payments;
+        for (JsonNode payment : data) {
+            JsonNode value = payment.path("attributes").isObject() ? payment.path("attributes") : payment;
             String id = payment.path("id").asText(value.path("id").asText(""));
             if (!id.isBlank()) {
                 payments.add(new Payment(
@@ -112,17 +133,10 @@ public class PaymongoClient {
                         value.path("amount").asLong(),
                         value.path("currency").asText("PHP"),
                         value.path("status").asText("paid"),
-                        epoch(value.path("paid_at").asLong(value.path("created_at").asLong(0)))));
+                        providerInstant(value)));
             }
         }
-        return new PaymentLink(
-                requiredText(data, "id"),
-                requiredText(attributes, "checkout_url"),
-                attributes.path("reference_number").asText(null),
-                attributes.path("amount").asLong(),
-                attributes.path("status").asText("unpaid"),
-                attributes.path("livemode").asBoolean(properties.liveMode()),
-                payments);
+        return payments;
     }
 
     private String providerMessage(String body) {
@@ -143,7 +157,20 @@ public class PaymongoClient {
         if (value.isBlank()) throw new PaymongoApiException("PayMongo response is missing " + field + ".");
         return value;
     }
-    private static Instant epoch(long value) { return value > 0 ? Instant.ofEpochSecond(value) : Instant.now(); }
+    private static Instant providerInstant(JsonNode value) {
+        JsonNode timestamp = value.hasNonNull("paid_at") ? value.path("paid_at") : value.path("created_at");
+        if (timestamp.isNumber()) {
+            long epoch = timestamp.asLong();
+            if (epoch > 0) return Instant.ofEpochSecond(epoch);
+        } else if (timestamp.isTextual() && !timestamp.asText().isBlank()) {
+            try {
+                return Instant.parse(timestamp.asText());
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // Fall back to receipt time when the provider timestamp is not ISO-8601.
+            }
+        }
+        return Instant.now();
+    }
 
     public record PaymentLink(
             String id, String checkoutUrl, String referenceNumber, long amountCentavos,
