@@ -74,19 +74,25 @@ public class CaptionGenerationService {
                 tone);
 
         // Step 3: Log generation event in a new transaction
-        logInteraction(submissionId, ctx.institutionId(), "re_generate", null);
+        logInteraction(submissionId, ctx.institutionId(), "re_generate", tone, null, null);
 
         return new CaptionResponseDto(submissionId, variants);
     }
 
     /**
-     * Logs a post-generation user action (use / use_then_edited / edit / dismiss).
-     * Called via the separate /ai/caption/log endpoint; failures are swallowed so
-     * they cannot block the UI.
+     * Logs a post-generation user action (use / use_then_edited / edit / dismiss / generated),
+     * optional 1-5 quality rating, and caption drafting duration (RP-03 / REQ-320, REQ-321).
      */
     @Transactional
     public void logInteraction(UUID submissionId, UUID institutionId,
                                String actionTaken, String toneSelected) {
+        logInteraction(submissionId, institutionId, actionTaken, toneSelected, null, null);
+    }
+
+    @Transactional
+    public void logInteraction(UUID submissionId, UUID institutionId,
+                               String actionTaken, String toneSelected,
+                               Integer qualityRating, Long draftingDurationMs) {
         try {
             AiInteractionLog entry = new AiInteractionLog();
             entry.setSubmissionId(submissionId);
@@ -94,6 +100,12 @@ public class CaptionGenerationService {
             entry.setInteractionType("caption_suggestion");
             entry.setActionTaken(actionTaken);
             entry.setToneSelected(toneSelected);
+            if (qualityRating != null && qualityRating >= 1 && qualityRating <= 5) {
+                entry.setQualityRating(qualityRating.shortValue());
+            }
+            if (draftingDurationMs != null && draftingDurationMs >= 0) {
+                entry.setDraftingDurationMs(draftingDurationMs);
+            }
             aiInteractionLogRepository.save(entry);
         } catch (Exception e) {
             // Never let logging fail the caller

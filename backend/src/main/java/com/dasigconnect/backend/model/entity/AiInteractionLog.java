@@ -32,6 +32,14 @@ public class AiInteractionLog {
     @Column(name = "suggested_value", columnDefinition = "text")
     private String suggestedValue;
 
+    /** Optional 1-5 quality rating recorded at decision time (RP-03 / REQ-320, REQ-321). */
+    @Column(name = "quality_rating")
+    private Short qualityRating;
+
+    /** Optional caption drafting duration in milliseconds from opening Post Details to saving/applying (RP-03 / REQ-320). */
+    @Column(name = "drafting_duration_ms")
+    private Long draftingDurationMs;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -54,5 +62,9 @@ public class AiInteractionLog {
     public void setToneSelected(String toneSelected) { this.toneSelected = toneSelected; }
     public String getSuggestedValue() { return suggestedValue; }
     public void setSuggestedValue(String suggestedValue) { this.suggestedValue = suggestedValue; }
+    public Short getQualityRating() { return qualityRating; }
+    public void setQualityRating(Short qualityRating) { this.qualityRating = qualityRating; }
+    public Long getDraftingDurationMs() { return draftingDurationMs; }
+    public void setDraftingDurationMs(Long draftingDurationMs) { this.draftingDurationMs = draftingDurationMs; }
     public Instant getCreatedAt() { return createdAt; }
 }

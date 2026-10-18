@@ -173,11 +173,12 @@ class SystemHealthServiceTest {
 
         List<BackgroundJobHealthDto> jobs = service.backgroundJobs();
 
-        assertThat(jobs).hasSize(17);
+        assertThat(jobs).hasSize(18);
         assertThat(jobs).extracting(BackgroundJobHealthDto::jobName)
                 .contains("Review Lock Cleanup", "Validation Deadline Notification",
                         "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention",
-                        "Generated Watermark Purge", "Storage Quota Reservation Expiry");
+                        "Generated Watermark Purge", "Storage Quota Reservation Expiry",
+                        "Subscription Lifecycle");
         assertThat(jobs).allSatisfy(j
                 -> assertThat(j.status()).isIn(HealthStatus.UNAVAILABLE, HealthStatus.SCHEDULED));
     }

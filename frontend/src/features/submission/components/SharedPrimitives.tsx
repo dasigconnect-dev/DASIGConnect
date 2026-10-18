@@ -263,24 +263,31 @@ export function GuardSection({
 export function CheckItem({
   pass,
   idle,
+  optional = false,
   title,
   sub,
   onClick,
 }: {
   pass: boolean;
   idle?: boolean;
+  optional?: boolean;
   title: string;
   sub: string;
   onClick?: () => void;
 }) {
+  const toneClass = idle ? "idle" : pass ? "pass" : optional ? "idle" : "warn";
+  const iconClass = idle
+    ? "ti-clock"
+    : pass
+      ? "ti-check"
+      : optional
+        ? "ti-sparkles"
+        : "ti-alert-triangle";
+
   const content = (
     <>
-      <div
-        className={`sub-check-icon ${idle ? "idle" : pass ? "pass" : "warn"}`}
-      >
-        <i
-          className={`ti ${idle ? "ti-clock" : pass ? "ti-check" : "ti-alert-triangle"}`}
-        ></i>
+      <div className={`sub-check-icon ${toneClass}`}>
+        <i className={`ti ${iconClass}`}></i>
       </div>
       <div>
         <div className="sub-check-title">{title}</div>
@@ -356,11 +363,23 @@ export function QueueState({
   );
 }
 
-export function ReadinessRing({ score }: { score: number }) {
+export function ReadinessRing({
+  score,
+  requiredComplete = 0,
+  requiredTotal = 7,
+  gatePassed = score >= 100,
+}: {
+  score: number;
+  requiredComplete?: number;
+  requiredTotal?: number;
+  gatePassed?: boolean;
+}) {
   const circumference = 175.9;
-  const offset = circumference - (score / 100) * circumference;
+  const fraction = requiredTotal > 0 ? requiredComplete / requiredTotal : score / 100;
+  const offset = circumference - Math.min(Math.max(fraction, 0), 1) * circumference;
+  const strokeColor = gatePassed ? "#16A34A" : requiredComplete > 0 ? "#D97706" : "#DC2626";
   return (
-    <div className="sub-score-ring">
+    <div className="sub-score-ring" aria-hidden="true">
       <svg viewBox="0 0 64 64">
         <circle className="sub-score-bg" cx="32" cy="32" r="28" />
         <circle
@@ -370,18 +389,18 @@ export function ReadinessRing({ score }: { score: number }) {
           r="28"
           style={{
             strokeDashoffset: offset,
-            stroke:
-              score >= 80 ? "#16A34A" : score >= 60 ? "#D97706" : "#DC2626",
+            stroke: strokeColor,
           }}
         />
       </svg>
       <div
         className="sub-score-num"
         style={{
-          color: score >= 80 ? "#16A34A" : score >= 60 ? "#D97706" : "#DC2626",
+          color: strokeColor,
+          fontSize: gatePassed ? "18px" : "15px",
         }}
       >
-        {score}
+        {gatePassed ? "✓" : `${requiredComplete}/${requiredTotal}`}
       </div>
     </div>
   );

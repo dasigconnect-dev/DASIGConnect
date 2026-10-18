@@ -23,10 +23,12 @@ export interface DashboardInstitution {
 export interface DashboardStats {
   submissions: SubmissionSummary[] | null;
   totalSubmissions: number | null;
+  draftSubmissions: number | null;
   publishedSubmissions: number | null;
   scheduledSubmissions: number | null;
   underReviewSubmissions: number | null;
   needsRevisionSubmissions: number | null;
+  failedPublications: number | null;
   contributors: number | null;
   moderators: number | null;
   activeMembers: number | null;
@@ -49,10 +51,12 @@ export interface DashboardResourceState {
 export const emptyDashboardStats: DashboardStats = {
   submissions: null,
   totalSubmissions: null,
+  draftSubmissions: null,
   publishedSubmissions: null,
   scheduledSubmissions: null,
   underReviewSubmissions: null,
   needsRevisionSubmissions: null,
+  failedPublications: null,
   contributors: null,
   moderators: null,
   activeMembers: null,
@@ -141,6 +145,12 @@ export function useDashboardData(user: User) {
   const analytics = analyticsQuery.data;
   const breakdown = analytics?.statusBreakdown ?? [];
   const scheduledFromAnalytics = breakdown.find((item) => item.status.toLowerCase() === "scheduled")?.count;
+  const failedFromAnalytics = breakdown
+    .filter((item) => item.status.toLowerCase() === "publish_failed" || item.status.toLowerCase() === "direct_post_failed")
+    .reduce((sum, item) => sum + item.count, 0);
+  const failedFromQueue = queueQuery.data?.items?.filter(
+    (item) => item.status === "publish_failed" || item.status === "direct_post_failed",
+  ).length;
   const activeOf = (role: string) =>
     users?.filter((item) => item.role.toLowerCase() === role && item.accountState.toLowerCase() === "active").length ?? null;
   const activeContributors = activeOf("contributor");
@@ -153,10 +163,15 @@ export function useDashboardData(user: User) {
     ...emptyDashboardStats,
     submissions: submissionsQuery.data?.items ?? null,
     totalSubmissions: submissionCounts?.all ?? null,
+    draftSubmissions: submissionCounts?.drafts ?? null,
     publishedSubmissions: submissionCounts?.published ?? null,
     scheduledSubmissions: submissionCounts?.scheduled ?? null,
     underReviewSubmissions: submissionCounts?.["under-review"] ?? null,
     needsRevisionSubmissions: submissionCounts?.["action-needed"] ?? null,
+    failedPublications:
+      user.role === "admin"
+        ? (analytics ? failedFromAnalytics : (failedFromQueue ?? null))
+        : (failedFromQueue ?? submissionCounts?.failed ?? null),
     contributors: user.role === "admin" ? activeContributors : validationSummary?.contributorCount ?? null,
     moderators: activeModerators,
     activeMembers:

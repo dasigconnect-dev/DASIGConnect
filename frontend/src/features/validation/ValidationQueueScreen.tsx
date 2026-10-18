@@ -41,6 +41,7 @@ import {
 } from "../../api/validationApi";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
+import { useTaskTelemetry } from "../../hooks/useTaskTelemetry";
 import type { CaptionTone } from "../../api/aiApi";
 import AiCaptionButton from "../submission/components/AiCaptionButton";
 import { CAPTION_CHAR_LIMIT, extractHashtags, tagsAppendedToCaption } from "../submission/utils";
@@ -267,20 +268,35 @@ function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): E
 }
 
 const statusLabel: Record<string, string> = {
-  pending: "Pending",
-  in_review: "In Review",
-  needs_revision: "Needs Revision",
-  missed_review: "Missed Review",
-  scheduled: "Scheduled",
-  publishing: "Publishing",
-  published: "Published",
-  published_manual: "Published (Manual)",
-  admin_direct_post: "Direct Post",
+  pending: "Waiting for Moderator Review",
+  in_review: "Being Reviewed by Moderator",
+  needs_revision: "Needs Revision (Waiting on Contributor)",
+  missed_review: "Publishing Slot Passed (Needs New Schedule)",
+  scheduled: "Approved & Scheduled",
+  publishing: "Publishing Now",
+  published: "Published on Facebook",
+  published_manual: "Published Manually",
+  admin_direct_post: "Published Directly by Admin",
   direct_post_scheduled: "Direct Post Scheduled",
   direct_post_publishing: "Direct Post Publishing",
-  direct_post_failed: "Direct Post Failed",
-  publish_failed: "Publish Failed",
+  direct_post_failed: "Direct Post Failed (Needs Action)",
+  publish_failed: "Publish Failed (Needs Action)",
   rejected: "Rejected",
+};
+
+const statusGuidanceText: Record<string, string> = {
+  pending: "Waiting for a Moderator to review and approve or return for revision.",
+  in_review: "A Moderator is actively reviewing this submission.",
+  needs_revision: "Needs revision — the Moderator asked for changes. The Contributor must edit and resubmit.",
+  missed_review: "The scheduled publish time passed before review completed — assign a new schedule to return it to the approval queue.",
+  scheduled: "Approved — scheduled to publish automatically on the DASIG Facebook Page.",
+  publishing: "Currently publishing to the DASIG Facebook Page.",
+  published: "Published on the DASIG Facebook Page — no further action needed.",
+  published_manual: "Published manually on the DASIG Facebook Page — no further action needed.",
+  admin_direct_post: "Published directly by an Administrator — no further action needed.",
+  direct_post_failed: "Automatic direct publishing failed — retry or complete manual fallback.",
+  publish_failed: "Automatic publishing failed — an Administrator or Moderator needs to retry or complete manual publishing.",
+  rejected: "Not approved for publication — the Contributor can view the rejection reason or edit and resubmit.",
 };
 
 function getUserCacheScope(user: User) {
@@ -732,7 +748,13 @@ export default function ValidationQueueScreen({
     }, MODAL_EXIT_MS);
   }
 
+  const reviewTaskTelemetry = useTaskTelemetry(
+    user.role === "admin" ? "ADMIN_REVIEW_SUBMISSION" : "MODERATOR_REVIEW_SUBMISSION",
+    false,
+  );
+
   const openSubmission = useCallback(async (summary: SubmissionSummary) => {
+    reviewTaskTelemetry.startTask(summary.id);
     if (selectedId === summary.id) {
       return;
     }
@@ -865,15 +887,27 @@ export default function ValidationQueueScreen({
   // `?submissionId=` (from notifications) opens that submission once, then the
   // param is dropped so a reload doesn't reopen it after it's been closed.
   const deepLinkId = searchParams.get("submissionId");
+  const deepLinkMode = searchParams.get("mode");
   useEffect(() => {
     if (!deepLinkId) return;
     let active = true;
     fetchSubmissionDetail(deepLinkId)
-      .then((detail) => {
+      .then(async (detail) => {
         if (!active) return;
-        void openSubmission(detail);
+        await openSubmission(detail);
         if (!isDesktop) savedScrollYRef.current = window.scrollY;
         setMobileView("review");
+
+        if (deepLinkMode === "review" && REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
+          try {
+            const lockRes = await acquireReviewLock(detail.id);
+            if (active && lockRes.data) {
+              setLockFor(detail.id, lockRes.data);
+            }
+          } catch {
+            // If lock could not be acquired (e.g. held by another or forbidden), openSubmission handles notice
+          }
+        }
       })
       .catch((err: unknown) => {
         if (active) toast.error(readApiError(err, "Unable to open this submission."));
@@ -884,6 +918,7 @@ export default function ValidationQueueScreen({
           (prev) => {
             const params = new URLSearchParams(prev);
             params.delete("submissionId");
+            params.delete("mode");
             return params;
           },
           { replace: true },
@@ -894,7 +929,7 @@ export default function ValidationQueueScreen({
     };
     // Runs per deep-link id only; openSubmission's identity changes with the selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkId]);
+  }, [deepLinkId, deepLinkMode]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -1005,6 +1040,7 @@ export default function ValidationQueueScreen({
     setDecisionBusy(true);
     try {
       await approveSubmission(selected.id, publishNow);
+      reviewTaskTelemetry.completeTask(selected.id);
       toast.success(publishNow ? "Approved — publishing now." : "Submission approved and scheduled.");
       closeDecisionModal();
       clearLockFor(selected.id);
@@ -1013,6 +1049,7 @@ export default function ValidationQueueScreen({
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
+      reviewTaskTelemetry.recordError();
       const status = (err as { response?: { status?: number } })?.response?.status;
       const message = readApiError(err, "Approval failed.");
       if (status === 409 && message.includes("slot has already passed")) {
@@ -1502,6 +1539,7 @@ export default function ValidationQueueScreen({
 
     try {
       await requestSubmissionRevision(selected.id, { remarks: finalRemarks.trim() });
+      reviewTaskTelemetry.completeTask(selected.id);
       toast.warning("Revision request sent to the contributor.");
       closeDecisionModal();
       setRemarks("");
@@ -1513,6 +1551,7 @@ export default function ValidationQueueScreen({
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
+      reviewTaskTelemetry.recordError();
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
         closeDecisionModal();
@@ -1538,6 +1577,7 @@ export default function ValidationQueueScreen({
         reasonCode,
         notes: notes.trim() || undefined,
       });
+      reviewTaskTelemetry.completeTask(selected.id);
       toast.info("Submission rejected and contributor notified.");
       closeDecisionModal();
       setNotes("");
@@ -1548,6 +1588,7 @@ export default function ValidationQueueScreen({
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
+      reviewTaskTelemetry.recordError();
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
         closeDecisionModal();
@@ -3463,6 +3504,13 @@ function SubmissionDetailsPanel({
             <i className="ti ti-layout-sidebar-right-collapse" />
           </button>
         </header>
+
+        {statusGuidanceText[status] && (
+          <p className="val-details-muted" style={{ margin: "0 0 12px", fontSize: "12.5px", lineHeight: 1.45 }}>
+            <i className="ti ti-info-circle" style={{ marginRight: "6px" }} aria-hidden="true" />
+            {statusGuidanceText[status]}
+          </p>
+        )}
 
         {/* When it publishes is the fact a reviewer acts on — lead with it. */}
         <section className={`val-details-publish ${modeClass}`} aria-label="Publishing">

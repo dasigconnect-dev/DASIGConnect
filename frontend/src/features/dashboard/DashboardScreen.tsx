@@ -11,6 +11,7 @@ import {
 import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import { dashboardTourSteps } from "../onboarding/tours/dashboardTour";
+import { statusGuidance, statusLabels } from "../submission/constants";
 
 interface DashboardScreenProps {
   user: User;
@@ -116,10 +117,47 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           </button>
         </div>
 
-        <div className="first-login-notice" id="first-login-notice">
-          <i className={notice(user, dashboardStats).icon}></i>
-          <div dangerouslySetInnerHTML={{ __html: notice(user, dashboardStats).html }}></div>
-        </div>
+        {(() => {
+          const nextAction = notice(user, dashboardStats);
+          return (
+            <div
+              className="first-login-notice"
+              id="first-login-notice"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: "1 1 280px" }}>
+                <i className={nextAction.icon}></i>
+                <div dangerouslySetInnerHTML={{ __html: nextAction.html }}></div>
+              </div>
+              {nextAction.actionLabel && nextAction.actionPath && (
+                <button
+                  type="button"
+                  className="sub-btn-primary"
+                  style={{
+                    padding: "7px 14px",
+                    fontSize: "12.5px",
+                    fontWeight: 700,
+                    borderRadius: "8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    whiteSpace: "nowrap",
+                  }}
+                  onClick={() => navigate(nextAction.actionPath!)}
+                >
+                  <span>{nextAction.actionLabel}</span>
+                  <i className="ti ti-arrow-right" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
 
 
@@ -337,7 +375,21 @@ function subline(user: User | null) {
   return `${capitalize(user.role)} · ${instName}`;
 }
 
-function notice(user: User | null, stats: DashboardStats) {
+function countMissingDraftChecks(draft: SubmissionSummary): number {
+  let missing = 0;
+  if (!draft.eventTitle?.trim()) missing += 1;
+  if (!draft.eventDate?.trim()) missing += 1;
+  if (!draft.caption?.trim()) missing += 1;
+  if ((draft.mediaCount ?? 0) < 1) missing += 1;
+  if (!draft.albumName?.trim()) missing += 1;
+  if (!draft.fastTrack && !draft.scheduledAt) missing += 1;
+  return Math.max(1, missing);
+}
+
+function notice(
+  user: User | null,
+  stats: DashboardStats,
+): { icon: string; html: string; actionLabel?: string; actionPath?: string } {
   if (!user) {
     return {
       icon: "ti ti-confetti",
@@ -345,63 +397,107 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   if (user.role === "admin") {
+    const failed = stats.failedPublications;
     const waiting = stats.reviewQueuePending;
     const rate = stats.publishingSuccessRate;
-    const parts: string[] = [];
+    if (failed !== null && failed > 0) {
+      return {
+        icon: "ti ti-alert-triangle",
+        html: `<strong>Next action:</strong> <strong>${failed} failed publication${failed === 1 ? "" : "s"} need${failed === 1 ? "s" : ""} action</strong> — retry automatic publishing or complete manual fallback.`,
+        actionLabel: "Resolve Failed Posts",
+        actionPath: "/queue",
+      };
+    }
     if (waiting !== null && waiting > 0) {
-      parts.push(
-        `<strong>${waiting} submission${waiting === 1 ? "" : "s"}</strong> ${waiting === 1 ? "is" : "are"} waiting in the review queue`,
-      );
+      return {
+        icon: "ti ti-clipboard-check",
+        html: `<strong>Next action:</strong> <strong>${waiting} submission${waiting === 1 ? "" : "s"} awaiting review</strong> — review next in the validation queue.`,
+        actionLabel: "Review Next",
+        actionPath: "/queue",
+      };
     }
-    if (rate !== null && rate < 100) {
-      parts.push(`publishing success is at <strong>${rate}%</strong> over the last 30 days`);
-    }
-    const tail = parts.length
-      ? ` Right now, ${parts.join(" and ")}.`
-      : waiting === null || stats.publishedLast30d === null
+    const tail =
+      waiting === null || stats.publishedLast30d === null
         ? " Current dashboard metrics are temporarily unavailable."
-      : " Everything across the network is on track.";
+        : rate !== null && rate < 100
+          ? ` Publishing success is at <strong>${rate}%</strong> over the last 30 days.`
+          : " Everything across the network is on track.";
     return {
       icon: "ti ti-shield-check",
       html: `<strong>Administrator workspace.</strong> Full network-wide visibility across all member institutions.${tail}`,
+      actionLabel: "Open Review Queue",
+      actionPath: "/queue",
     };
   }
   if (user.role === "moderator") {
     const pending = stats.reviewQueuePending;
-    const pendingText = pending === null
-      ? `Review queue metrics are temporarily unavailable.`
-      : pending > 0
-      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting review</strong> from contributors across the network.`
-      : `The review queue is clear — no submissions are waiting for review.`;
+    if (pending === null) {
+      return {
+        icon: "ti ti-clipboard-check",
+        html: "Review queue metrics are temporarily unavailable. Approved content is scheduled automatically for the DASIG Facebook Page.",
+        actionLabel: "Open Review Queue",
+        actionPath: "/queue",
+      };
+    }
+    if (pending > 0) {
+      return {
+        icon: "ti ti-clipboard-check",
+        html: `<strong>Next action:</strong> <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting review</strong> — review next from contributors across the network.`,
+        actionLabel: "Review Next",
+        actionPath: "/queue",
+      };
+    }
     return {
-      icon: "ti ti-clipboard-check",
-      html: `${pendingText} Approved content is scheduled automatically for the DASIG Facebook Page.`,
+      icon: "ti ti-circle-check",
+      html: "The review queue is clear — no submissions are waiting for review. Approved content is scheduled automatically for the DASIG Facebook Page.",
+      actionLabel: "View Calendar",
+      actionPath: "/calendar",
     };
   }
   const instName = getInstitutionName(user);
   if (stats.needsRevisionSubmissions === null || stats.underReviewSubmissions === null) {
     return {
       icon: "ti ti-photo-up",
-      html: `<strong>Contributor workspace.</strong> Submission activity is temporarily unavailable.`,
+      html: "<strong>Contributor workspace.</strong> Submission activity is temporarily unavailable.",
+      actionLabel: "New Submission",
+      actionPath: "/submissions/new",
     };
   }
   const needsRevision = stats.needsRevisionSubmissions;
   if (needsRevision > 0) {
+    const targetRev = stats.submissions?.find((s) => s.status === "needs_revision");
     return {
       icon: "ti ti-pencil-minus",
-      html: `<strong>${needsRevision} submission${needsRevision === 1 ? "" : "s"}</strong> ${needsRevision === 1 ? "was" : "were"} sent back for revision by your Moderator. Update ${needsRevision === 1 ? "it" : "them"} and resubmit for review.`,
+      html: `<strong>Next action:</strong> <strong>Needs revision — the Moderator asked for changes. Edit and resubmit.</strong> (${needsRevision} submission${needsRevision === 1 ? "" : "s"})`,
+      actionLabel: "Edit & Resubmit",
+      actionPath: targetRev ? `/submissions/${targetRev.id}` : "/submissions",
+    };
+  }
+  const draftsCount = stats.draftSubmissions ?? 0;
+  if (draftsCount > 0) {
+    const targetDraft = stats.submissions?.find((s) => s.status === "draft");
+    const missingItems = targetDraft ? countMissingDraftChecks(targetDraft) : 1;
+    return {
+      icon: "ti ti-edit",
+      html: `<strong>Next action:</strong> <strong>Finish your draft — ${missingItems} required item${missingItems === 1 ? "" : "s"} left.</strong> Complete the remaining required checks and submit for review.`,
+      actionLabel: "Finish Draft",
+      actionPath: targetDraft ? `/submissions/${targetDraft.id}` : "/submissions",
     };
   }
   const underReview = stats.underReviewSubmissions;
   if (underReview > 0) {
     return {
       icon: "ti ti-clock",
-      html: `You have <strong>${underReview} submission${underReview === 1 ? "" : "s"}</strong> awaiting review from your Moderator. You'll be notified once ${underReview === 1 ? "it's reviewed" : "they're reviewed"}.`,
+      html: `You have <strong>${underReview} submission${underReview === 1 ? "" : "s"}</strong> awaiting review from your Moderator. <strong>Waiting for Moderator review — no action needed from you right now.</strong>`,
+      actionLabel: "View My Submissions",
+      actionPath: "/submissions",
     };
   }
   return {
     icon: "ti ti-confetti",
     html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Moderator will review them before they go to the DASIG Facebook page.`,
+    actionLabel: "Start First Submission",
+    actionPath: "/submissions/new",
   };
 }
 
@@ -621,7 +717,7 @@ function activityForRole(
 
     return {
       title: s.eventTitle,
-      subtitle: "",
+      subtitle: statusGuidance[s.status] ?? "",
       institution: institutionName,
       submitted: submittedLabel,
       status: statusDisplay(s.status),
@@ -630,27 +726,28 @@ function activityForRole(
 }
 
 function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["status"] {
+  const label = statusLabels[status] ?? status;
   switch (status) {
     case "draft":
-      return { label: "Draft", icon: "ti ti-pencil", className: "pill-draft" };
+      return { label, icon: "ti ti-pencil", className: "pill-draft" };
     case "pending":
-      return { label: "Pending Review", icon: "ti ti-clock", className: "pill-pending" };
+      return { label, icon: "ti ti-clock", className: "pill-pending" };
     case "in_review":
-      return { label: "In Review", icon: "ti ti-eye", className: "pill-review" };
+      return { label, icon: "ti ti-eye", className: "pill-review" };
     case "needs_revision":
-      return { label: "Needs Revision", icon: "ti ti-pencil-minus", className: "pill-revision" };
+      return { label, icon: "ti ti-pencil-minus", className: "pill-revision" };
     case "scheduled":
-      return { label: "Scheduled", icon: "ti ti-calendar-event", className: "pill-scheduled" };
+      return { label, icon: "ti ti-calendar-event", className: "pill-scheduled" };
     case "publish_failed":
-      return { label: "Publish Failed", icon: "ti ti-alert-circle", className: "pill-failed" };
+      return { label, icon: "ti ti-alert-circle", className: "pill-failed" };
     case "published":
     case "published_manual":
     case "admin_direct_post":
-      return { label: "Published", icon: "ti ti-circle-check", className: "pill-published" };
+      return { label, icon: "ti ti-circle-check", className: "pill-published" };
     case "rejected":
-      return { label: "Rejected", icon: "ti ti-x", className: "pill-rejected" };
+      return { label, icon: "ti ti-x", className: "pill-rejected" };
     default:
-      return { label: status, icon: "ti ti-circle", className: "" };
+      return { label, icon: "ti ti-circle", className: "" };
   }
 }
 

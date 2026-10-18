@@ -1073,7 +1073,7 @@ A server-paginated list of the actor's submissions with filter tabs: Drafts, Act
 
 **Composer Wizard (`/submissions/new`, `/submissions/:submissionId`)**
 
-A three-step wizard — **Media → Post Details → Organize & Schedule** — with a step indicator, Next/Back navigation (forward gated by the step's Required items; Back always enabled), and a persistent Save as Draft button. Once a draft exists, changes autosave after a short delay. The desktop layout is two columns (form \+ Readiness panel); at ≤900 px the Readiness panel opens as a bottom sheet from a score chip and the Submit/Save Draft bar is sticky.
+A three-step wizard — **Media → Post Details → Organize & Schedule** — with a step indicator, Next/Back navigation (forward gated by the step's Required items; Back always enabled), and a persistent Save as Draft button. Once a draft exists, changes autosave after a short delay. The desktop layout is two columns (form \+ Readiness panel); at ≤900 px the Readiness panel opens as a bottom sheet from a status chip (`Required: X of 7` / `Required: 7 of 7 ✓`) and the Submit/Save Draft bar is sticky, with **Submit for Approval** promoted as the primary always-visible action across all steps once all 7 required checks pass.
 
 **Step 2 — Post Details**
 
@@ -1083,9 +1083,9 @@ A three-step wizard — **Media → Post Details → Organize & Schedule** — w
 
 Opened from the Templates button (a right-hand drawer on desktop, a bottom sheet on small screens). Pinned header actions: **Generate from Top Posts** and **Save current caption**. Filters: All / Built-in / My templates. Applying a template requires at least one attached media item, replaces the caption, records the template, and clears current tags.
 
-**Readiness Checklist Panel**
+**Submission Gate & Post Quality Tips Panel (Readiness Checklist)**
 
-A live score out of 100 (Required 75%, Recommended 25%) with grade and dial; each row jumps to the relevant step/field. Required: title, date, caption, ≥1 media, file requirements, album, valid schedule (Standard). Recommended: caption length, ≥1 hashtag, ≥1 media tag, ≥1 per-media caption, template used or skipped.
+Separates submission readiness into two distinct signals with no blended percentage: (1) a binary **Submission Gate** (`Required: 7 of 7 ✓ — Ready to submit` when complete, or `Required: X of 7` naming `Next: [Missing Item] →` with a direct jump link while incomplete), and (2) **Post Quality Tips** (`Tips: X of 5 applied`, clearly marked *Optional — never blocks submission*). Each row jumps to the relevant step/field. Required (7): title, date, caption, ≥1 media, file requirements, album, valid schedule (Standard). Optional Quality Tips (5): caption length, ≥1 hashtag, ≥1 media tag, ≥1 per-media caption, template used or skipped.
 
 **Facebook Preview**
 
@@ -3412,24 +3412,26 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 ## ***4.1. RP-01 — Submission gate separated from quality tips (VF-01; REQ-124)*** {#4.1.-rp-01-—-submission-gate-separated-from-quality-tips-(vf-01;-req-124)}
 
-* **Current design:** `features/submission/utils.ts` computes one score `round(required/7 × 75 + recommended/5 × 25)`; `readinessTone` colours it.  
-* **Target design:** replace the score with two derived values computed in the same hook: `gate = { passed, total: 7, nextMissing }` and `tips = { applied, total: 5 }`. The readiness panel shows "Required: 7 of 7 — Ready to submit" or names `nextMissing` with a jump link; tips render separately as "Tips: 3 of 5 applied" with no percentage. Submit becomes the primary action whenever `gate.passed === gate.total`, on every screen size (shared with §3.4.4's mobile action bar). Server-side `SubmissionService.assertContentComplete` is unchanged (it already checks only the required items).  
+* **Status:** **Implemented (`refactor/p1-submission-gate`)**  
+* **Implementation:** `features/submission/utils.ts` (`calculateSubmissionGate`, `getSubmissionReadiness`) replaces the blended 75%/25% percentage with two separate structures: a binary **Submission Gate** (`gate = { passed: requiredCompletedCount, total: 7, nextMissing: nextMissingRequiredItem }`) and optional **Post Quality Tips** (`tips = { applied: optionalAppliedCount, total: 5 }`). The readiness panel (`SubmissionScreen.tsx`, `SharedPrimitives.tsx`, `StepProgress.tsx`) displays `"Required: 7 of 7 ✓ — Ready to submit"` (or `"Required: X of 7"` with a `"Next: [Missing Item] →"` jump link while incomplete) and renders optional tips separately as `"Tips: X of 5 applied"` with no percentage score. Whenever `gatePassed === true`, `Submit for Approval` becomes the primary always-visible action on every screen size. Server-side `SubmissionService.assertContentComplete` enforces only the 7 required items.  
 * **Data:** none. Optional metric: drafts whose gate passed but that were not submitted within 24 h (query over `submissions` and the task-event log of §4.2).  
-* **Test:** STD Case-30a.
+* **Test:** STD Case-6 & Case-30a (**PASS**).
 
 ## ***4.2. RP-02 — Next action, plain-language status, task-event log (VF-02; REQ-125, REQ-126)*** {#4.2.-rp-02-—-next-action,-plain-language-status,-task-event-log-(vf-02;-req-125,-req-126)}
 
-* **Next-action card:** new `GET /api/v1/me/next-action` returning `{ kind, label, count, deepLink }` computed per role — Contributor: oldest draft with `nextMissing` items or a `needs_revision` item; Moderator: count of `pending` (Fast-Track first) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen`.  
-* **Status wording:** one shared map `statusCopy[status] = { label, meaning, whoActsNext }` used by submission lists, the review queue, and notification templates (`NotificationEventListener` messages), so the same sentence appears everywhere.  
-* **Task-event log:** new table `task_events (id, user_id, role, task_type, submission_id NULL, event ENUM('started','completed','abandoned'), occurred_at, client_session_id)`, written by a new `POST /api/v1/task-events` (signed in) and by server-side hooks for completion (submit, terminal review action, invitation sent). Used to compute first-attempt completion and Time-on-Task per role. No free text is stored.  
-* **Test:** STD Case-30b; re-validation.
+* **Status:** **Implemented (`refactor/p2-first-time-independence`)**  
+* **Next-action card:** `GET /api/v1/me/next-action` (`TaskTelemetryController` → `TaskTelemetryService.getNextAction`) returns `{ kind, label, count, deepLink }` computed per role — Contributor: `needs_revision` draft first, else oldest `draft` with missing required items; Moderator: count of `pending` (Fast-Track prioritized) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen.tsx`.  
+* **Status wording:** shared `statusCopy[status] = { label, meaning, whoActsNext }`, `statusLabels`, and `statusGuidance` in `features/submission/constants.ts`, mirrored in `NotificationEventListener.java` (verified by `NotificationEventListenerTest`), so submission lists, the review queue, and in-app/email/Messenger notifications display identical plain-language status explanations.  
+* **Task-event log:** migration `V123__task_completion_telemetry.sql` creates `task_events (id, user_id, role, task_type, submission_id NULL, event CHECK ('started','completed','abandoned'), occurred_at, client_session_id)` and `task_completion_logs`, written via `POST /api/v1/task-events` and `POST /api/v1/telemetry/tasks/{start,complete}` (`useTaskTelemetry.ts` across `SubmissionScreen`, `ValidationQueueScreen`, `InvitationComposer`, `InviteScreen`) and summarized via `GET /api/v1/telemetry/tasks/summary`. No free text is stored.  
+* **Test:** STD Case-30b (**PASS**).
 
 ## ***4.3. RP-03 — Caption on upload, media-first picker, log-based GO3 (VF-03; REQ-320, REQ-321)*** {#4.3.-rp-03-—-caption-on-upload,-media-first-picker,-log-based-go3-(vf-03;-req-320,-req-321)}
 
-* **Background caption:** after the first image is attached to a saved draft that has an event title, the composer calls a new `POST /api/v1/ai/caption/background` (same 30/h limit and 30 s timeout as `POST /ai/caption`); `CaptionGenerationService` stores the result in a new `ai_caption_suggestions (id, submission_id, user_id, tone, caption, model, status ENUM('generated','used','used_edited','dismissed','failed'), rating SMALLINT NULL, generated_at, decided_at)`. The caption field shows "AI draft ready — Use / Edit / Dismiss"; it is never inserted automatically. Failure falls back silently to manual entry.  
-* **Measurement:** coverage \= suggestions generated ÷ submissions with images; acceptance \= (`used` \+ `used_edited`) ÷ generated; quality \= mean `rating` (one-click 1–5 at decision); drafting time \= time from opening Post Details to first caption save, recorded as a task event (§4.2).  
-* **Media-first:** `MediaAssetsPicker` initial tab becomes `suggestions` when `AIRecommendationService` reports enough context (≥ 10 characters or a selected image); otherwise `upload`.  
-* **Test:** STD Case-30c.
+* **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).**  
+* **Background caption:** after the first image is attached to a saved draft that has an event title, `useAiCaptionAssist` triggers background caption generation (`POST /api/v1/ai/caption` / `/api/v1/ai/caption/background`, same 30/h limit and 30 s timeout); `CaptionGenerationService` and `AiCaptionSuggestion` offer the result inline as **"AI draft ready — Use / Edit / Dismiss"**, never inserting it automatically. Failure falls back silently to manual entry.  
+* **Measurement:** coverage \= suggestions generated ÷ submissions with images; acceptance \= (`used` \+ `used_edited`) ÷ generated; quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V123__ai_caption_suggestions_telemetry.sql`).  
+* **Media-first:** `MediaAssetsPicker` initial tab defaults to `ai` (**AI Suggestions**) when event context (≥ 10 characters or a selected image) is present; otherwise `upload`.  
+* **Test:** STD Case-30c (**PASS**).
 
 ## ***4.4. RP-04 — Mobile operability (VF-04; REQ-218)*** {#4.4.-rp-04-—-mobile-operability-(vf-04;-req-218)}
 

@@ -289,6 +289,24 @@ class CaptionGenerationServiceTest {
     }
 
     @Test
+    void logInteraction_withRatingAndDuration_savesFields() {
+        UUID submissionId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        var captor = org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AiInteractionLog.class);
+        when(aiInteractionLogRepository.save(captor.capture())).thenAnswer(i -> i.getArgument(0));
+
+        service.logInteraction(submissionId, institutionId, "use_then_edited", "community", 4, 9800L);
+
+        var saved = captor.getValue();
+        assertThat(saved.getSubmissionId()).isEqualTo(submissionId);
+        assertThat(saved.getInstitutionId()).isEqualTo(institutionId);
+        assertThat(saved.getActionTaken()).isEqualTo("use_then_edited");
+        assertThat(saved.getToneSelected()).isEqualTo("community");
+        assertThat(saved.getQualityRating()).isEqualTo((short) 4);
+        assertThat(saved.getDraftingDurationMs()).isEqualTo(9800L);
+    }
+
+    @Test
     void logInteraction_swallowsException() {
         UUID submissionId = UUID.randomUUID();
         when(aiInteractionLogRepository.save(any())).thenThrow(new RuntimeException("DB error"));

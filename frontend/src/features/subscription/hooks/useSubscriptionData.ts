@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   changeSubscriptionPlan,
+  extendSubscriptionGracePeriod,
   getCurrentSubscription,
   getInstitutionSubscriptionUsage,
   getSubscriptionPlans,
   getSubscriptionReconciliation,
   getSubscriptionUsage,
+  recordManualSubscriptionRenewal,
 } from "../../../api/subscriptionApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys, queryRoots } from "../../../lib/queryKeys";
@@ -53,6 +55,20 @@ export function useSubscriptionData(userId?: string | null) {
     },
   });
 
+  const renewalMutation = useMutation({
+    mutationFn: () => recordManualSubscriptionRenewal(1),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
+    },
+  });
+
+  const extendGraceMutation = useMutation({
+    mutationFn: () => extendSubscriptionGracePeriod(7),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
+    },
+  });
+
   return {
     statusQuery,
     plansQuery,
@@ -60,5 +76,7 @@ export function useSubscriptionData(userId?: string | null) {
     institutionsQuery,
     reconciliationQuery,
     changePlanMutation,
+    renewalMutation,
+    extendGraceMutation,
   };
 }
