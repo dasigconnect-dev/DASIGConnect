@@ -6540,7 +6540,7 @@ section.sub-form-section.sub-field-pulse {
     max-height: min(82dvh, 680px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     background: var(--sub-surface);
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -14px 40px rgba(12, 29, 61, 0.22);
@@ -6880,7 +6880,7 @@ section.sub-form-section.sub-field-pulse {
    in the page header at this width.
    ========================================================================== */
 @media (max-width: 900px) {
-  .sub-guard-panel {
+  .sub-guard-panel:not(.is-sheet-open) {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
@@ -6892,8 +6892,26 @@ section.sub-form-section.sub-field-pulse {
     background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
-    z-index: 500 !important; /* above the canvas (10); below open popovers (600), guides (1000+) and the sheet (3100) */
+    z-index: 500 !important; /* above canvas (10); below open popovers (600) and guides (1000+) */
     box-shadow: 0 -4px 20px rgba(12, 29, 61, 0.08) !important;
+  }
+  .sub-guard-panel.is-sheet-open {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 3100 !important; /* above topnav (700) and canvas overlays */
+    box-shadow: none !important;
+    pointer-events: auto !important;
+  }
+  .sub-guard-panel.is-sheet-open .sub-guard-actions {
+    display: none !important;
   }
   .sub-guard-actions {
     display: flex;
