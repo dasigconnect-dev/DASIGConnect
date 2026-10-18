@@ -8,5 +8,18 @@ public record ExternalServiceHealthDto(
         String detail,
         Instant checkedAt,
         Instant expiresAt,
-        Long secondsUntilExpiry) {
+        Long secondsUntilExpiry,
+        Integer quotaRemaining,
+        Integer quotaLimit,
+        Instant resetAt) {
+
+    public ExternalServiceHealthDto(
+            String service,
+            HealthStatus status,
+            String detail,
+            Instant checkedAt,
+            Instant expiresAt,
+            Long secondsUntilExpiry) {
+        this(service, status, detail, checkedAt, expiresAt, secondsUntilExpiry, null, null, expiresAt);
+    }
 }

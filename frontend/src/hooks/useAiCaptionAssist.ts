@@ -165,6 +165,12 @@ export function useAiCaptionAssist(
         setState("idle");
         return null;
       }
+      if (background) {
+        // RP-03 (REQ-320): Background generation failure falls back silently to manual entry without blocking.
+        setState("idle");
+        setNotice(null);
+        return null;
+      }
       if (isRateLimitError(err)) {
         setRateLimitReset(err.rateLimitReset ?? null);
         setState("rate-limited");

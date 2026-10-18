@@ -1,5 +1,27 @@
 package com.dasigconnect.backend.external;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.dto.ai.EventHypothesisDto;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
@@ -7,32 +29,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 
 /**
- * Uses Google Gemini for multimodal understanding, media classification,
- * social media caption generation, and text assistance (proofreading, ideas, templates).
+ * Uses Google Gemini for multimodal understanding, media classification, social
+ * media caption generation, and text assistance (proofreading, ideas,
+ * templates).
  */
 @Service
 public class GeminiVisionClient implements AiVisionClient, MediaClassificationClient {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiVisionClient.class);
-    private static final String API_ROOT =
-            "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final String API_ROOT
+            = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final List<String> ALLOWED_CATEGORIES = List.of(
             "Food", "People", "Event", "Technology", "Research", "Education",
             "Sports", "Culture", "Nature", "Document", "Product", "Architecture",
@@ -99,13 +107,14 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     /**
-     * Generates one selected-tone caption for a social media post using Gemini multimodal understanding.
+     * Generates one selected-tone caption for a social media post using Gemini
+     * multimodal understanding.
      */
     public List<CaptionVariantDto> generateCaptions(List<String> imageUrls, String mediaMetadata,
-                                                    String eventTitle, String eventDate,
-                                                    String institutionName,
-                                                    String existingCaption,
-                                                    String prompt, String targetTone) {
+            String eventTitle, String eventDate,
+            String institutionName,
+            String existingCaption,
+            String prompt, String targetTone) {
         validateConfig();
 
         int requestedWords = extractRequestedWordCount(prompt);
@@ -150,12 +159,13 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
         int actualWords = lastVariants.isEmpty() ? 0 : countWords(lastVariants.get(0).getCaption());
         throw new GeminiApiException(
                 "Gemini caption did not meet requested word count. Requested "
-                        + requestedRange.min() + "-" + requestedRange.max()
-                        + " words, received " + actualWords + " words.");
+                + requestedRange.min() + "-" + requestedRange.max()
+                + " words, received " + actualWords + " words.");
     }
 
     /**
-     * Plain-text completion for system alerts / suggestions / proofreading / templates.
+     * Plain-text completion for system alerts / suggestions / proofreading /
+     * templates.
      */
     public String generateText(String systemPrompt, String userPrompt) {
         return generateText(systemPrompt, userPrompt, 512);
@@ -189,7 +199,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
                     if (part.path("thought").asBoolean(false)) {
                         continue;
                     }
-                    if (part.hasNonNull("text")) text.append(part.path("text").asText());
+                    if (part.hasNonNull("text")) {
+                        text.append(part.path("text").asText());
+                    }
                 }
             }
             return text.toString();
@@ -209,6 +221,75 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
         }
     }
 
+    private static final Pattern RETRY_AFTER_PATTERN = Pattern.compile(
+            "retry in (?:(\\d+)h)?(?:(\\d+)m)?(?:([\\d.]+)s)?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LIMIT_PATTERN = Pattern.compile(
+            "limit:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+
+    private final AtomicInteger quotaLimit = new AtomicInteger(20);
+    private final AtomicInteger quotaRemaining = new AtomicInteger(20);
+    private final AtomicReference<Instant> quotaResetAt = new AtomicReference<>(null);
+    private final AtomicBoolean quotaExceeded = new AtomicBoolean(false);
+
+    public record QuotaStatus(int remaining, int limit, Instant resetAt, boolean isExceeded) {}
+
+    public QuotaStatus getQuotaStatus() {
+        Instant reset = quotaResetAt.get();
+        if (reset != null && Instant.now().isAfter(reset)) {
+            quotaExceeded.set(false);
+            quotaRemaining.set(quotaLimit.get());
+            quotaResetAt.set(null);
+        }
+        return new QuotaStatus(
+                quotaRemaining.get(),
+                quotaLimit.get(),
+                quotaResetAt.get(),
+                quotaExceeded.get());
+    }
+
+    public void recordRateLimit(String responseBody) {
+        int limit = 20;
+        if (responseBody != null) {
+            Matcher limitMatcher = LIMIT_PATTERN.matcher(responseBody);
+            if (limitMatcher.find()) {
+                try {
+                    limit = Integer.parseInt(limitMatcher.group(1));
+                } catch (Exception ignored) {
+                }
+            }
+            this.quotaLimit.set(limit);
+            this.quotaRemaining.set(0);
+            this.quotaExceeded.set(true);
+
+            Matcher retryMatcher = RETRY_AFTER_PATTERN.matcher(responseBody);
+            if (retryMatcher.find()) {
+                long totalSeconds = 0;
+                String hStr = retryMatcher.group(1);
+                String mStr = retryMatcher.group(2);
+                String sStr = retryMatcher.group(3);
+                if (hStr != null) {
+                    totalSeconds += Long.parseLong(hStr) * 3600;
+                }
+                if (mStr != null) {
+                    totalSeconds += Long.parseLong(mStr) * 60;
+                }
+                if (sStr != null) {
+                    totalSeconds += (long) Double.parseDouble(sStr);
+                }
+                if (totalSeconds > 0) {
+                    this.quotaResetAt.set(Instant.now().plusSeconds(totalSeconds));
+                }
+            }
+        }
+        if (this.quotaResetAt.get() == null) {
+            this.quotaResetAt.set(Instant.now().plus(Duration.ofHours(6)));
+        }
+    }
+
+    private void recordSuccessfulCall() {
+        quotaRemaining.updateAndGet(r -> Math.max(0, r - 1));
+    }
+
     private String sendGeminiRequest(String payload, Duration timeout) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(API_ROOT + model + ":generateContent"))
@@ -223,11 +304,15 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.warn("Gemini API returned status {}: {}", response.statusCode(),
                         abbreviate(response.body(), 1000));
+                if (response.statusCode() == 429) {
+                    recordRateLimit(response.body());
+                }
                 throw new GeminiApiException(
                         "Gemini API error (HTTP " + response.statusCode() + ").");
             }
+            recordSuccessfulCall();
             return response.body();
-        } catch (java.net.http.HttpTimeoutException error) {
+        } catch (HttpTimeoutException error) {
             throw new GeminiApiException("Gemini API timed out.");
         } catch (GeminiApiException error) {
             throw error;
@@ -238,14 +323,13 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     // ─── Classification Payload & Parsing ─────────────────────────────────────
-
     private String buildClassificationPayload(List<String> imageUrls) {
         try {
             ArrayNode parts = objectMapper.createArrayNode();
             parts.addObject().put("text", classificationPrompt());
             for (String imageUrl : imageUrls.stream().limit(4).toList()) {
-                ClaudeVisionClient.PreparedImage image =
-                        imagePreparation.prepareImageForEmbedding(imageUrl);
+                ClaudeVisionClient.PreparedImage image
+                        = imagePreparation.prepareImageForEmbedding(imageUrl);
                 ObjectNode inlineData = parts.addObject().putObject("inlineData");
                 inlineData.put("mimeType", image.mediaType());
                 inlineData.put("data", Base64.getEncoder().encodeToString(image.bytes()));
@@ -319,7 +403,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
             String generatedJson = "";
             if (parts.isArray()) {
                 for (JsonNode part : parts) {
-                    if (part.hasNonNull("text")) generatedJson += part.path("text").asText();
+                    if (part.hasNonNull("text")) {
+                        generatedJson += part.path("text").asText();
+                    }
                 }
             }
             if (generatedJson.isBlank()) {
@@ -337,16 +423,24 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     MediaClassificationDto parseClassificationJson(String generatedJson) {
         try {
             String json = generatedJson.strip();
-            if (json.startsWith("```")) json = json.replaceAll("```[a-zA-Z]*\\s*", "").strip();
+            if (json.startsWith("```")) {
+                json = json.replaceAll("```[a-zA-Z]*\\s*", "").strip();
+            }
             JsonNode node = objectMapper.readTree(json);
             String category = firstText(node, "primary_category", "category");
-            if (!ALLOWED_CATEGORIES.contains(category)) category = "Other";
+            if (!ALLOWED_CATEGORIES.contains(category)) {
+                category = "Other";
+            }
             String assetType = node.path("asset_type").asText("").strip();
-            if (!ALLOWED_ASSET_TYPES.contains(assetType)) assetType = "Other";
+            if (!ALLOWED_ASSET_TYPES.contains(assetType)) {
+                assetType = "Other";
+            }
             double confidence = Math.min(1.0,
                     Math.max(0.0, node.path("confidence").asDouble(0.5)));
             List<String> tags = readStringArray(node, "ai_tags", 30, 60);
-            if (tags.isEmpty()) tags = readStringArray(node, "suggestedTags", 30, 60);
+            if (tags.isEmpty()) {
+                tags = readStringArray(node, "suggestedTags", 30, 60);
+            }
             return new MediaClassificationDto(
                     category, assetType, confidence, firstText(node, "ai_caption", "description"),
                     readStringArray(node, "visible_objects", 20, 60),
@@ -380,29 +474,45 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     private static List<String> readStringArray(
             JsonNode node, String fieldName, int maxItems, int maxLength) {
         JsonNode array = node.path(fieldName);
-        if (!array.isArray()) return List.of();
+        if (!array.isArray()) {
+            return List.of();
+        }
         List<String> values = new ArrayList<>();
         for (JsonNode item : array) {
             String value = item.asText("").strip().replaceAll("\\s+", " ");
-            if (value.isBlank()) continue;
-            if (value.length() > maxLength) value = value.substring(0, maxLength).strip();
-            if (!values.contains(value)) values.add(value);
-            if (values.size() >= maxItems) break;
+            if (value.isBlank()) {
+                continue;
+            }
+            if (value.length() > maxLength) {
+                value = value.substring(0, maxLength).strip();
+            }
+            if (!values.contains(value)) {
+                values.add(value);
+            }
+            if (values.size() >= maxItems) {
+                break;
+            }
         }
         return List.copyOf(values);
     }
 
     private static List<EventHypothesisDto> readEventHypotheses(JsonNode array) {
-        if (!array.isArray()) return List.of();
+        if (!array.isArray()) {
+            return List.of();
+        }
         List<EventHypothesisDto> hypotheses = new ArrayList<>();
         for (JsonNode item : array) {
             String eventType = item.path("event_type").asText("").strip();
-            if (eventType.isBlank()) continue;
+            if (eventType.isBlank()) {
+                continue;
+            }
             double confidence = Math.min(1.0,
                     Math.max(0.0, item.path("confidence").asDouble(0.0)));
             hypotheses.add(new EventHypothesisDto(eventType, confidence,
                     readStringArray(item, "evidence", 8, 100)));
-            if (hypotheses.size() >= 8) break;
+            if (hypotheses.size() >= 8) {
+                break;
+            }
         }
         return List.copyOf(hypotheses);
     }
@@ -438,12 +548,11 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     // ─── Caption Generation Payload & Parsing ─────────────────────────────────
-
     private String buildCaptionPayload(List<String> imageUrls, String mediaMetadata,
-                                       String eventTitle, String eventDate,
-                                       String institutionName,
-                                       String existingCaption, String prompt, String targetTone,
-                                       String correctionInstruction) {
+            String eventTitle, String eventDate,
+            String institutionName,
+            String existingCaption, String prompt, String targetTone,
+            String correctionInstruction) {
         try {
             ArrayNode parts = objectMapper.createArrayNode();
             boolean hasImages = imageUrls != null && !imageUrls.isEmpty();
@@ -462,8 +571,8 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
             if (hasImages) {
                 int imgCount = Math.min(imageUrls.size(), 4);
                 for (int i = 0; i < imgCount; i++) {
-                    ClaudeVisionClient.PreparedImage image =
-                            imagePreparation.prepareImageForEmbedding(imageUrls.get(i));
+                    ClaudeVisionClient.PreparedImage image
+                            = imagePreparation.prepareImageForEmbedding(imageUrls.get(i));
                     ObjectNode inlineData = parts.addObject().putObject("inlineData");
                     inlineData.put("mimeType", image.mediaType());
                     inlineData.put("data", Base64.getEncoder().encodeToString(image.bytes()));
@@ -516,7 +625,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
                     if (part.path("thought").asBoolean(false)) {
                         continue;
                     }
-                    if (part.hasNonNull("text")) generatedJson.append(part.path("text").asText());
+                    if (part.hasNonNull("text")) {
+                        generatedJson.append(part.path("text").asText());
+                    }
                 }
             }
             if (generatedJson.isEmpty()) {
@@ -546,7 +657,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
                             node.path("tone").asText(),
                             node.path("caption").asText()
                     ));
-                    if (variants.size() == 1) break;
+                    if (variants.size() == 1) {
+                        break;
+                    }
                 }
             } else if (variantsNode.isObject() && variantsNode.has("caption")) {
                 variants.add(new CaptionVariantDto(
@@ -568,9 +681,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     private String buildPrompt(String eventTitle, String eventDate, String institutionName,
-                               String existingCaption, String prompt,
-                               String targetTone, String mediaMetadata, boolean hasImages,
-                               String correctionInstruction) {
+            String existingCaption, String prompt,
+            String targetTone, String mediaMetadata, boolean hasImages,
+            String correctionInstruction) {
         boolean hasCaptionInput = existingCaption != null && !existingCaption.isBlank();
         boolean hasPrompt = prompt != null && !prompt.isBlank();
         boolean hasMediaMetadata = mediaMetadata != null && !mediaMetadata.isBlank();
@@ -586,12 +699,12 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
         String mediaGuidance = hasImages
                 ? imageGuidance
                 : hasMediaMetadata
-                ? """
+                        ? """
                 Use the selected media metadata below as the primary visual context. It was \
                 generated earlier from the selected media assets, so do not request another image \
                 scan unless image blocks are attached.\
                 """
-                : """
+                        : """
                 No image is attached. Generate captions from the saved submission context, \
                 current caption draft, and contributor instructions only.\
                 """;
@@ -710,7 +823,7 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     private static String buildSubmissionContext(String eventTitle, String eventDate,
-                                                 String institutionName) {
+            String institutionName) {
         StringBuilder sb = new StringBuilder();
         sb.append("<submission_context>\n");
         appendContextLine(sb, "Event title", eventTitle);
@@ -721,7 +834,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     private static void appendContextLine(StringBuilder sb, String label, String value) {
-        if (value == null || value.isBlank()) return;
+        if (value == null || value.isBlank()) {
+            return;
+        }
         sb.append(label).append(": \"").append(value.strip()).append("\"\n");
     }
 
@@ -737,16 +852,22 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     public static String normalizeCaptionTone(String tone) {
-        if (tone == null || tone.isBlank()) return "professional";
+        if (tone == null || tone.isBlank()) {
+            return "professional";
+        }
         String normalized = tone.trim().toLowerCase();
         return switch (normalized) {
-            case "community", "energetic" -> normalized;
-            default -> "professional";
+            case "community", "energetic" ->
+                normalized;
+            default ->
+                "professional";
         };
     }
 
     public static int extractRequestedWordCount(String prompt) {
-        if (prompt == null || prompt.isBlank()) return 0;
+        if (prompt == null || prompt.isBlank()) {
+            return 0;
+        }
         Matcher matcher = WORD_COUNT_PATTERN.matcher(prompt);
         int largest = 0;
         while (matcher.find()) {
@@ -756,7 +877,9 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     static WordCountRange wordCountRange(int requestedWords) {
-        if (requestedWords <= 0) return null;
+        if (requestedWords <= 0) {
+            return null;
+        }
         int cappedWords = Math.min(requestedWords, MAX_REQUESTED_CAPTION_WORDS);
         int tolerance = Math.max(3, (int) Math.ceil(cappedWords * 0.05));
         return new WordCountRange(
@@ -765,24 +888,30 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     }
 
     static int countWords(String value) {
-        if (value == null || value.isBlank()) return 0;
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
         return value.trim().split("\\s+").length;
     }
 
     record WordCountRange(int min, int max) {
+
         boolean contains(int value) {
             return value >= min && value <= max;
         }
     }
 
     private static String abbreviate(String value, int maxLength) {
-        if (value == null) return "";
+        if (value == null) {
+            return "";
+        }
         String normalized = value.replaceAll("[\\r\\n\\t]+", " ").strip();
         return normalized.length() <= maxLength
                 ? normalized : normalized.substring(0, maxLength);
     }
 
     public static class GeminiApiException extends AiApiException {
+
         public GeminiApiException(String message) {
             super(message);
         }
