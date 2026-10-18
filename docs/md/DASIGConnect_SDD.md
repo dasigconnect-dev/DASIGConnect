@@ -3429,7 +3429,7 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 * **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).**  
 * **Background caption:** after the first image is attached to a saved draft that has an event title, `useAiCaptionAssist` triggers background caption generation (`POST /api/v1/ai/caption` / `/api/v1/ai/caption/background`, same 30/h limit and 30 s timeout); `CaptionGenerationService` and `AiCaptionSuggestion` offer the result inline as **"AI draft ready — Use / Edit / Dismiss"**, never inserting it automatically. Failure falls back silently to manual entry.  
-* **Measurement:** coverage \= background suggestions (`auto_generated`) ÷ submissions with images; acceptance \= (`use` \+ `use_then_edited`) ÷ generated (`auto_generated` \+ `re_generate`); quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V128__ai_caption_suggestions_telemetry.sql`).  
+* **Measurement:** coverage \= background suggestions (`auto_generated`) ÷ submissions with images; acceptance \= (`use` \+ `use_then_edited`) ÷ generated (`auto_generated` \+ `re_generate`); quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V130__ai_caption_suggestions_telemetry.sql`).  
 * **Media-first:** `MediaAssetsPicker` initial tab defaults to `ai` (**AI Suggestions**) when event context (≥ 10 characters or a selected image) is present; otherwise `upload`.  
 * **Test:** STD Case-30c (**PASS**).
 
