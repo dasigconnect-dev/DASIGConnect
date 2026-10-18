@@ -63,7 +63,7 @@ DASIGConnect provides a unified **Social Media Content Workflow and Scheduling M
 - **Institution Management:** Row-level data scoping (RLS) with a protected network-default institution.
 - **Account Lifecycle:** Invite, activate, deactivate, reactivate, delete, and erase accounts; capped Admin promotion with propose/confirm workflow, plus Admin Owner transfer.
 - **Session Security:** Stateless JWT authentication (8h TTL) paired with database-backed token revocation (single-token logout and account-wide session revocation).
-- **3-Step Content Composer:** Structured drafting (Media Attachment → Post Details → Schedule) with a 0–100 completeness readiness score, autosave, and post templates (built-in, personal, and AI-synthesized from top posts).
+- **3-Step Content Composer:** Structured drafting (Media Attachment → Post Details → Schedule) with a binary required-check submission gate (`Required: 7 of 7 ✓ — Ready to submit`), separate optional post-quality tips, autosave, and post templates (built-in, personal, and AI-synthesized from top posts).
 - **Advisory AI & Typography:** On-demand AI caption generation (Claude Vision) and Fancy Unicode text styling for Facebook captions.
 - **Schedule Guard Rails:** Spacing buffers, daily caps, minimum lead times, and configurable posting-hour boundaries.
 

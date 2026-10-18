@@ -1,4 +1,4 @@
-﻿### Use Case ID
+### Use Case ID
 UC-1.9
 
 ### Use Case Name
@@ -12,7 +12,7 @@ A submission exists in draft, needs_revision, or rejected state, with at least o
 
 ### Main Flow
 1. The actor reviews the completed draft in the composer, including caption, attached media, and scheduled time.
-2. The actor clicks Submit for Approval. The frontend first re-checks locally that event title, event date, caption, media, album, and (for Standard drafts) a schedule are all present — missing anything jumps back to the relevant step with an error toast, without a server round-trip.
+2. Once all 7 Required Submission Gate checks pass (`Required: 7 of 7 ✓ — Ready to submit`), **Submit for Approval** is the primary always-visible action on every screen size. The actor clicks **Submit for Approval** (if any optional Post Quality Tips `Tips: Y of 5 applied` are unapplied, a non-blocking confirmation lists them without any percentage score). The frontend first re-checks locally that event title, event date, caption, media, file requirements, album, and (for Standard drafts) a valid future schedule are all present — missing anything jumps back to the relevant step/field via the `Next: [Missing Item] →` link or toast without a server round-trip.
 3. The system performs final server-side validation: event title, event date, album assignment, caption presence and length, and at least one attached media asset are required. For Standard drafts, the scheduled slot is re-validated against the enabled guard-rail rules. Conflicting slots, insufficient lead time, out-of-window times, and slots beyond the 30-day horizon are rejected. The six-post daily threshold produces a soft warning and does not block submission. Fast-Track skips scheduled-slot validation entirely.
 4. If validation passes, the submission transitions from draft, needs_revision, or rejected to pending, and further edits are blocked. When resubmitting a rejected post, the previous rejection reason is cleared.
 5. The system notifies Moderators of the new submission (in-app notification + DM to every Moderator). Administrators are not notified on a standard submission.

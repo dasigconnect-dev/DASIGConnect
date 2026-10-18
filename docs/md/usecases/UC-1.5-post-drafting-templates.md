@@ -31,13 +31,15 @@
 10. The actor organises media into an **album** and adds media tags (UC-1.7). On submit the backend reconciles the album — freshly uploaded assets are filed into the album resolved from the post's album name, **auto-creating one from the event title if none is set**; library picks keep their own album; all attached assets receive the post's media tags.
 11. The actor chooses **Set a Schedule** (default) with peak-hour suggestions (UC-1.8), or **Live Event Fast-Track**, which hides the scheduling fields. A Standard post always needs a future scheduled time; the network guard-rail switch only controls the *rules* on that time (see below).
 12. The actor may open a **Facebook-style preview** — a persistent centre-panel toggle available on any step, not just Step 3.
-13. The actor clicks **Submit** to send for approval (UC-1.9). Submit is disabled while any blocking readiness item is unmet; if only Recommended items remain, Submit is allowed after a non-blocking confirmation showing the readiness score (A7).
+13. The actor clicks **Submit for Approval** to send for approval (UC-1.9). Submit is disabled while any blocking Submission Gate item is unmet; when all 7 Required items pass (`Required: 7 of 7 ✓ — Ready to submit`), **Submit for Approval** becomes the primary always-visible action on every screen size. If optional Post Quality Tips remain unapplied, Submit is allowed after a non-blocking confirmation listing the unapplied tips (A7).
 
-## Readiness Checklist (all steps)
+## Submission Gate & Post Quality Tips (all steps)
 
-A right-panel checklist updates live, and produces a **readiness score out of 100** (Required weighted 75%, Recommended 25%), a **grade** ("Ready to submit" / "Incomplete"), a description line, and a **dial (ReadinessRing)**. Each checklist row is **clickable** — it jumps to the relevant step/field. Required rows show ✓ / ✗; Recommended rows show ✓ / ⚠ with an explanatory sub-line.
+A right-panel readiness view (`calculateSubmissionGate` / `getSubmissionReadiness`) updates live and separates the **Submission Gate** from optional **Post Quality Tips** (never blending them into a single percentage score):
+- **Submission Gate (Required — blocking):** Shows `Required: X of 7` (`Required: 7 of 7 ✓ — Ready to submit` when complete) and a clickable `Next: [Missing Item] →` jump link while incomplete. Each row shows ✓ / ✗ and jumps to the relevant step/field when clicked.
+- **Post Quality Tips (Optional — non-blocking):** Rendered in a separate card as `Tips: Y of 5 applied` with no percentage score. Each row shows ✓ / ⚠ with an explanatory sub-line.
 
-**Required (blocking):**
+**Submission Gate (Required — 7 blocking checks):**
 - Event title present
 - Event date present
 - Caption non-empty
@@ -48,7 +50,7 @@ A right-panel checklist updates live, and produces a **readiness score out of 10
   - **Guard rails ON:** the slot must also fall within the 8:00 AM–8:00 PM publish window and not collide with a guard-rail conflict (±30-min spacing, ≤6 posts/day, ≥2h lead time).
   - **Guard rails OFF:** any interval, any time of day — publish-window and slot-conflict checks are skipped. A future date is still required.
 
-**Recommended (non-blocking):**
+**Post Quality Tips (Optional — 5 non-blocking recommendations):**
 - Caption length within a comfortable range
 - At least one hashtag in the caption
 - At least one media tag
@@ -85,8 +87,8 @@ The switch governs the *rules* on a scheduled time, **not whether one is picked*
 - **A3 — Template Not Selected:** The flow proceeds normally; "Template used" simply stays a ⚠ Recommended item.
 - **A4 — Draft Returned for Revision:** A `needs_revision` draft reopens with the reviewer's remarks. Remarks are parsed into **per-field comments**; the affected fields pulse, and the actor can mark each field "addressed". Re-submitting from `needs_revision` is allowed (submit accepts `draft` or `needs_revision`). A `rejected` submission shows the rejection reason and offers **Edit & Resubmit** (`submit` also accepts `rejected`; corrected 2026-09-24 — it was previously described here as terminal/read-only). *Reviewer remarks exist only for these two outcomes — `requestRevision` sets `validatorRemarks`, `reject` sets `rejectionReason`; approval sets neither.*
 - **A5 — Dirty-State Navigation Warning:** Closing or navigating away with unsaved modifications prompts for confirmation.
-- **A6 — Incomplete Readiness at Save:** The actor may Save as Draft with unmet Required or Recommended items at any step; the checklist persists as a reminder.
-- **A7 — Submit Despite Recommended Warnings:** With all Required items met but Recommended items unmet, Submit is allowed after a non-blocking confirmation showing the readiness score.
+- **A6 — Incomplete Readiness at Save:** The actor may Save as Draft with unmet Required or Optional Tip items at any step; the checklist persists as a reminder.
+- **A7 — Submit Despite Unapplied Quality Tips:** With all 7 Required gate items met (`Required: 7 of 7 ✓ — Ready to submit`) but one or more Post Quality Tips unapplied (`Tips: Y of 5 applied`), Submit is allowed after a non-blocking confirmation listing the unapplied tips (with no blended percentage score).
 - **A8 — Navigate Backward Between Steps:** Always allowed; forward progression requires the current step's Required items. All entered data persists within the session.
 - **A9 — Withdraw a Submitted Post:** `POST /api/v1/submissions/{id}/withdraw` returns a still-`pending` submission to `draft` (refused once `in_review`); writes a `SUBMISSION_WITHDRAWN` audit entry. The draft then re-enters this flow.
 - **A10 — Generate Template from Top-Performing Posts** *(added 2026-09-23)*: From the Post Templates panel's header, the actor chooses **Generate from Top Posts** (any role; not shown on read-only submissions). `POST /api/v1/ai/templates/from-top-posts` (`AiTemplateController` → `TopPostTemplateService`) returns an AI-drafted template; **nothing is saved server-side**.
@@ -104,12 +106,12 @@ A draft post record exists in `draft` state with event title/date, caption, hash
 
 ---
 
-_Verified against the running code as of 2026-09-10. Primary sources: `frontend/src/features/submission/SubmissionScreen.tsx` + `utils.ts` (`getReadinessChecklist`, `getPreviewValidation`), `SubmissionController` / `SubmissionService` (`create`, `update`, `submit`, `delete`, `withdraw`, media/album reconciliation), `SubmissionLookupsDto`, `PostTemplate*` (entity/controller/service), `GuardRailSettingsService` + `SlotReservationService` + `GuardRailService`, `ValidationService` (`requestRevision`, `reject`), `PageSettings*`, migration `V89__page_settings_guardrails_toggle.sql`._
+_Verified against the running code as of 2026-10-18. Primary sources: `frontend/src/features/submission/SubmissionScreen.tsx` + `utils.ts` (`calculateSubmissionGate`, `getSubmissionReadiness`, `getPreviewValidation`), `SubmissionController` / `SubmissionService` (`create`, `update`, `submit`, `delete`, `withdraw`, media/album reconciliation), `SubmissionLookupsDto`, `PostTemplate*` (entity/controller/service), `GuardRailSettingsService` + `SlotReservationService` + `GuardRailService`, `ValidationService` (`requestRevision`, `reject`), `PageSettings*`, migration `V89__page_settings_guardrails_toggle.sql`._
 
 **Changes from the prior draft of this UC, made this session:**
 - Actors: added Moderator (the code gives moderators the full composer and Posting-As selector).
 - Removed the "event category" field from Step 2 — it isn't in the composer (decision: not needed).
-- Readiness checklist rewritten to the actual 7 Required / 5 Recommended items, plus the previously-undocumented score / grade / dial and clickable rows.
+- Readiness checklist refactored per RP-01 (REQ-124): separated binary **Submission Gate** (`Required: 7 of 7 ✓ — Ready to submit`, with `Next: [Missing Item] →` jump link) from optional **Post Quality Tips** (`Tips: Y of 5 applied`, no blended percentage score), and made `Submit for Approval` the primary visible action on every screen size once all 7 required items pass.
 - Schedule readiness/blocking is now explicitly tied to the network guard-rail switch (new this session): a future scheduled time is **always** required for a Standard post; only the ±30-min spacing / daily cap / lead time / 8:00 AM–8:00 PM window relax when the switch is off.
 - **Templates moved into the caption tools (2026-09-24):** the always-visible left sidebar was replaced by a **Templates** button in the caption action row plus an empty-caption starter, opening a panel with the Generate / Save actions pinned in its header (see Templates). Step 7 also corrected: Fancy text is button-opened, not triggered by text selection.
 - Documented what the prior draft omitted entirely: personal Save-as-Template + delete, built-in vs custom templates, autosave, withdraw (A9), the media/album reconciliation on submit, the per-field revision UI, and that reviewer remarks appear only on request-revision or reject.

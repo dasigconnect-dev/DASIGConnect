@@ -180,6 +180,43 @@ class SubscriptionControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void recordRenewal_asAdminOwner_returnsActiveSubscription() throws Exception {
+        JwtUserDetails owner = new JwtUserDetails(
+                UUID.randomUUID(), "owner@dasig.test", "admin", null, true);
+        SubscriptionStatusDto updated = new SubscriptionStatusDto(
+                UUID.randomUUID(), "DASIG Central Visayas", "dasig-central-visayas",
+                OrganizationStatus.ACTIVE, UUID.randomUUID(), SubscriptionLifecycleStatus.ACTIVE,
+                Instant.parse("2026-10-18T00:00:00Z"), Instant.parse("2026-11-18T00:00:00Z"),
+                null, plan(), true);
+        when(subscriptionAdministrationService.recordManualRenewal(1, "OR-100", owner)).thenReturn(updated);
+
+        mockMvc.perform(post("/api/v1/subscription/admin/record-renewal")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"billingMonths":1,"paymentReference":"OR-100"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.subscriptionStatus").value("ACTIVE"));
+    }
+
+    @Test
+    void extendGracePeriod_withInvalidDays_returnsBadRequest() throws Exception {
+        JwtUserDetails owner = new JwtUserDetails(
+                UUID.randomUUID(), "owner@dasig.test", "admin", null, true);
+
+        mockMvc.perform(post("/api/v1/subscription/admin/extend-grace-period")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"days":31}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
     private static SubscriptionPlanDto plan() {
         return new SubscriptionPlanDto(
                 UUID.randomUUID(),
