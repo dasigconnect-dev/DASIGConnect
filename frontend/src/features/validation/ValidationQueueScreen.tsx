@@ -2221,11 +2221,13 @@ export default function ValidationQueueScreen({
                                   rateLimitReset={aiCaption.rateLimitReset}
                                   notice={aiCaption.notice}
                                   hideInlineNotice
+                                  isUnavailable={aiCaption.state === "error-unavailable" || proofread.state === "error"}
                                   onSuggest={() => setCaptionPromptOpen(true)}
                                 />
                                 <CheckWritingButton
                                   state={proofread.state}
                                   disabled={!editForm.caption.trim()}
+                                  isUnavailable={aiCaption.state === "error-unavailable" || proofread.state === "error"}
                                   onCheck={() => void proofread.check(editForm.caption)}
                                 />
                               </div>
