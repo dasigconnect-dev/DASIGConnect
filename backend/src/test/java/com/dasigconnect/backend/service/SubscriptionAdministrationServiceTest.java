@@ -11,6 +11,7 @@ import com.dasigconnect.backend.model.dto.subscription.SubscriptionStatusDto;
 import com.dasigconnect.backend.model.entity.Organization;
 import com.dasigconnect.backend.model.entity.OrganizationSubscription;
 import com.dasigconnect.backend.model.entity.SubscriptionExportLevel;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionPlan;
 import com.dasigconnect.backend.model.entity.SubscriptionSupportLevel;
 import com.dasigconnect.backend.model.entity.User;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +38,7 @@ class SubscriptionAdministrationServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private SubscriptionQueryService queryService;
     @Mock private AuditLogService auditLogService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private final UUID ownerId = UUID.randomUUID();
     private final UUID organizationId = UUID.randomUUID();
@@ -49,7 +52,8 @@ class SubscriptionAdministrationServiceTest {
                 userRepository,
                 queryService,
                 auditLogService,
-                new ObjectMapper());
+                new ObjectMapper(),
+                eventPublisher);
     }
 
     @Test
@@ -117,6 +121,52 @@ class SubscriptionAdministrationServiceTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyMap());
     }
 
+    @Test
+    void recordManualRenewal_restoresRestrictedSubscriptionAndPublishesEvent() {
+        OrganizationSubscription subscription = subscription(plan("PLUS_NETWORK", 1));
+        subscription.setStatus(SubscriptionLifecycleStatus.RESTRICTED);
+        subscription.setCurrentPeriodEnd(java.time.Instant.now().minusSeconds(3_600));
+        User ownerUser = new User();
+        ownerUser.setId(ownerId);
+        SubscriptionStatusDto expected = org.mockito.Mockito.mock(SubscriptionStatusDto.class);
+        when(subscriptionRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(subscription));
+        when(subscriptionRepository.findByOrganizationIdForUpdate(organizationId)).thenReturn(Optional.of(subscription));
+        when(userRepository.findById(ownerId)).thenReturn(Optional.of(ownerUser));
+        when(queryService.currentSubscription()).thenReturn(expected);
+
+        assertThat(service.recordManualRenewal(1, "OFFICIAL-RECEIPT-1", owner())).isSameAs(expected);
+
+        assertThat(subscription.getStatus()).isEqualTo(SubscriptionLifecycleStatus.ACTIVE);
+        assertThat(subscription.getCurrentPeriodEnd()).isAfter(java.time.Instant.now().plusSeconds(27 * 86_400L));
+        assertThat(subscription.getGracePeriodEndsAt()).isNull();
+        verify(auditLogService).record(
+                eq(ownerUser), eq("SUBSCRIPTION_MANUAL_RENEWAL_RECORDED"), eq(null), eq(null),
+                eq(subscription.getId()), org.mockito.ArgumentMatchers.anyMap());
+        verify(eventPublisher).publishEvent(
+                org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.SubscriptionLifecycleChangedEvent.class));
+    }
+
+    @Test
+    void extendGracePeriod_fromRestrictedRestoresGraceState() {
+        OrganizationSubscription subscription = subscription(plan("PLUS_NETWORK", 1));
+        subscription.setStatus(SubscriptionLifecycleStatus.RESTRICTED);
+        User ownerUser = new User();
+        ownerUser.setId(ownerId);
+        SubscriptionStatusDto expected = org.mockito.Mockito.mock(SubscriptionStatusDto.class);
+        when(subscriptionRepository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(subscription));
+        when(subscriptionRepository.findByOrganizationIdForUpdate(organizationId)).thenReturn(Optional.of(subscription));
+        when(userRepository.findById(ownerId)).thenReturn(Optional.of(ownerUser));
+        when(queryService.currentSubscription()).thenReturn(expected);
+
+        assertThat(service.extendGracePeriod(7, owner())).isSameAs(expected);
+
+        assertThat(subscription.getStatus()).isEqualTo(SubscriptionLifecycleStatus.GRACE_PERIOD);
+        assertThat(subscription.getGracePeriodEndsAt()).isAfter(java.time.Instant.now().plusSeconds(6 * 86_400L));
+        verify(auditLogService).record(
+                eq(ownerUser), eq("SUBSCRIPTION_GRACE_PERIOD_EXTENDED"), eq(null), eq(null),
+                eq(subscription.getId()), org.mockito.ArgumentMatchers.anyMap());
+    }
+
     private JwtUserDetails owner() {
         return new JwtUserDetails(ownerId, "owner@dasig.test", "admin", null, true);
     }
@@ -124,6 +174,7 @@ class SubscriptionAdministrationServiceTest {
     private OrganizationSubscription subscription(SubscriptionPlan plan) {
         Organization organization = new Organization();
         organization.setId(organizationId);
+        organization.setName("DASIG Central Visayas");
         OrganizationSubscription subscription = new OrganizationSubscription();
         subscription.setId(UUID.randomUUID());
         subscription.setOrganization(organization);
@@ -131,6 +182,7 @@ class SubscriptionAdministrationServiceTest {
         subscription.setPlanCodeSnapshot(plan.getCode());
         subscription.setPlanVersionSnapshot(plan.getVersion());
         subscription.setEntitlementsSnapshot("{}");
+        subscription.setStatus(SubscriptionLifecycleStatus.ACTIVE);
         subscription.setCurrentPeriodStart(java.time.Instant.parse("2026-10-01T00:00:00Z"));
         subscription.setCurrentPeriodEnd(java.time.Instant.parse("2026-11-01T00:00:00Z"));
         return subscription;

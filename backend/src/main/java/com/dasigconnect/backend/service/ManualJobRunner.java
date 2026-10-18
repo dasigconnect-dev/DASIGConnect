@@ -11,6 +11,7 @@ import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
 import com.dasigconnect.backend.schedule.ScheduledJobRunRetentionJob;
 import com.dasigconnect.backend.schedule.StorageQuotaReservationExpiryJob;
+import com.dasigconnect.backend.schedule.SubscriptionLifecycleJob;
 import com.dasigconnect.backend.schedule.SocialEngagementSyncJob;
 import com.dasigconnect.backend.schedule.StaleDraftSlotReleaseJob;
 import com.dasigconnect.backend.schedule.StaleSubmissionDetectorJob;
@@ -57,6 +58,7 @@ public class ManualJobRunner {
             EmptyScheduleWarningJob emptyScheduleWarning,
             GeneratedWatermarkPurgeJob generatedWatermarkPurge,
             StorageQuotaReservationExpiryJob storageQuotaReservationExpiry,
+            SubscriptionLifecycleJob subscriptionLifecycle,
             InvitationExpiryJob invitationExpiry) {
         jobs.put("PublishingSchedulerJob", publishingScheduler::run);
         jobs.put("ReviewLockCleanupJob", reviewLockCleanup::releaseExpiredLocks);
@@ -74,6 +76,7 @@ public class ManualJobRunner {
         jobs.put("EmptyScheduleWarningJob", emptyScheduleWarning::scanEmptySchedules);
         jobs.put("GeneratedWatermarkPurgeJob", generatedWatermarkPurge::purgeExpiredGeneratedWatermarks);
         jobs.put("StorageQuotaReservationExpiryJob", storageQuotaReservationExpiry::releaseExpiredReservations);
+        jobs.put("SubscriptionLifecycleJob", subscriptionLifecycle::advanceLifecycle);
         jobs.put("InvitationExpiryJob", invitationExpiry::run);
     }
 
