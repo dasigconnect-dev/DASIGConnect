@@ -2485,11 +2485,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ) : (
         <i className="ti ti-send"></i>
       )}
-      {isNeedsRevision
-        ? "Submit for Revision"
-        : form.status === "rejected"
-          ? "Resubmit for Review"
-          : "Submit for Approval"}
+      <span className="sub-submit-label-full">
+        {isNeedsRevision
+          ? "Submit for Revision"
+          : form.status === "rejected"
+            ? "Resubmit for Review"
+            : "Submit for Approval"}
+      </span>
+      <span className="sub-submit-label-short">
+        {isNeedsRevision
+          ? "Submit"
+          : form.status === "rejected"
+            ? "Resubmit"
+            : "Submit"}
+      </span>
     </button>
   );
 
@@ -2529,6 +2538,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     ? "All draft changes saved"
                     : "You have unsaved changes"
               }
+              aria-label={
+                saveState === "saving"
+                  ? "Saving draft changes"
+                  : saveState === "saved" && !isDirty
+                    ? "All draft changes saved"
+                    : "You have unsaved changes"
+              }
             >
               <i
                 className={
@@ -2540,7 +2556,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 }
                 aria-hidden="true"
               ></i>
-              <span>
+              <span className="sub-nav-save-text">
                 {saveState === "saving"
                   ? "Saving..."
                   : saveState === "saved" && !isDirty
@@ -2567,7 +2583,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <span>
                 {lookupsLoading || hydratingId
                   ? "–"
-                  : `Required: ${readiness.requiredComplete}/${readiness.required.length}${readiness.gatePassed ? " ✓" : ""}`}
+                  : readiness.gatePassed
+                    ? `${readiness.requiredComplete}/${readiness.required.length} ✓`
+                    : `${readiness.requiredComplete}/${readiness.required.length}`}
               </span>
             </button>
           )}
@@ -2575,14 +2593,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           {!isReadOnlySubmission && (
             <button
               type="button"
-              className="sub-btn-ghost"
-              style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              className="sub-btn-ghost sub-btn-guide"
               onClick={() => startComposerTour(true)}
               title="How to use the composer"
               aria-label="How to use the composer"
             >
-              <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-              <span>Guide</span>
+              <i className="ti ti-help-circle" aria-hidden="true" />
+              <span className="sub-btn-guide-text">Guide</span>
             </button>
           )}
         </div>

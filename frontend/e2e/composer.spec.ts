@@ -507,7 +507,7 @@ test.describe("submission composer", () => {
 
     const guardPanel = page.locator(".sub-guard-panel");
     await expect(guardPanel.locator(".sub-guard-title")).toContainText("Submission Gate");
-    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Required: 6 of 7");
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("1 item remaining");
     await expect(guardPanel).toContainText(/Tips:\s*\d+\s*of\s*5\s*applied/);
     await expect(guardPanel.locator(".sub-score-num")).not.toContainText("%");
 
@@ -521,7 +521,7 @@ test.describe("submission composer", () => {
     await titleInput.fill("Binary Gate Verified Event");
 
     // Gate now passes (7 of 7) even though optional tips (e.g. hashtags) are not all applied
-    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Required: 7 of 7 ✓ — Ready to submit");
+    await expect(guardPanel.locator(".sub-score-grade")).toHaveText("Ready to submit");
     await expect(page.locator(".sub-guard-submit-btn").first()).toBeEnabled();
   });
 

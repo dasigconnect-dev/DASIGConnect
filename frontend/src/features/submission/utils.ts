@@ -616,9 +616,12 @@ export function getReadinessChecklist(
   );
   const isRejected = form.status === "rejected" && isSubmitted;
 
-  let grade = `Required: ${requiredComplete} of ${required.length}`;
+  const remaining = required.length - requiredComplete;
+  let grade = remaining === 1 ? "1 item remaining" : `${remaining} items remaining`;
   let description = nextMissingRequired
-    ? `Complete ${required.length - requiredComplete} more required item(s) to unlock submission.`
+    ? remaining === 1
+      ? "Complete 1 more required item to unlock submission."
+      : `Complete ${remaining} more required items to unlock submission.`
     : "Complete the required items before sending for approval.";
 
   if (isRejected) {
@@ -628,7 +631,7 @@ export function getReadinessChecklist(
     grade = "Submitted";
     description = "All required checks passed. Post has been submitted.";
   } else if (gatePassed) {
-    grade = `Required: ${requiredComplete} of ${required.length} ✓ — Ready to submit`;
+    grade = "Ready to submit";
     description = "All required checks passed. You can submit now, or apply optional quality tips below.";
   }
 

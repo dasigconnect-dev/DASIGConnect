@@ -694,6 +694,102 @@
   background: #f1f5f9;
   color: var(--sub-blue, #1877f2);
 }
+
+/* Status Guidance Callout (Option B) */
+.sub-status-callout {
+  margin: 0 16px 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.sub-status-callout i {
+  font-size: 13.5px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.sub-status-callout span {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+}
+
+/* Callout status theme tints */
+.sub-status-callout.status-callout-draft {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+.sub-status-callout.status-callout-draft i {
+  color: #64748b;
+}
+
+.sub-status-callout.status-callout-needs_revision {
+  background: #fefce8;
+  border-color: #fef08a;
+  color: #854d0e;
+}
+.sub-status-callout.status-callout-needs_revision i {
+  color: #ca8a04;
+}
+
+.sub-status-callout.status-callout-pending,
+.sub-status-callout.status-callout-in_review {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+.sub-status-callout.status-callout-pending i,
+.sub-status-callout.status-callout-in_review i {
+  color: #d97706;
+}
+
+.sub-status-callout.status-callout-rejected,
+.sub-status-callout.status-callout-publish_failed,
+.sub-status-callout.status-callout-direct_post_failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+.sub-status-callout.status-callout-rejected i,
+.sub-status-callout.status-callout-publish_failed i,
+.sub-status-callout.status-callout-direct_post_failed i {
+  color: #dc2626;
+}
+
+.sub-status-callout.status-callout-scheduled,
+.sub-status-callout.status-callout-direct_post_scheduled,
+.sub-status-callout.status-callout-publishing,
+.sub-status-callout.status-callout-direct_post_publishing {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+.sub-status-callout.status-callout-scheduled i,
+.sub-status-callout.status-callout-publishing i {
+  color: #1877f2;
+}
+
+.sub-status-callout.status-callout-published,
+.sub-status-callout.status-callout-published_manual,
+.sub-status-callout.status-callout-admin_direct_post {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.sub-status-callout.status-callout-published i,
+.sub-status-callout.status-callout-published_manual i,
+.sub-status-callout.status-callout-admin_direct_post i {
+  color: #16a34a;
+}
+
 .sub-guard-panel {
   background: var(--sub-surface);
   position: sticky;
@@ -1390,6 +1486,18 @@
   background: #166fe5;
   transform: translateY(-0.5px);
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.35);
+}
+.sub-submit-label-full {
+  display: inline;
+}
+.sub-submit-label-short {
+  display: none;
+}
+.sub-step-btn-text-full {
+  display: inline;
+}
+.sub-step-btn-text-short {
+  display: none;
 }
 .sub-btn-new:disabled,
 .sub-guard-submit-btn:disabled,
@@ -3004,64 +3112,79 @@ textarea.sub-finput {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--sub-display);
-  font-size: 20px;
-  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 .sub-score-grade {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--sub-text);
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--sub-text, #0f172a);
+  margin-top: 6px;
 }
 .sub-score-desc {
-  font-size: 11px;
-  color: var(--sub-muted);
+  font-size: 11.5px;
+  color: var(--sub-muted, #64748b);
   line-height: 1.4;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 .sub-gate-next-btn {
-  margin-top: 8px;
+  margin-top: 10px;
   width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid var(--sub-gold-bdr, rgba(217, 119, 6, 0.35));
-  background: var(--sub-gold-dim, rgba(217, 119, 6, 0.08));
-  color: var(--sub-text);
+  border: 1px solid #fde047;
+  background: #fefce8;
+  color: #854d0e;
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(202, 138, 4, 0.08);
 }
 .sub-gate-next-btn:hover {
-  background: rgba(217, 119, 6, 0.14);
-  border-color: var(--sub-gold, #D97706);
+  background: #fef9c3;
+  border-color: #eab308;
+  color: #713f12;
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 5px rgba(202, 138, 4, 0.12);
 }
 .sub-gate-next-btn strong {
-  font-weight: 800;
+  font-weight: 750;
+  color: #713f12;
+}
+.sub-gate-next-btn i {
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+.sub-gate-next-btn:hover i {
+  transform: translateX(2px);
 }
 .sub-guard-section {
   padding: 0;
-  border-bottom: 1px solid var(--sub-border);
+  border-bottom: 1px solid var(--sub-border, #e2e8f0);
 }
 .sub-guard-section-title {
   list-style: none;
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 42px;
+  padding: 0 14px;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 750;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--sub-muted);
+  color: var(--sub-muted, #64748b);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
   transition: background-color 0.18s ease, color 0.18s ease;
@@ -3070,46 +3193,54 @@ textarea.sub-finput {
   display: none;
 }
 .sub-guard-section-title:hover {
-  background: var(--sub-surface-2);
-  color: var(--sub-text);
+  background: var(--sub-surface-2, #f8fafc);
+  color: var(--sub-text, #0f172a);
 }
-.sub-guard-section-title span {
+.sub-guard-section-title > span:first-child {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
 }
 .sub-guard-section-meta {
-  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.sub-guard-section-meta small {
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub-blue, #1877f2);
+  letter-spacing: 0;
 }
 .sub-guard-section-meta i {
-  color: var(--sub-muted-2);
-  font-size: 14px;
+  color: var(--sub-muted-2, #94a3b8);
+  font-size: 13px;
   transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.18s ease;
 }
 .sub-guard-section[open] .sub-guard-section-meta i {
   transform: rotate(180deg);
 }
 .sub-guard-section-title:hover .sub-guard-section-meta i {
-  color: var(--sub-blue);
-}
-.sub-guard-section-title small {
-  letter-spacing: 0;
-  color: var(--sub-blue);
-  font-size: 11px;
-  font-weight: 850;
-  white-space: nowrap;
+  color: var(--sub-blue, #1877f2);
 }
 .sub-guard-section-body {
-  padding: 4px 12px 12px;
+  padding: 4px 10px 10px;
 }
 .sub-check-item {
   display: flex;
-  gap: 9px;
+  gap: 10px;
   align-items: flex-start;
   padding: 7px 8px;
   border-radius: 8px;
   margin-bottom: 2px;
-  transition: background-color 0.2s cubic-bezier(0.2, 0, 0, 1), transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease;
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .sub-check-action {
   width: 100%;
@@ -3120,17 +3251,24 @@ textarea.sub-finput {
   text-align: left;
   cursor: pointer;
   position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 8px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .sub-check-action:hover {
-  background: var(--sub-blue-dim);
-  transform: translateX(3px);
+  background: #f8fafc;
+  transform: translateX(2px);
 }
 .sub-check-action:active {
-  transform: translateX(1px) scale(0.985);
+  transform: translateX(1px) scale(0.99);
 }
 .sub-check-action:focus-visible {
-  outline: 3px solid rgba(24, 119, 242, 0.24);
-  outline-offset: 2px;
+  outline: 2px solid #1877f2;
+  outline-offset: 1px;
 }
 .sub-check-icon {
   width: 22px;
@@ -3140,38 +3278,42 @@ textarea.sub-finput {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 13px;
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  font-size: 12px;
+  margin-top: 1px;
+  transition: transform 0.18s ease;
 }
 .sub-check-action:hover .sub-check-icon {
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 .sub-check-icon.pass {
-  background: var(--sub-green-dim);
-  color: var(--sub-green);
+  background: #dcfce7;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
 }
 .sub-check-icon.warn {
-  background: var(--sub-gold-dim);
-  color: var(--sub-gold);
+  background: #fefce8;
+  color: #ca8a04;
+  border: 1px solid #fef08a;
 }
 .sub-check-icon.idle {
-  background: var(--sub-bg);
-  color: var(--sub-muted);
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
 }
 .sub-check-title {
-  font-size: 11.5px;
-  font-weight: 800;
-  color: var(--sub-text);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--sub-text, #0f172a);
   line-height: 1.3;
   transition: color 0.18s ease;
 }
 .sub-check-action:hover .sub-check-title {
-  color: var(--sub-blue);
+  color: var(--sub-blue, #1877f2);
 }
 .sub-check-sub {
-  font-size: 10.5px;
-  color: var(--sub-muted);
-  line-height: 1.4;
+  font-size: 11px;
+  color: var(--sub-muted, #64748b);
+  line-height: 1.35;
   margin-top: 1px;
 }
 .sub-fb-preview-wrap {
@@ -4942,10 +5084,12 @@ textarea.sub-finput {
     font-size: 12.5px;
   }
   .sub-nav-save-status {
-    font-size: 11px;
-    height: 28px;
-    padding: 3px 8px;
-    white-space: nowrap;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
   }
   .sub-form-canvas {
     padding: 14px 10px 48px;
@@ -6322,12 +6466,23 @@ section.sub-form-section.sub-field-pulse {
    ≤900px the workspace stacks. Rather than pushing the Readiness checklist
    below the form, the checklist is hidden and opened as a sheet from the
    top-bar chip. The Submit / Save actions stay in the page flow. */
+.sub-btn-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sub-btn-guide i {
+  font-size: 14px;
+}
 .sub-readiness-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 30px;
-  padding: 0 11px 0 9px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1.5px solid var(--sub-border);
   background: var(--sub-surface);
@@ -6336,6 +6491,8 @@ section.sub-form-section.sub-field-pulse {
   font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.15s ease;
 }
@@ -6410,7 +6567,7 @@ section.sub-form-section.sub-field-pulse {
     max-height: min(82dvh, 680px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     background: var(--sub-surface);
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -14px 40px rgba(12, 29, 61, 0.22);
@@ -6705,6 +6862,13 @@ section.sub-form-section.sub-field-pulse {
   .sub-list-page .sub-fb-open-action {
     font-size: 12px;
   }
+  .sub-list-page .sub-status-callout {
+    grid-column: 1 / -1;
+    margin: 8px 0 0;
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
 }
 
 /* Touch devices: no hover-lift (it sticks after a tap); give press feedback instead. */
@@ -6743,7 +6907,7 @@ section.sub-form-section.sub-field-pulse {
    in the page header at this width.
    ========================================================================== */
 @media (max-width: 900px) {
-  .sub-guard-panel {
+  .sub-guard-panel:not(.is-sheet-open) {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
@@ -6755,8 +6919,26 @@ section.sub-form-section.sub-field-pulse {
     background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
-    z-index: 500 !important; /* above the canvas (10); below open popovers (600), guides (1000+) and the sheet (3100) */
+    z-index: 500 !important; /* above canvas (10); below open popovers (600) and guides (1000+) */
     box-shadow: 0 -4px 20px rgba(12, 29, 61, 0.08) !important;
+  }
+  .sub-guard-panel.is-sheet-open {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 3100 !important; /* above topnav (700) and canvas overlays */
+    box-shadow: none !important;
+    pointer-events: auto !important;
+  }
+  .sub-guard-panel.is-sheet-open .sub-guard-actions {
+    display: none !important;
   }
   .sub-guard-actions {
     display: flex;
@@ -6814,22 +6996,141 @@ section.sub-form-section.sub-field-pulse {
   }
   .sub-guard-actions .sub-step-panel-btn.secondary {
     flex: 0 0 auto;
-    padding: 0 14px;
+    padding: 0 12px;
   }
   .sub-guard-actions .sub-step-panel-btn.primary,
   .sub-guard-actions .sub-step-panel-btn.locked,
   .sub-guard-actions .sub-guard-submit-btn {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
   }
   .sub-guard-actions .sub-guard-submit-btn {
-    width: 100%;
+    width: auto;
     height: 44px;
     min-height: 44px;
+    padding: 0 14px;
+    white-space: nowrap;
   }
   .sub-guard-actions .sub-step-panel-btn:active,
   .sub-guard-actions .sub-guard-submit-btn:active:not(:disabled) {
     transform: scale(0.97);
+  }
+}
+
+/* Mobile topnav: Guide and Draft saved collapse to icons-only on narrow screens */
+@media (max-width: 768px) {
+  .sub-nav-save-status {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    gap: 0;
+  }
+  .sub-nav-save-status .sub-nav-save-text {
+    display: none;
+  }
+  .sub-nav-save-status i {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .sub-btn-guide {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    gap: 0;
+  }
+  .sub-btn-guide .sub-btn-guide-text {
+    display: none;
+  }
+  .sub-btn-guide i {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .sub-readiness-chip {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    gap: 4px;
+  }
+
+  .sub-nav-right {
+    gap: 6px;
+  }
+}
+
+/* Mobile bottom step bar: equal-width symmetrical buttons across 3-column or 4-column states with zero empty space */
+@media (max-width: 640px) {
+  .sub-guard-actions {
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .sub-guard-actions .sub-step-panel-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+  }
+  /* All buttons in the actions bar share the width equally (equal column grid) */
+  .sub-guard-actions .sub-step-panel-preview,
+  .sub-guard-actions .sub-step-panel-prev,
+  .sub-guard-actions .sub-step-panel-next,
+  .sub-guard-actions .sub-guard-submit-btn {
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 4px !important;
+    font-size: 12px !important;
+    gap: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 999px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+  }
+  .sub-guard-actions .sub-step-panel-preview i,
+  .sub-guard-actions .sub-step-panel-prev i,
+  .sub-guard-actions .sub-step-panel-next i,
+  .sub-guard-actions .sub-guard-submit-btn i {
+    font-size: 13.5px !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn {
+    font-weight: 700 !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn .sub-submit-label-full {
+    display: none !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn .sub-submit-label-short {
+    display: inline !important;
+  }
+
+  /* When 4 buttons are present (Submit + Next), compact Previous to 'Prev' */
+  .sub-guard-actions .sub-step-panel-actions:has(.sub-guard-submit-btn) .sub-step-panel-prev .sub-step-btn-text-full {
+    display: none !important;
+  }
+  .sub-guard-actions .sub-step-panel-actions:has(.sub-guard-submit-btn) .sub-step-panel-prev .sub-step-btn-text-short {
+    display: inline !important;
+  }
+
+  /* When 3 or fewer buttons are present (no Next button), show full 'Previous' */
+  .sub-guard-actions .sub-step-panel-actions:not(:has(.sub-step-panel-next)) .sub-step-panel-prev .sub-step-btn-text-full {
+    display: inline !important;
+  }
+  .sub-guard-actions .sub-step-panel-actions:not(:has(.sub-step-panel-next)) .sub-step-panel-prev .sub-step-btn-text-short {
+    display: none !important;
   }
 }
 

@@ -85,6 +85,17 @@ export type MediaSuggestOutcome =
   | "NO_RELEVANT_MATCHES"
   | "ERROR";
 
+export class MediaSuggestionApiError extends Error {
+  status: number;
+  isRateLimit: boolean;
+  constructor(status: number, message = "media_suggestions_unavailable") {
+    super(message);
+    this.name = "MediaSuggestionApiError";
+    this.status = status;
+    this.isRateLimit = status === 429 || status === 503;
+  }
+}
+
 export async function suggestMedia(
   submissionId: string,
   params: MediaSuggestRequest,
@@ -95,7 +106,9 @@ export async function suggestMedia(
     params,
     { signal, validateStatus: () => true }
   );
-  if (res.status !== 200) throw new Error("media_suggestions_unavailable");
+  if (res.status !== 200) {
+    throw new MediaSuggestionApiError(res.status);
+  }
   const processing = res.headers["x-media-suggestions-processing"] === "true";
   const outcomeHeader = res.headers["x-media-suggestions-outcome"] as MediaSuggestOutcome | undefined;
   return {

@@ -29,82 +29,97 @@ export const initialForm: FormState = {
 
 export const statusCopy: Record<
   SubmissionStatus,
-  { label: string; meaning: string; whoActsNext: string }
+  { label: string; meaning: string; whoActsNext: string; actionLabel: string }
 > = {
   draft: {
-    label: "Draft — Finish & Submit",
+    label: "Draft",
     meaning: "Draft — not yet submitted.",
     whoActsNext: "Complete all required items and submit for Moderator review.",
+    actionLabel: "Continue Draft",
   },
   pending: {
-    label: "Awaiting Moderator Review",
+    label: "Pending Review",
     meaning: "Awaiting review — submitted for approval.",
     whoActsNext: "A Moderator will review this post next.",
+    actionLabel: "View Status",
   },
   in_review: {
-    label: "Being Reviewed by Moderator",
+    label: "In Review",
     meaning: "Being reviewed now.",
     whoActsNext: "A Moderator is currently reviewing this submission.",
+    actionLabel: "View Details",
   },
   needs_revision: {
-    label: "Needs Revision — Edit & Resubmit",
+    label: "Needs Revision",
     meaning: "Needs revision — the Moderator asked for changes.",
     whoActsNext: "Edit and resubmit.",
+    actionLabel: "Edit & Resubmit",
   },
   missed_review: {
-    label: "Missed Schedule — Moderator Reschedules",
+    label: "Missed Schedule",
     meaning: "Missed review — the scheduled time passed before review.",
     whoActsNext: "A Moderator or Administrator will assign a new schedule.",
+    actionLabel: "View Details",
   },
   scheduled: {
-    label: "Approved & Scheduled",
+    label: "Scheduled",
     meaning: "Approved and scheduled.",
     whoActsNext: "The system will publish this automatically at the scheduled time.",
+    actionLabel: "View Schedule",
   },
   publishing: {
-    label: "Publishing to Facebook",
+    label: "Publishing",
     meaning: "Publishing now.",
     whoActsNext: "The system is posting this to the DASIG Facebook Page.",
+    actionLabel: "View Progress",
   },
   publish_failed: {
-    label: "Publish Failed — Admin Action Needed",
+    label: "Publish Failed",
     meaning: "Publish failed.",
     whoActsNext: "An Administrator or Moderator needs to retry or publish manually.",
+    actionLabel: "Resolve Issue",
   },
   published: {
-    label: "Published on Facebook",
+    label: "Published",
     meaning: "Published — this post is live on the DASIG Facebook Page.",
     whoActsNext: "No action needed.",
+    actionLabel: "View Post",
   },
   published_manual: {
-    label: "Published on Facebook",
+    label: "Published",
     meaning: "Published manually — this post is live on the DASIG Facebook Page.",
     whoActsNext: "No action needed.",
+    actionLabel: "View Post",
   },
   admin_direct_post: {
-    label: "Published (Direct Post)",
+    label: "Direct Post",
     meaning: "Published — posted directly by an Administrator to the DASIG Facebook Page.",
     whoActsNext: "No action needed.",
+    actionLabel: "View Post",
   },
   direct_post_scheduled: {
-    label: "Scheduled (Direct Post)",
+    label: "Scheduled",
     meaning: "Scheduled — will publish automatically to the DASIG Facebook Page.",
     whoActsNext: "The system will publish this automatically at the scheduled time.",
+    actionLabel: "View Schedule",
   },
   direct_post_publishing: {
-    label: "Publishing (Direct Post)",
+    label: "Publishing",
     meaning: "Publishing now — posting to the DASIG Facebook Page.",
     whoActsNext: "The system is posting this to the DASIG Facebook Page.",
+    actionLabel: "View Progress",
   },
   direct_post_failed: {
-    label: "Publish Failed — Admin Action Needed",
+    label: "Publish Failed",
     meaning: "Publish failed.",
     whoActsNext: "An Administrator needs to retry or publish manually.",
+    actionLabel: "Resolve Issue",
   },
   rejected: {
-    label: "Declined — Edit & Resubmit",
+    label: "Declined",
     meaning: "Declined — the Moderator declined this post.",
     whoActsNext: "Review the reason to edit and resubmit.",
+    actionLabel: "View Reason",
   },
 };
 
@@ -126,22 +141,40 @@ export const statusLabels: Record<SubmissionStatus, string> = {
   rejected: statusCopy.rejected.label,
 };
 
+export const statusActionLabels: Record<SubmissionStatus, string> = {
+  draft: statusCopy.draft.actionLabel,
+  pending: statusCopy.pending.actionLabel,
+  in_review: statusCopy.in_review.actionLabel,
+  needs_revision: statusCopy.needs_revision.actionLabel,
+  missed_review: statusCopy.missed_review.actionLabel,
+  scheduled: statusCopy.scheduled.actionLabel,
+  publishing: statusCopy.publishing.actionLabel,
+  publish_failed: statusCopy.publish_failed.actionLabel,
+  published: statusCopy.published.actionLabel,
+  published_manual: statusCopy.published_manual.actionLabel,
+  admin_direct_post: statusCopy.admin_direct_post.actionLabel,
+  direct_post_scheduled: statusCopy.direct_post_scheduled.actionLabel,
+  direct_post_publishing: statusCopy.direct_post_publishing.actionLabel,
+  direct_post_failed: statusCopy.direct_post_failed.actionLabel,
+  rejected: statusCopy.rejected.actionLabel,
+};
+
 export const statusGuidance: Record<SubmissionStatus, string> = {
-  draft: "Draft — not yet submitted. Complete all required items and submit for Moderator review.",
-  pending: "Awaiting review — a Moderator will review this post next.",
-  in_review: "Being reviewed now — a Moderator is currently reviewing this submission.",
+  draft: "Draft not yet submitted. Complete required items and submit for review.",
+  pending: "Awaiting review — a Moderator will review this submission next.",
+  in_review: "Under review — a Moderator is currently evaluating this submission.",
   needs_revision: "Needs revision — the Moderator asked for changes. Edit and resubmit.",
-  missed_review: "Missed review — the scheduled time passed before review. A Moderator or Administrator will assign a new schedule.",
-  scheduled: "Approved and scheduled — the system will publish this automatically at the scheduled time.",
-  publishing: "Publishing now — the system is posting this to the DASIG Facebook Page.",
-  publish_failed: "Publish failed — an Administrator or Moderator needs to retry or publish manually.",
-  published: "Published — this post is live on the DASIG Facebook Page.",
-  published_manual: "Published manually — this post is live on the DASIG Facebook Page.",
-  admin_direct_post: "Published — posted directly by an Administrator to the DASIG Facebook Page.",
-  direct_post_scheduled: "Scheduled — will publish automatically to the DASIG Facebook Page.",
-  direct_post_publishing: "Publishing now — posting to the DASIG Facebook Page.",
-  direct_post_failed: "Publish failed — an Administrator needs to retry or publish manually.",
-  rejected: "Declined — the Moderator declined this post. Review the reason to edit and resubmit.",
+  missed_review: "Missed schedule — scheduled time passed. A Moderator will reschedule.",
+  scheduled: "Approved — will publish automatically at the scheduled time.",
+  publishing: "Publishing now to the DASIG Facebook Page.",
+  publish_failed: "Publish failed — an Administrator or Moderator must retry or publish manually.",
+  published: "Published — live on the DASIG Facebook Page.",
+  published_manual: "Published manually — live on the DASIG Facebook Page.",
+  admin_direct_post: "Published directly to the DASIG Facebook Page.",
+  direct_post_scheduled: "Direct post scheduled to publish automatically.",
+  direct_post_publishing: "Direct post is publishing now to Facebook.",
+  direct_post_failed: "Direct publish failed — an Administrator must retry.",
+  rejected: "Declined by Moderator. Review the reason to edit and resubmit.",
 };
 
 export const postTemplates = [
