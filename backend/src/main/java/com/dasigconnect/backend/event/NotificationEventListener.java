@@ -626,6 +626,33 @@ public class NotificationEventListener {
         }
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubscriptionPaymentReceived(SubscriptionPaymentReceivedEvent event) {
+        String message = "Payment for invoice " + event.invoiceNumber() + " was verified: "
+                + event.currency() + " " + String.format("%,.2f", event.amountCentavos() / 100.0)
+                + ". The billing period has been renewed.";
+        String link = "/settings#subscription";
+        for (User admin : admins()) {
+            notificationService.createNotification(
+                    admin, NotificationEventType.subscription_payment_received, message, link);
+            emailDeliveryService.send(
+                    admin, NotificationEventType.subscription_payment_received.name(),
+                    "DASIGConnect - Subscription payment received",
+                    message + "\n\nView billing history: " + frontendBaseUrl + link);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubscriptionPaymentAttention(SubscriptionPaymentAttentionEvent event) {
+        String link = "/settings#subscription";
+        for (User admin : admins()) {
+            notificationService.createNotification(
+                    admin, NotificationEventType.subscription_payment_attention, event.message(), link);
+        }
+    }
+
     private static String roleLabel(UserRole role) {
         if (role == null) {
             return "unknown";
