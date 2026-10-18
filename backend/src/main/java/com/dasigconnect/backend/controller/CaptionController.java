@@ -33,13 +33,31 @@ public class CaptionController {
         this.subscriptionEntitlementService = subscriptionEntitlementService;
     }
 
-    @PostMapping({"/caption", "/caption/background"})
+    @PostMapping("/caption")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
+        return generate(dto, user, idempotencyKey, CaptionGenerationService.ACTION_GENERATED_ON_REQUEST);
+    }
 
+    /**
+     * RP-03 (REQ-320): the composer's automatic suggestion after the first image + title.
+     * Same limits as {@code /caption}; logged as {@code auto_generated} so GO3 coverage can
+     * be told apart from on-request generations.
+     */
+    @PostMapping("/caption/background")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<CaptionResponseDto>> generateBackgroundCaption(
+            @RequestBody @Valid CaptionRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
+        return generate(dto, user, idempotencyKey, CaptionGenerationService.ACTION_GENERATED_IN_BACKGROUND);
+    }
+
+    private ResponseEntity<ApiResponse<CaptionResponseDto>> generate(
+            CaptionRequestDto dto, JwtUserDetails user, String idempotencyKey, String generationAction) {
         UUID userId = user.userId();
         SubscriptionEntitlementService.ActionReservation reservation =
                 subscriptionEntitlementService.reserveForSubmission(
@@ -49,7 +67,7 @@ public class CaptionController {
         try {
             CaptionResponseDto response = captionGenerationService.generateCaptions(
                     dto.getSubmissionId(), userId, user.institutionId(),
-                    dto.getExistingCaption(), dto.getPrompt(), dto.getTone());
+                    dto.getExistingCaption(), dto.getPrompt(), dto.getTone(), generationAction);
             subscriptionEntitlementService.consume(reservation.reservationId());
 
             return ResponseEntity.ok()

@@ -29,6 +29,12 @@ import java.util.UUID;
 @Service
 public class CaptionGenerationService {
 
+    /** Logged once per caption generated because the user asked (Suggest / Regenerate). */
+    public static final String ACTION_GENERATED_ON_REQUEST = "re_generate";
+    /** Logged once per caption generated automatically after upload (RP-03 / REQ-320). */
+    public static final String ACTION_GENERATED_IN_BACKGROUND = "auto_generated";
+
+
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final ClaudeVisionClient claudeVisionClient;
@@ -50,6 +56,18 @@ public class CaptionGenerationService {
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
                                                String existingCaption, String prompt, String tone) {
+        return generateCaptions(submissionId, userId, institutionId, existingCaption, prompt, tone,
+                ACTION_GENERATED_ON_REQUEST);
+    }
+
+    /**
+     * Same as {@link #generateCaptions(UUID, UUID, UUID, String, String, String)}, logging the
+     * generation under {@code generationAction} ({@link #ACTION_GENERATED_ON_REQUEST} or
+     * {@link #ACTION_GENERATED_IN_BACKGROUND}).
+     */
+    public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
+                                               String existingCaption, String prompt, String tone,
+                                               String generationAction) {
         int requestedWords = ClaudeVisionClient.extractRequestedWordCount(prompt);
         if (requestedWords > ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
             throw new ResponseStatusException(
@@ -74,7 +92,7 @@ public class CaptionGenerationService {
                 tone);
 
         // Step 3: Log generation event in a new transaction
-        logInteraction(submissionId, ctx.institutionId(), "re_generate", tone, null, null);
+        logInteraction(submissionId, ctx.institutionId(), generationAction, tone, null, null);
 
         return new CaptionResponseDto(submissionId, variants);
     }

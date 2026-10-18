@@ -87,7 +87,8 @@ class CaptionControllerTest {
         );
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, variants));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -114,7 +115,8 @@ class CaptionControllerTest {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -134,7 +136,8 @@ class CaptionControllerTest {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -162,7 +165,8 @@ class CaptionControllerTest {
     void generateCaption_claudeTimeout_returns504() throws Exception {
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API timed out after 10 seconds."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -180,7 +184,8 @@ class CaptionControllerTest {
     void generateCaption_claudeUnavailable_returns503() throws Exception {
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API error (HTTP 500)."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -247,7 +252,8 @@ class CaptionControllerTest {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Auto-generated background caption #DASIG")
                 )));
@@ -261,6 +267,36 @@ class CaptionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.submissionId").value(submissionId.toString()))
                 .andExpect(jsonPath("$.data.variants[0].caption").value("Auto-generated background caption #DASIG"));
+
+        verify(captionGenerationService).generateCaptions(
+                ArgumentMatchers.eq(submissionId), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.eq("professional"),
+                ArgumentMatchers.eq(CaptionGenerationService.ACTION_GENERATED_IN_BACKGROUND));
+    }
+
+    @Test
+    void generateCaption_onRequest_logsAsReGenerate() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(captionGenerationService.generateCaptions(
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any()))
+                .thenReturn(new CaptionResponseDto(submissionId, List.of(
+                        new CaptionVariantDto("professional", "On-request caption")
+                )));
+
+        mockMvc.perform(post("/api/v1/ai/caption")
+                .with(authentication(contributorAuth()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"submissionId":"%s","tone":"professional"}
+                        """.formatted(submissionId)))
+                .andExpect(status().isOk());
+
+        verify(captionGenerationService).generateCaptions(
+                ArgumentMatchers.eq(submissionId), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.eq("professional"),
+                ArgumentMatchers.eq(CaptionGenerationService.ACTION_GENERATED_ON_REQUEST));
     }
 
     @Test

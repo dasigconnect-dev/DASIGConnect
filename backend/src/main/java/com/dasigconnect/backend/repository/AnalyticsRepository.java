@@ -359,7 +359,8 @@ public class AnalyticsRepository {
      * AI Feature Adoption. Each rate is "used / offered":
      * <ul>
      *   <li>Captions: applied ({@code use}/{@code use_then_edited}) / generated
-     *       ({@code re_generate}, logged server-side once per generation).</li>
+     *       ({@code re_generate} on request or {@code auto_generated} after upload,
+     *       logged server-side once per generation).</li>
      *   <li>Media suggestions: added from the AI tab ({@code accepted}) / result
      *       sets shown ({@code shown}).</li>
      *   <li>Album Auto-Match: submissions that kept an album the AI proposed /
@@ -375,7 +376,7 @@ public class AnalyticsRepository {
         String sql = """
             SELECT
                 COUNT(*) FILTER (WHERE ail.interaction_type = 'caption_suggestion'
-                    AND ail.action_taken = 're_generate') AS caption_generated,
+                    AND ail.action_taken IN ('re_generate', 'auto_generated')) AS caption_generated,
                 COUNT(*) FILTER (WHERE ail.interaction_type = 'caption_suggestion'
                     AND ail.action_taken IN ('use', 'use_then_edited')) AS caption_accepted,
                 COUNT(*) FILTER (WHERE ail.interaction_type = 'media_recommendation'
@@ -650,7 +651,7 @@ public class AnalyticsRepository {
                    COUNT(CASE WHEN ev.interaction_type = 'caption_suggestion'
                        AND ev.action_taken IN ('use', 'use_then_edited') THEN 1 END)::double precision AS value,
                    COUNT(CASE WHEN ev.interaction_type = 'caption_suggestion'
-                       AND ev.action_taken = 're_generate' THEN 1 END) AS secondary_value
+                       AND ev.action_taken IN ('re_generate', 'auto_generated') THEN 1 END) AS secondary_value
             FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz), interval '1 day') AS day_start
             LEFT JOIN (
                 SELECT ail.created_at, ail.interaction_type, ail.action_taken
