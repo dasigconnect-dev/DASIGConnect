@@ -39,6 +39,12 @@ public class InvitationService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private SubscriptionEntitlementService subscriptionEntitlementService;
+
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;
     private final EntityManager entityManager;
@@ -95,6 +101,7 @@ public class InvitationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Cannot invite contributors to an inactive institution. Reactivate the institution first.");
         }
+        assertSeatCapacity(institution, recipientEmail);
 
         User invitedUser = userRepository.findByEmail(recipientEmail)
                 .map(existing -> prepareExistingPendingUser(existing, dto.assignedRole(), institution))
@@ -171,6 +178,7 @@ public class InvitationService {
             // converting from "pending invite" to "confirmed admin", net zero.
             adminCapPolicy.assertHasFreeSlot(token.getRecipientEmail(), null);
         }
+        assertSeatCapacity(token.getInstitution(), token.getRecipientEmail());
         user.setEmail(token.getRecipientEmail());
         user.setRole(token.getAssignedRole());
         user.setInstitution(token.getInstitution());
@@ -196,7 +204,26 @@ public class InvitationService {
 
         String jwt = jwtService.generateAccessToken(user);
         UUID institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
+        if (eventPublisher != null) {
+            UUID organizationId = user.getInstitution() != null
+                    ? user.getInstitution().getOrganizationId()
+                    : Institution.DEFAULT_ORGANIZATION_ID;
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserSeatUsageChangedEvent(
+                    organizationId,
+                    institutionId,
+                    user.getId(),
+                    1,
+                    "activated:" + token.getId()));
+        }
         return new LoginResponseDto(jwt, user.getRole().name(), institutionId);
+    }
+
+    private void assertSeatCapacity(Institution institution, String email) {
+        if (subscriptionEntitlementService == null) return;
+        UUID organizationId = institution == null
+                ? Institution.DEFAULT_ORGANIZATION_ID
+                : institution.getOrganizationId();
+        subscriptionEntitlementService.assertCanCommitSeat(organizationId, email);
     }
 
     private void assertTokenUnused(InvitationToken token) {

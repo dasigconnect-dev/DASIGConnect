@@ -24,6 +24,7 @@ import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
 import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
 import com.dasigconnect.backend.schedule.InvitationExpiryJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
+import com.dasigconnect.backend.schedule.StorageQuotaReservationExpiryJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
 import com.dasigconnect.backend.schedule.ScheduledJobRunRetentionJob;
@@ -47,6 +48,7 @@ class ManualJobRunnerTest {
     @Mock private EmbeddingReconciliationJob embeddingReconciliationJob;
     @Mock private SocialEngagementSyncJob socialEngagementSyncJob;
     @Mock private MediaAssetRetentionPurgeJob mediaAssetRetentionPurgeJob;
+    @Mock private StorageQuotaReservationExpiryJob storageQuotaReservationExpiryJob;
     @Mock private StaleDraftSlotReleaseJob staleDraftSlotReleaseJob;
     @Mock private TokenHealthCheckJob tokenHealthCheckJob;
     @Mock private ScheduledJobRunRetentionJob scheduledJobRunRetentionJob;
@@ -72,6 +74,7 @@ class ManualJobRunnerTest {
                 embeddingFailureDigestJob,
                 emptyScheduleWarningJob,
                 generatedWatermarkPurgeJob,
+                storageQuotaReservationExpiryJob,
                 invitationExpiryJob);
     }
 

@@ -60,6 +60,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("MEDIA_ASSET_DUPLICATE", ex.getMessage(), ex.getDetails()));
     }
 
+    @ExceptionHandler(SubscriptionLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSubscriptionLimitExceeded(
+            SubscriptionLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error("USAGE_LIMIT_REACHED", ex.getMessage(), ex.getDetails()));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex,
             HttpServletRequest request) {
