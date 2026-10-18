@@ -45,7 +45,7 @@ export default function AiCaptionSuggestion({
           </span>
           <div className="ai-sugg-header-text">
             <span className="ai-sugg-header-title">
-              AI draft ready — Use / Edit / Dismiss
+              AI draft ready <span className="ai-sugg-title-sep">—</span> <span className="ai-sugg-title-hint">Use / Edit / Dismiss</span>
             </span>
             <span className="ai-sugg-disclaimer">Review before applying</span>
           </div>
