@@ -1,7 +1,7 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
-import com.dasigconnect.backend.external.ClaudeVisionClient.ClaudeApiException;
+import com.dasigconnect.backend.external.AiApiException;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.ProofreadIssueDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,16 +26,16 @@ public class ProofreadService {
     private static final int MAX_OUTPUT_TOKENS = 1200;
     private static final Set<String> KINDS = Set.of("spelling", "grammar", "clarity", "meaning");
 
-    private final ClaudeVisionClient claudeClient;
+    private final AiVisionClient aiClient;
     private final ObjectMapper objectMapper;
 
-    public ProofreadService(ClaudeVisionClient claudeClient, ObjectMapper objectMapper) {
-        this.claudeClient = claudeClient;
+    public ProofreadService(AiVisionClient aiClient, ObjectMapper objectMapper) {
+        this.aiClient = aiClient;
         this.objectMapper = objectMapper;
     }
 
     public List<ProofreadIssueDto> proofread(String text, String originalText) {
-        String response = claudeClient.generateText(systemPrompt(), userPrompt(text, originalText), MAX_OUTPUT_TOKENS);
+        String response = aiClient.generateText(systemPrompt(), userPrompt(text, originalText), MAX_OUTPUT_TOKENS);
         return parseIssues(response, text);
     }
 
@@ -92,7 +92,7 @@ public class ProofreadService {
         try {
             root = objectMapper.readTree(extractJsonObject(response));
         } catch (Exception ex) {
-            throw new ClaudeApiException("The writing check returned something unreadable. Please try again.");
+            throw new AiApiException("The writing check returned something unreadable. Please try again.");
         }
         List<ProofreadIssueDto> issues = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();

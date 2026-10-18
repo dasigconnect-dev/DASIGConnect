@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import type { SubscriptionStatus, SubscriptionUsageMetric } from "../../api/subscriptionApi";
 import { useToast } from "../../context/ToastContext";
 import ConfirmDialog from "../user-management/components/ConfirmDialog";
@@ -21,31 +22,26 @@ const RESOURCE_LABELS: Record<string, string> = {
 
 export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
   const toast = useToast();
+  const navigate = useNavigate();
   const {
     statusQuery,
-    plansQuery,
     usageQuery,
     institutionsQuery,
     reconciliationQuery,
     billingQuery,
-    changePlanMutation,
     renewalMutation,
     extendGraceMutation,
     createPaymentLinkMutation,
     reconcileBillingMutation,
   } = useSubscriptionData(userId, isOwner);
-  const [selectedPlanId, setSelectedPlanId] = useState("");
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [renewalConfirmOpen, setRenewalConfirmOpen] = useState(false);
   const [graceConfirmOpen, setGraceConfirmOpen] = useState(false);
   const [paymentLinkConfirmOpen, setPaymentLinkConfirmOpen] = useState(false);
   const [payerEmail, setPayerEmail] = useState("");
 
-  const queries = [statusQuery, plansQuery, usageQuery, institutionsQuery, reconciliationQuery];
+  const queries = [statusQuery, usageQuery, institutionsQuery, reconciliationQuery];
   const isLoading = queries.some((query) => query.isLoading);
   const firstError = queries.find((query) => query.error)?.error;
-  const effectiveSelectedPlanId = selectedPlanId || statusQuery.data?.plan.id || "";
-  const selectedPlan = plansQuery.data?.find((plan) => plan.id === effectiveSelectedPlanId);
   const warningCount = useMemo(
     () => usageQuery.data?.metrics.filter((metric) => percentage(metric) >= 80).length ?? 0,
     [usageQuery.data?.metrics],
@@ -53,17 +49,6 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
 
   async function retryAll() {
     await Promise.all(queries.map((query) => query.refetch()));
-  }
-
-  async function confirmPlanChange() {
-    if (!selectedPlan || selectedPlan.id === statusQuery.data?.plan.id) return;
-    try {
-      await changePlanMutation.mutateAsync(selectedPlan.id);
-      setConfirmOpen(false);
-      toast.success(`Subscription changed to ${selectedPlan.name}.`);
-    } catch (error) {
-      toast.error(errorMessage(error, "The subscription plan could not be changed."));
-    }
   }
 
   async function confirmRenewal() {
@@ -161,36 +146,24 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
             </dl>
           </div>
 
-          {isOwner && plansQuery.data && (
-            <div className="subscription-plan-control">
-              <div>
-                <label htmlFor="subscription-plan-select">Organization plan</label>
-                <span>Changes apply immediately without resetting current-period usage.</span>
-              </div>
-              <select
-                id="subscription-plan-select"
-                className="settings-input"
-                value={effectiveSelectedPlanId}
-                disabled={changePlanMutation.isPending}
-                onChange={(event) => setSelectedPlanId(event.target.value)}
-              >
-                {plansQuery.data.map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.name} - {formatPrice(plan.monthlyPriceCentavos)}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="settings-save-button"
-                disabled={!selectedPlan || selectedPlan.id === status.plan.id || changePlanMutation.isPending}
-                onClick={() => setConfirmOpen(true)}
-              >
-                <i className="ti ti-switch-horizontal" aria-hidden="true" />
-                Change plan
-              </button>
+          <div className="subscription-plan-control">
+            <div>
+              <label>Organization plan</label>
+              <span>Compare plan limits, AI allowances, storage, exports, and support.</span>
             </div>
-          )}
+            <div>
+              <label>Current tier</label>
+              <span>{status.plan.name} at {formatPrice(status.plan.monthlyPriceCentavos)}</span>
+            </div>
+            <button
+              type="button"
+              className="settings-save-button"
+              onClick={() => navigate("/upgrade-plan")}
+            >
+              <i className="ti ti-layout-grid" aria-hidden="true" />
+              Compare plans
+            </button>
+          </div>
 
           {isOwner && (
             <div className="subscription-lifecycle-controls">
@@ -370,15 +343,6 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
         </div>
       </section>
 
-      {confirmOpen && selectedPlan && (
-        <ConfirmDialog
-          title={`Change to ${selectedPlan.name}?`}
-          message="The new pooled limits take effect immediately. Usage already recorded in the current billing period will not reset."
-          confirmLabel={changePlanMutation.isPending ? "Changing..." : "Change plan"}
-          onConfirm={() => void confirmPlanChange()}
-          onCancel={() => setConfirmOpen(false)}
-        />
-      )}
       {renewalConfirmOpen && (
         <ConfirmDialog
           title="Record one-month renewal?"

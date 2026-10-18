@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.controller;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiApiException;
 import com.dasigconnect.backend.model.dto.ai.CaptionLogRequestDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.ai.CaptionRequestDto;
@@ -74,7 +74,7 @@ public class CaptionController {
                     .header("X-RateLimit-Remaining", String.valueOf(reservation.remaining()))
                     .header("X-RateLimit-Reset", String.valueOf(reservation.resetAt().getEpochSecond()))
                     .body(ApiResponse.success(response));
-        } catch (ClaudeVisionClient.ClaudeApiException e) {
+        } catch (AiApiException e) {
             subscriptionEntitlementService.release(reservation.reservationId());
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {

@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 
@@ -31,13 +31,13 @@ public class ContentIdeaSuggestionService {
     private static final Logger log = LoggerFactory.getLogger(ContentIdeaSuggestionService.class);
 
     private final SubmissionRepository submissionRepository;
-    private final ClaudeVisionClient claudeClient;
+    private final AiVisionClient aiClient;
 
     public ContentIdeaSuggestionService(
             SubmissionRepository submissionRepository,
-            ClaudeVisionClient claudeClient) {
+            AiVisionClient aiClient) {
         this.submissionRepository = submissionRepository;
-        this.claudeClient = claudeClient;
+        this.aiClient = aiClient;
     }
 
     public List<String> generateSuggestions(Institution institution) {
@@ -59,7 +59,7 @@ public class ContentIdeaSuggestionService {
             String system = "You are an AI assistant for DASIGConnect (DOST Region 7 social media platform). "
                     + "Your goal is to suggest 2-3 relevant post ideas for a university/institution whose schedule is empty.";
 
-            String response = claudeClient.generateText(system, prompt);
+            String response = aiClient.generateText(system, prompt);
             return parseBulletPoints(response);
         } catch (Exception ex) {
             log.warn("AI content idea suggestion failed for {}: {}", institution.getName(), ex.getMessage());

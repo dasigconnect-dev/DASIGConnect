@@ -175,15 +175,17 @@ export function useAiCaptionAssist(
       setNotice(
         timedOut
           ? "AI request timed out. Retry or continue editing manually."
-          : "AI caption service is unavailable. You can still write captions manually.",
+          : "AI service is unavailable. You can still write captions manually.",
       );
       setState(timedOut ? "error-timeout" : "error-unavailable");
-      cooldownRef.current = setTimeout(() => {
-        if (requestIdRef.current === request.id) {
-          setState("idle");
-          setNotice(null);
-        }
-      }, 5000);
+      if (timedOut) {
+        cooldownRef.current = setTimeout(() => {
+          if (requestIdRef.current === request.id) {
+            setState("idle");
+            setNotice(null);
+          }
+        }, 5000);
+      }
       return null;
     } finally {
       if (requestRef.current?.id === request.id) {

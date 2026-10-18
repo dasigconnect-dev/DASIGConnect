@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.CaptionResponseDto;
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.entity.AiInteractionLog;
@@ -23,7 +23,7 @@ import java.util.UUID;
  * Orchestrates on-demand AI caption generation (UC-3.2).
  *
  * Transaction discipline: DB reads happen in a short read-only transaction.
- * The ClaudeVisionClient call executes OUTSIDE any open transaction so the
+ * The AiVisionClient call executes OUTSIDE any open transaction so the
  * HikariCP connection pool is not held during the external HTTP round-trip.
  */
 @Service
@@ -37,16 +37,16 @@ public class CaptionGenerationService {
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
-    private final ClaudeVisionClient claudeVisionClient;
+    private final AiVisionClient aiVisionClient;
     private final AiInteractionLogRepository aiInteractionLogRepository;
 
     public CaptionGenerationService(SubmissionRepository submissionRepository,
                                     SubmissionMediaAssetRepository submissionMediaAssetRepository,
-                                    ClaudeVisionClient claudeVisionClient,
+                                    AiVisionClient aiVisionClient,
                                     AiInteractionLogRepository aiInteractionLogRepository) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
-        this.claudeVisionClient = claudeVisionClient;
+        this.aiVisionClient = aiVisionClient;
         this.aiInteractionLogRepository = aiInteractionLogRepository;
     }
 
@@ -56,32 +56,20 @@ public class CaptionGenerationService {
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
                                                String existingCaption, String prompt, String tone) {
-        return generateCaptions(submissionId, userId, institutionId, existingCaption, prompt, tone,
-                ACTION_GENERATED_ON_REQUEST);
-    }
-
-    /**
-     * Same as {@link #generateCaptions(UUID, UUID, UUID, String, String, String)}, logging the
-     * generation under {@code generationAction} ({@link #ACTION_GENERATED_ON_REQUEST} or
-     * {@link #ACTION_GENERATED_IN_BACKGROUND}).
-     */
-    public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
-                                               String existingCaption, String prompt, String tone,
-                                               String generationAction) {
-        int requestedWords = ClaudeVisionClient.extractRequestedWordCount(prompt);
-        if (requestedWords > ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
+        int requestedWords = AiVisionClient.extractRequestedWordCount(prompt);
+        if (requestedWords > AiVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "AI captions are limited to "
-                            + ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS
+                            + AiVisionClient.MAX_REQUESTED_CAPTION_WORDS
                             + " requested words.");
         }
 
         // Step 1: Fetch submission data in a short read-only transaction
         SubmissionContext ctx = loadSubmissionContext(submissionId, institutionId);
 
-        // Step 2: Call Claude outside any transaction (timeout enforced by client)
-        List<CaptionVariantDto> variants = claudeVisionClient.generateCaptions(
+        // Step 2: Call AI client outside any transaction (timeout enforced by client)
+        List<CaptionVariantDto> variants = aiVisionClient.generateCaptions(
                 ctx.imageUrls(),
                 ctx.mediaMetadata(),
                 ctx.eventTitle(),
