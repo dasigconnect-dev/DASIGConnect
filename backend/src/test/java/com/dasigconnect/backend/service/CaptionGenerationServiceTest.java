@@ -95,7 +95,7 @@ class CaptionGenerationServiceTest {
         when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(imageJunction(s, imageAsset(UUID.randomUUID()))));
-        when(claudeVisionClient.generateCaptions(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(aiVisionClient.generateCaptions(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new CaptionVariantDto("professional", "Caption #DASIG")));
         var captor = org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AiInteractionLog.class);
         when(aiInteractionLogRepository.save(captor.capture())).thenAnswer(i -> i.getArgument(0));

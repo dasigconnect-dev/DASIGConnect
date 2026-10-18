@@ -56,6 +56,18 @@ public class CaptionGenerationService {
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
                                                String existingCaption, String prompt, String tone) {
+        return generateCaptions(submissionId, userId, institutionId, existingCaption, prompt, tone,
+                ACTION_GENERATED_ON_REQUEST);
+    }
+
+    /**
+     * Same as {@link #generateCaptions(UUID, UUID, UUID, String, String, String)}, logging the
+     * generation under {@code generationAction} ({@link #ACTION_GENERATED_ON_REQUEST} or
+     * {@link #ACTION_GENERATED_IN_BACKGROUND}).
+     */
+    public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
+                                               String existingCaption, String prompt, String tone,
+                                               String generationAction) {
         int requestedWords = AiVisionClient.extractRequestedWordCount(prompt);
         if (requestedWords > AiVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
             throw new ResponseStatusException(
