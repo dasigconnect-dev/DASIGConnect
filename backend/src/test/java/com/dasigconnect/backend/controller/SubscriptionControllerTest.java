@@ -2,6 +2,8 @@ package com.dasigconnect.backend.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,7 +18,9 @@ import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionSupportLevel;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.SubscriptionQueryService;
+import com.dasigconnect.backend.service.SubscriptionAdministrationService;
 import com.dasigconnect.backend.service.SubscriptionUsageService;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.TenantScopeService;
 import java.time.Instant;
 import java.time.YearMonth;
@@ -29,6 +33,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 @WebMvcTest(SubscriptionController.class)
 @Import(SecurityConfig.class)
@@ -42,6 +49,9 @@ class SubscriptionControllerTest {
 
     @MockitoBean
     private SubscriptionUsageService subscriptionUsageService;
+
+    @MockitoBean
+    private SubscriptionAdministrationService subscriptionAdministrationService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -134,6 +144,40 @@ class SubscriptionControllerTest {
                 .andExpect(jsonPath("$.data.month").value("2026-10"))
                 .andExpect(jsonPath("$.data.metrics[0].resource").value("submissions"))
                 .andExpect(jsonPath("$.data.metrics[0].used").value(12));
+    }
+
+    @Test
+    void changePlan_asAdminOwner_returnsUpdatedPlan() throws Exception {
+        UUID planId = UUID.randomUUID();
+        JwtUserDetails owner = new JwtUserDetails(
+                UUID.randomUUID(), "owner@dasig.test", "admin", null, true);
+        SubscriptionStatusDto updated = new SubscriptionStatusDto(
+                UUID.randomUUID(), "DASIG Central Visayas", "dasig-central-visayas",
+                OrganizationStatus.ACTIVE, UUID.randomUUID(), SubscriptionLifecycleStatus.ACTIVE,
+                Instant.parse("2026-10-18T00:00:00Z"), Instant.parse("2026-11-18T00:00:00Z"),
+                null, plan(), true);
+        when(subscriptionAdministrationService.changePlan(planId, owner)).thenReturn(updated);
+
+        mockMvc.perform(post("/api/v1/subscription/admin/change-plan")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"planId":"%s"}
+                                """.formatted(planId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.plan.code").value("FREE_PILOT"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void changePlan_asModerator_returnsForbidden() throws Exception {
+        mockMvc.perform(post("/api/v1/subscription/admin/change-plan")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"planId":"%s"}
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
     }
 
     private static SubscriptionPlanDto plan() {
