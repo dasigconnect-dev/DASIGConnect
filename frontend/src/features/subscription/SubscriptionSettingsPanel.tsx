@@ -27,14 +27,19 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
     usageQuery,
     institutionsQuery,
     reconciliationQuery,
+    billingQuery,
     changePlanMutation,
     renewalMutation,
     extendGraceMutation,
-  } = useSubscriptionData(userId);
+    createPaymentLinkMutation,
+    reconcileBillingMutation,
+  } = useSubscriptionData(userId, isOwner);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [renewalConfirmOpen, setRenewalConfirmOpen] = useState(false);
   const [graceConfirmOpen, setGraceConfirmOpen] = useState(false);
+  const [paymentLinkConfirmOpen, setPaymentLinkConfirmOpen] = useState(false);
+  const [payerEmail, setPayerEmail] = useState("");
 
   const queries = [statusQuery, plansQuery, usageQuery, institutionsQuery, reconciliationQuery];
   const isLoading = queries.some((query) => query.isLoading);
@@ -78,6 +83,26 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
       toast.success("Grace period extended by seven days.");
     } catch (error) {
       toast.error(errorMessage(error, "The grace period could not be extended."));
+    }
+  }
+
+  async function confirmPaymentLink() {
+    try {
+      const response = await createPaymentLinkMutation.mutateAsync(payerEmail.trim() || undefined);
+      setPaymentLinkConfirmOpen(false);
+      toast.success(`QRPh payment link ready for ${response.data.invoiceNumber}.`);
+      window.open(response.data.checkoutUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(errorMessage(error, "The QRPh payment link could not be created."));
+    }
+  }
+
+  async function reconcileBilling() {
+    try {
+      const response = await reconcileBillingMutation.mutateAsync();
+      toast.success(`Checked ${response.data.checked} payment link(s); settled ${response.data.settled}.`);
+    } catch (error) {
+      toast.error(errorMessage(error, "Billing reconciliation could not be completed."));
     }
   }
 
@@ -198,6 +223,93 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
         </div>
       </section>
 
+      {isOwner && (
+        <section className="settings-card">
+          <SettingsHeader
+            icon="ti ti-qrcode"
+            title="QRPh Billing"
+            description="Hosted PayMongo payment links and verified organization payment history."
+            accent={billingQuery.data ? (
+              <span className={`subscription-provider-mode ${billingQuery.data.providerMode.toLowerCase()}`}>
+                {billingQuery.data.providerEnabled ? billingQuery.data.providerMode : "Disabled"}
+              </span>
+            ) : undefined}
+          />
+          <div className="settings-card-body">
+            {billingQuery.isLoading ? (
+              <div className="subscription-inline-state" aria-busy="true">
+                <i className="ti ti-loader-2 settings-spinner" aria-hidden="true" /> Loading billing history...
+              </div>
+            ) : billingQuery.error ? (
+              <div className="subscription-inline-state" role="alert">
+                <i className="ti ti-alert-circle" aria-hidden="true" />
+                <span>{errorMessage(billingQuery.error, "Billing history could not be loaded.")}</span>
+                <button type="button" className="settings-save-button" onClick={() => void billingQuery.refetch()}>
+                  <i className="ti ti-refresh" aria-hidden="true" /> Retry
+                </button>
+              </div>
+            ) : billingQuery.data && (
+              <>
+                <div className="subscription-payment-controls">
+                  <div>
+                    <label htmlFor="subscription-payer-email">Payer email</label>
+                    <span>Optional. Sends the hosted payment link to the authorized payer.</span>
+                  </div>
+                  <input
+                    id="subscription-payer-email"
+                    className="settings-input"
+                    type="email"
+                    value={payerEmail}
+                    placeholder="billing@example.org"
+                    onChange={(event) => setPayerEmail(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="settings-save-button subscription-secondary-action"
+                    disabled={!billingQuery.data.providerEnabled || reconcileBillingMutation.isPending}
+                    onClick={() => void reconcileBilling()}
+                  >
+                    <i className="ti ti-refresh" aria-hidden="true" /> Reconcile
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-save-button"
+                    disabled={!billingQuery.data.providerEnabled || status.plan.monthlyPriceCentavos <= 0 || createPaymentLinkMutation.isPending}
+                    onClick={() => setPaymentLinkConfirmOpen(true)}
+                  >
+                    <i className="ti ti-qrcode" aria-hidden="true" /> Get payment link
+                  </button>
+                </div>
+
+                <div className="subscription-table-wrap">
+                  <table className="subscription-table subscription-billing-table">
+                    <thead><tr><th>Invoice</th><th>Amount</th><th>Status</th><th>Due</th><th>Payment</th></tr></thead>
+                    <tbody>
+                      {billingQuery.data.invoices.map((invoice) => (
+                        <tr key={invoice.id}>
+                          <td>{invoice.invoiceNumber}</td>
+                          <td>{formatCurrency(invoice.amountCentavos, invoice.currency)}</td>
+                          <td><span className={`subscription-invoice-status is-${invoice.status.toLowerCase()}`}>{formatStatus(invoice.status)}</span></td>
+                          <td>{formatDate(invoice.dueAt)}</td>
+                          <td>
+                            {invoice.paymentLink?.status === "ACTIVE" ? (
+                              <a href={invoice.paymentLink.checkoutUrl} target="_blank" rel="noreferrer">Open QRPh link</a>
+                            ) : invoice.paidAt ? formatDateTime(invoice.paidAt) : "Not available"}
+                          </td>
+                        </tr>
+                      ))}
+                      {!billingQuery.data.invoices.length && (
+                        <tr><td colSpan={5} className="subscription-empty-row">No subscription invoices yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="settings-card">
         <SettingsHeader
           icon="ti ti-chart-bar"
@@ -285,6 +397,15 @@ export default function SubscriptionSettingsPanel({ userId, isOwner }: Props) {
           onCancel={() => setGraceConfirmOpen(false)}
         />
       )}
+      {paymentLinkConfirmOpen && (
+        <ConfirmDialog
+          title="Create QRPh payment link?"
+          message="DASIGConnect will create or reuse the current monthly invoice and open PayMongo's hosted payment page. Access is renewed only after a signed payment confirmation is verified."
+          confirmLabel={createPaymentLinkMutation.isPending ? "Creating..." : "Create link"}
+          onConfirm={() => void confirmPaymentLink()}
+          onCancel={() => setPaymentLinkConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -352,6 +473,14 @@ function formatBytes(value: number) {
 function formatPrice(centavos: number) {
   if (centavos === 0) return "Free";
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(centavos / 100) + "/month";
+}
+
+function formatCurrency(centavos: number, currency: string) {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(centavos / 100);
 }
 
 function formatDate(value: string) {
