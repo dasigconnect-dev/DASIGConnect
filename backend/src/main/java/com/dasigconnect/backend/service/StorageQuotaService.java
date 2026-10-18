@@ -4,6 +4,7 @@ import com.dasigconnect.backend.exception.SubscriptionLimitExceededException;
 import com.dasigconnect.backend.model.entity.OrganizationSubscription;
 import com.dasigconnect.backend.model.entity.StorageQuotaReservation;
 import com.dasigconnect.backend.model.entity.StorageQuotaReservationStatus;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
 import com.dasigconnect.backend.repository.StorageQuotaReservationRepository;
 import com.dasigconnect.backend.repository.SubscriptionUsageEventRepository;
@@ -201,9 +202,17 @@ public class StorageQuotaService {
     }
 
     private OrganizationSubscription lockSubscription(UUID organizationId) {
-        return subscriptionRepository.findByOrganizationIdForUpdate(organizationId)
+        OrganizationSubscription subscription = subscriptionRepository.findByOrganizationIdForUpdate(organizationId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.CONFLICT, "No subscription is configured for this organization."));
+        if (enforcementEnabled
+                && (subscription.getStatus() == SubscriptionLifecycleStatus.RESTRICTED
+                    || subscription.getStatus() == SubscriptionLifecycleStatus.CANCELLED)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "The organization subscription is restricted. Contact the Admin Owner.");
+        }
+        return subscription;
     }
 
     public record ReservationResult(

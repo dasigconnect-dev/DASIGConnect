@@ -17,6 +17,7 @@ import org.mockito.Mockito;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubscriptionLifecycleStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.UserRepository;
@@ -118,6 +119,27 @@ class NotificationEventListenerTest {
                 eq(contributor), eq(NotificationEventType.submission_approved), contains("Tech Summit"), any());
         verify(emailDeliveryService).send(
                 eq(contributor), eq(NotificationEventType.submission_approved.name()), any(), any());
+    }
+
+    @Test
+    void onSubscriptionLifecycleChanged_restrictedNotifiesAdministrators() {
+        SubscriptionLifecycleChangedEvent event = new SubscriptionLifecycleChangedEvent(
+                UUID.randomUUID(),
+                "DASIG Central Visayas",
+                SubscriptionLifecycleStatus.GRACE_PERIOD,
+                SubscriptionLifecycleStatus.RESTRICTED,
+                Instant.now().minusSeconds(86_400),
+                Instant.now().minusSeconds(1));
+
+        listener.onSubscriptionLifecycleChanged(event);
+
+        verify(notificationService).createNotification(
+                eq(superAdmin), eq(NotificationEventType.subscription_restricted),
+                contains("existing review and publishing workflows remain available"),
+                eq("/settings#subscription"));
+        verify(emailDeliveryService).send(
+                eq(superAdmin), eq(NotificationEventType.subscription_restricted.name()),
+                contains("Subscription restricted"), contains("Manage subscription"));
     }
 
     @Test

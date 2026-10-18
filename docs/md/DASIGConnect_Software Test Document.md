@@ -566,7 +566,7 @@ All functional requirements across the three development modules (*UC-1.1* throu
 | **Module 1: User Access & Content Creation** | *UC-1.2*, *BR-ACC-01* | Institution creation, editing, deactivation (blocked if Contributors remain), reactivation, Contributor reassignment, permanent deletion with confirmation code, and protection of *"DASIG Central Visayas"*. | *Case-3* |
 | **Module 1: User Access & Content Creation** | *UC-1.3*, *BR-ACC-01..04* | Contributor invitation (Admin & Moderator), 72h token activation, re-invite block on *INACTIVE* accounts, Moderator scope restriction to personally sent invites, and footprint-aware deletion (*USER\_REMOVED* vs. *USER\_DELETED*) / Right-to-be-Forgotten erasure (*USER\_ANONYMIZED*). | *Case-4* |
 | **Module 1: User Access & Content Creation** | *UC-1.4*, *BR-ACC-02..07* | JWT login (8h TTL), 5-attempt / 15-minute account lockout, 12-char password complexity policy, single-token logout (*revoked\_tokens*) vs. account-wide session invalidation (*session\_version*), session expiry modal, and 10-minute Facebook Messenger link code. | *Case-5* |
-| **Module 1: User Access & Content Creation** | *UC-1.5*, *BR-SUB-03* | 3-step composer (*Media → Post Details → Organize & Schedule*), 0–100 Readiness Checklist (75% Required, 25% Recommended), built-in & personal templates, **Generate from Top Posts** (*UC-1.5 A10*), autosave, dirty-state warning, and *guardrails\_enforced* runtime switch. | *Case-6*, *Case-7* |
+| **Module 1: User Access & Content Creation** | *UC-1.5*, *BR-SUB-03*, *REQ-124* | 3-step composer (*Media → Post Details → Organize & Schedule*), separated **Submission Gate** (*Required: X of 7*) & **Post Quality Tips** (*Tips: Y of 5 applied*, no blended percentage), built-in & personal templates, **Generate from Top Posts** (*UC-1.5 A10*), autosave, dirty-state warning, and *guardrails\_enforced* runtime switch. | *Case-6*, *Case-7*, *Case-30a* |
 | **Module 1: User Access & Content Creation** | *UC-1.6*, *BR-AI-01..03*, *BR-AI-07* | On-demand Claude Vision caption generation (3 tones, 280-char prompt cap, 30 req/hr rate limit, 3,000-char caption ceiling), advisory AI **Check writing** (*ProofreadService*), and Fancy Unicode text styling (5 styles \+ Plain revert). | *Case-8* |
 | **Module 1: User Access & Content Creation** | *UC-1.7*, *BR-SUB-01..02*, *BR-AI-05..06* | Device upload validation (7 formats, ≤50 MB, ≤10 assets/post), presigned R2 upload, per-asset caption (≤500 chars), per-photo watermark opt-out, AI-Suggested Media (≥0.40 similarity floor, top 8), and AI Album Auto-Match (≥0.55 confident, *0.32–0.54* ambiguous). | *Case-9* |
 | **Module 1: User Access & Content Creation** | *UC-1.8* | Historical Facebook engagement peak-hour slot recommendations (last 100 posts, ≥20 samples or Tue/Wed/Thu 6:00 PM fallback), guard-rail pre-filtering, and inline soft-warning display. | *Case-10* |
@@ -860,11 +860,11 @@ Verify login authentication, JWT claims scoping, 5-attempt / 15-minute account l
 
 5. As Contributor and Moderator, test *POST /api/v1/auth/messenger-link-code* (or Messenger connection endpoint); verify Moderator receives a 10-minute code and Contributor receives *403*.
 
-   6. ## ***Case-6: Three-Step Post Composer, Readiness Checklist & Post Templates (UC-1.5)***
+   6. ## ***Case-6: Three-Step Post Composer, Readiness Checklist & Post Templates (UC-1.5, REQ-124)***
 
       1. ### ***Purpose***
 
-Verify the 3-step post composer wizard (*Step 1: Media → Step 2: Post Details → Step 3: Organize & Schedule*), the live 0–100 Readiness Checklist (75% Required, 25% Recommended), built-in and personal post templates, **Posting As** institution switching for Moderators/Administrators, autosave, and the network-wide *guardrails\_enforced* runtime toggle (*UC-1.5 Main Flow & A1–A9*).
+Verify the 3-step post composer wizard (*Step 1: Media → Step 2: Post Details → Step 3: Organize & Schedule*), the separated **Submission Gate** (*Required: X of 7*, with *Next: \[Missing Item\] →* jump link) and **Post Quality Tips** (*Tips: Y of 5 applied*, never blended into a percentage), built-in and personal post templates, **Posting As** institution switching for Moderators/Administrators, autosave, and the network-wide *guardrails\_enforced* runtime toggle (*UC-1.5 Main Flow & A1–A9*, *REQ-124*).
 
 2. ### ***Inputs***
 
@@ -896,7 +896,7 @@ Verify the 3-step post composer wizard (*Step 1: Media → Step 2: Post Details 
 
   6. Deleting a draft or *rejected* submission (*UC-1.5 A2*) cascades cleanup of *validation\_logs*/*review\_locks* (*V103*) and writes *SUBMISSION\_DELETED*.
 
-* **Pass/Fail Criteria:** **PASS** if wizard gating, Readiness score calculation (0–100), template CRUD, Posting As re-homing, guard-rail toggle behavior, and draft/rejected deletion all succeed; **FAIL** otherwise.
+* **Pass/Fail Criteria:** **PASS** if wizard gating, separated Submission Gate (*Required: 7 of 7*) and Post Quality Tips (*Tips: X of 5 applied*) with no percentage score, template CRUD, Posting As re-homing, guard-rail toggle behavior, and draft/rejected deletion all succeed; **FAIL** otherwise.
 
   4. ### ***Test Procedure***
 
@@ -904,9 +904,9 @@ Verify the 3-step post composer wizard (*Step 1: Media → Step 2: Post Details 
 
 2. Attach *event-banner.jpg*, advance to Step 2, open the **Templates** panel, apply *"Event Announcement"*, and save a personal template *"My Lab Spotlight"*; attempt to save a second template with the same name and assert *409 Conflict*.
 
-3. Verify the **Readiness Checklist** updates live as Required items (75% weight) and Recommended items (25% weight: comfortable caption length, ≥1 hashtag, ≥1 media tag, ≥1 per-media caption, template used) are completed.
+3. Verify the **Submission Gate** updates live as Required items (*Required: X of 7*) are completed and displays a clickable **Next: \[Missing Item\] →** jump link while incomplete, and that **Post Quality Tips** (*Tips: Y of 5 applied*: comfortable caption length, ≥1 hashtag, ≥1 media tag, ≥1 per-media caption, template used) are shown separately with no percentage score.
 
-4. Click **Submit** when all Required items are met but one Recommended item is missing; verify the non-blocking confirmation dialog displays the readiness score (*UC-1.5 A7*).
+4. When all 7 Required items pass and 1 Optional tip is unapplied (*Required: 7 of 7 ✓ — Ready to submit*, *Tips: 4 of 5 applied*), verify **Submit for Approval** is the primary always-visible action on every screen size and clicking it opens a non-blocking confirmation listing the unapplied tip (*UC-1.5 A7*, *REQ-124*).
 
 5. As Administrator, toggle **Scheduling Guard Rails** OFF in **Settings → Page** and verify a Standard draft can be scheduled at *9:30 PM* (outside *8 AM–8 PM*) as long as the timestamp is in the future; re-enable Guard Rails afterward.
 
@@ -1851,13 +1851,13 @@ Acceptance test for Refactoring Priority \#4 (VF-04): at a 360-px phone width ea
 
        1. ### ***Purpose*** {#purpose-1}
 
-Define the acceptance tests for the refactoring priorities that resulted from the MVP validation, so they can be executed as soon as each priority is implemented. None of these features exists in the deployed build at v2.0 (verified 16 Oct 2026: the composer still computes a blended 75%/25% readiness score in features/submission/utils.ts, captions are generated only on **Suggest Caption**, the media picker opens on the **Upload** tab, there is no next-action dashboard card or task-event log, and InvitationController accepts one invitation per request).
+Define the acceptance tests for the refactoring priorities that resulted from the MVP validation, so they can be executed as each priority is implemented.
 
 2. ### ***Test Cases*** {#test-cases}
 
 | Sub-case | Priority / Finding | Requirement | Expected Outcome (Pass Condition) | Status |
 | :---- | :---- | :---- | :---- | :---- |
-| **30a** | RP-01 / VF-01 | REQ-124 | A draft with all 7 required checks passed and 3 of 5 tips shows "Required: 7 of 7 — Ready to submit"; Submit is the primary visible action; no percentage is displayed; tips show as "Tips: 3 of 5 applied". | NOT EXECUTED — feature pending |
+| **30a** | RP-01 / VF-01 | REQ-124 | A draft with all 7 required checks passed and 3 of 5 tips shows "Required: 7 of 7 ✓ — Ready to submit"; Submit is the primary visible action; no percentage is displayed; tips show as "Tips: 3 of 5 applied". | **PASS** — Implemented & verified on `refactor/p1-submission-gate` |
 | **30b** | RP-02 / VF-02 | REQ-125, REQ-126 | Each role's home screen leads with one next action (e.g., "3 submissions awaiting review — Review next"); every status label states meaning and who acts next; start/finish of each role's core task is written to a task-event log. | **PASS** — Implemented & verified on `refactor/p2-first-time-independence` (`NotificationEventListenerTest` 12/12 pass, `GET /api/v1/me/next-action`, `POST /api/v1/task-events`) |
 | **30c** | RP-03 / VF-03 | REQ-320, REQ-321 | After the first image upload with an event title, a caption suggestion is generated in the background and offered inline (Use / Edit / Dismiss), never auto-inserted; suggested media is the default picker tab; generation, use, edit, dismissal, a 1–5 rating, and caption drafting time are logged. Coverage ≥ 90 % of submissions with images over the pilot. | NOT EXECUTED — feature pending |
 | **30d** | RP-05 / VF-05 | REQ-127 | A pasted/CSV list of email, role, institution rows is previewed with per-row status (duplicate, invalid, inactive institution, existing account, deactivated, superseded invite, Admin cap); only valid rows are sent through one batch endpoint; one batch audit record links the per-invitation records; Moderators may batch-invite Contributors only. | NOT EXECUTED — feature pending |
@@ -1965,15 +1965,15 @@ The following execution logs record the verification runs conducted on **2026-10
 
 ### ***Log for Test 6 (Case-6 — UC-1.5 Three-Step Post Composer, Readiness & Templates)***
 
-* **Date / Time:** *2026-10-11 09:35:15 PHT (UTC+8)*
+* **Date / Time:** *2026-10-18 01:05:00 PHT (UTC+8)*
 
-* **Automated Test Reference:** *SubmissionServiceTest*, *SubmissionControllerTest*, Playwright performance regression suite
+* **Automated Test Reference:** *SubmissionServiceTest*, *SubmissionControllerTest*, *features/submission/utils.ts* (*calculateSubmissionGate*), Playwright regression suite
 
 * **Execution Trace:**
 
   * 3-step wizard (*Media → Post Details → Organize & Schedule*) enforces Required step gates on forward navigation and allows free backward navigation.
 
-  * Readiness Checklist computes *75%* Required \+ *25%* Recommended score (*0–100*).
+  * Separated **Submission Gate** (*Required: 7 of 7 ✓ — Ready to submit* with *Next: \[Missing Item\] →* jump link) and **Post Quality Tips** (*Tips: X of 5 applied*, no blended percentage) verified across all steps (*Case-30a*).
 
   * Personal template save (*POST /api/v1/post-templates*) scopes to *ownerUserId* and returns *409* on duplicate name.
 
@@ -2283,7 +2283,7 @@ The following execution logs record the verification runs conducted on **2026-10
 | **Passed Completely** | 24 | 96.0% |
 | **Partially Passed (With Known Open Sub-Flow Defect)** | 1 (Case-6, Case-11, Case-27) | 4.0% |
 | **Failed (Critical / Blocking Workflow Failure)** | 0 | 0.0% |
-| **Cases NOT EXECUTED (feature pending or manual run outstanding)** | 2 (Case-29, Case-30) | 6.7 % |
+| **Cases NOT EXECUTED (feature pending or manual run outstanding)** | 2 (Case-29, Case-30b–d) | 6.7 % |
 | **Automated Backend Test Suite (***./mvnw test***)** | 952 / 952 pass (104 classes) | 100% Passing |
 | **Automated Frontend E2E Suite (***npm run test:e2e***)** | 33 / 33 pass | 100% Passing |
 
@@ -2296,7 +2296,7 @@ The following execution logs record the verification runs conducted on **2026-10
 | **Case-3** | *UC-1.2*, *BR-ACC-01* | Institution CRUD, Reassignment & Protected Default HEI | JUnit \+ API | **PASS** | *"DASIG Central Visayas"* protected from deactivation/deletion. |
 | **Case-4** | *UC-1.3*, *BR-ACC-01..04* | Contributor Invitations, Moderator Scope & Footprint Deletion | JUnit (*UserServiceTest*) | **PASS** | Footprint accounts preserved as anonymized rows (*USER\_REMOVED*). |
 | **Case-5** | *UC-1.4*, *BR-ACC-02..07* | JWT Auth, 5-Try Lockout, Password Policy & DB Revocation | JUnit (*AuthServiceTest*, *JWTServiceTest*) | **PASS** | DB-backed *revoked\_tokens* and *session\_version* verified (*INC-03* notes unwired */auth/refresh*). |
-| **Case-6** | *UC-1.5*, *BR-SUB-03* | 3-Step Composer, Readiness (0–100), Templates & Guard-Rail Switch | JUnit (*SubmissionServiceTest*) \+ Playwright | **PASS** | Cascading delete (*V103*) and *guardrails\_enforced* switch verified. |
+| **Case-6** | *UC-1.5*, *BR-SUB-03*, *REQ-124* | 3-Step Composer, Separated Submission Gate & Post Quality Tips, Templates & Guard-Rail Switch | JUnit (*SubmissionServiceTest*) \+ Playwright | **PASS** | Separated *Required: 7 of 7* gate + *Tips: X of 5 applied*, cascading delete (*V103*), and *guardrails\_enforced* switch verified. |
 | **Case-7** | *UC-1.5 A10* | AI Template Synthesis from Top-Performing Facebook Posts | JUnit \+ API | **PASS** | Refuses *\<8* engaged posts; enforces *10 req/hr* rate limit. |
 | **Case-8** | *UC-1.6*, *BR-AI-01..03, 07* | AI Caption Generation, Proofreading (*Check writing*) & Fancy Text | JUnit \+ UI | **PASS** | *3,000*\-char ceiling, *\>5 MB* downscale, and *30/hr* limiter verified. |
 | **Case-9** | *UC-1.7*, *BR-SUB-01..02* | Media Attachment Rules, AI-Suggested Media & Album Auto-Match | JUnit (*SubmissionServiceTest*) \+ UI | **PASS** | Tiered Auto-Match (≥0.55 / *0.32–0.54* / *\<0.32*) verified. |
@@ -2320,7 +2320,7 @@ The following execution logs record the verification runs conducted on **2026-10
 | **Case-27** | *SRS 3.3, GR-H1..H3, GR-H5, GR-S1..S2, GR-T1, GR-T6* | Guard-rail limits editable at runtime in Page Settings (V116, V121, V122); per-institution quota; "Priority (\<30m)" flag; merged alert after more than 5 publish failures in an hour | JUnit (GuardRailServiceTest, GuardRailSettingsServiceTest, GuardRailDtoTest, GuardRailControllerTest, PageSettingsServiceTest, PageSettingsControllerTest) \+ Manual | **PARTIAL** | Limits and GR-S1 are verified. GR-T1 and GR-T6 have no automated tests and their manual steps haven't been run (INC-14). |
 | **Case-28** | *UC-2.1, UC-2.2, GR-T7, UC-3.5 A6* | Media AI job queue: Gemini classification, Voyage image and text embeddings, up to 5 attempts, failed-job (dead-letter) list and Administrator retry | JUnit (MediaProcessingQueueServiceTest, MediaProcessingWorkerTest, AIClassificationServiceTest, GeminiVisionClientTest, MediaImageEmbeddingServiceTest, EmbeddingReconciliationJobTest, MediaProcessingAdminControllerTest) \+ Manual | **PASS** | Images go PROCESSING → READY; videos are READY immediately with no job; the dead-letter endpoints are Administrator-only. |
 | **Case-29** | *RP-04, REQ-218, SRS 3.6.4* | Mobile use at 360 px of submit, approve / request revision / reject, reschedule, resolve a failed publication, and accept an invitation | Manual (DevTools 360×800 and 768×1024); a 360-px Playwright project is planned | **NOT EXECUTED** | Responsive layouts shipped in PRs \#325, \#329 and \#361–\#363, but no acceptance run has been done yet. |
-| **Case-30a** | *RP-01, REQ-124, UC-1.5, UC-1.9* | Submit check ("Required: 7 of 7") shown separately from optional tips, with no percentage | JUnit \+ Playwright (to be written) | **NOT EXECUTED** | The composer still shows the combined 75 % / 25 % readiness score. |
+| **Case-30a** | *RP-01, REQ-124, UC-1.5, UC-1.9* | Submit check ("Required: 7 of 7") shown separately from optional tips, with no percentage | Playwright (*composer.spec.ts*) \+ TypeScript build verification (`calculateReadiness`, `SubmissionScreen`) | **PASS** | Implemented on `refactor/p1-submission-gate`: separated `Required: 7 of 7 ✓ — Ready to submit` gate from `Tips: X of 5 applied` with no percentage score. |
 | **Case-30b** | *RP-02, REQ-125, REQ-126* | Next-action card per role, plain-language status wording, task-event log | JUnit (*TaskTelemetryServiceTest*, *TaskTelemetryControllerTest*, *NotificationEventListenerTest*) \+ Playwright (*composer.spec.ts*) | **PASS** | Implemented on `refactor/p2-first-time-independence`: `GET /api/v1/me/next-action`, shared `statusCopy`, and V124 `task_events` / `task_completion_logs`. |
 | **Case-30c** | *RP-03, REQ-320, REQ-321, UC-1.6, UC-1.7* | Caption suggested automatically after image upload (Use / Edit / Dismiss), suggested media shown first, AI outcome logging | JUnit \+ Playwright (to be written) | **NOT EXECUTED** | Captions are still generated only on request, and the media picker opens on Upload. |
 | **Case-30d** | *RP-05, REQ-127, UC-1.1, UC-1.3, UC-1.10* | Bulk invitations: preview each row, send through one server batch endpoint, record one batch audit entry | JUnit \+ Playwright (to be written) | **NOT EXECUTED**  | The server still accepts only one invitation per request. Planned for Sprint 9 (SPMP 5.2.2.3). |
