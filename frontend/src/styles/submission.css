@@ -5072,10 +5072,12 @@ textarea.sub-finput {
     font-size: 12.5px;
   }
   .sub-nav-save-status {
-    font-size: 11px;
-    height: 28px;
-    padding: 3px 8px;
-    white-space: nowrap;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
   }
   .sub-form-canvas {
     padding: 14px 10px 48px;
@@ -6452,12 +6454,23 @@ section.sub-form-section.sub-field-pulse {
    ≤900px the workspace stacks. Rather than pushing the Readiness checklist
    below the form, the checklist is hidden and opened as a sheet from the
    top-bar chip. The Submit / Save actions stay in the page flow. */
+.sub-btn-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.sub-btn-guide i {
+  font-size: 14px;
+}
 .sub-readiness-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   height: 30px;
-  padding: 0 11px 0 9px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1.5px solid var(--sub-border);
   background: var(--sub-surface);
@@ -6466,6 +6479,8 @@ section.sub-form-section.sub-field-pulse {
   font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.15s ease;
 }
@@ -6969,22 +6984,72 @@ section.sub-form-section.sub-field-pulse {
   }
   .sub-guard-actions .sub-step-panel-btn.secondary {
     flex: 0 0 auto;
-    padding: 0 14px;
+    padding: 0 12px;
   }
   .sub-guard-actions .sub-step-panel-btn.primary,
   .sub-guard-actions .sub-step-panel-btn.locked,
   .sub-guard-actions .sub-guard-submit-btn {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-width: 0;
   }
   .sub-guard-actions .sub-guard-submit-btn {
-    width: 100%;
+    width: auto;
     height: 44px;
     min-height: 44px;
+    padding: 0 14px;
+    white-space: nowrap;
   }
   .sub-guard-actions .sub-step-panel-btn:active,
   .sub-guard-actions .sub-guard-submit-btn:active:not(:disabled) {
     transform: scale(0.97);
+  }
+}
+
+/* Mobile topnav: Guide and Draft saved collapse to icons-only on narrow screens */
+@media (max-width: 768px) {
+  .sub-nav-save-status {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    gap: 0;
+  }
+  .sub-nav-save-status .sub-nav-save-text {
+    display: none;
+  }
+  .sub-nav-save-status i {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .sub-btn-guide {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    gap: 0;
+  }
+  .sub-btn-guide .sub-btn-guide-text {
+    display: none;
+  }
+  .sub-btn-guide i {
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .sub-readiness-chip {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    gap: 4px;
+  }
+
+  .sub-nav-right {
+    gap: 6px;
   }
 }
 
