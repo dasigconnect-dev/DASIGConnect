@@ -2479,11 +2479,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ) : (
         <i className="ti ti-send"></i>
       )}
-      {isNeedsRevision
-        ? "Submit for Revision"
-        : form.status === "rejected"
-          ? "Resubmit for Review"
-          : "Submit for Approval"}
+      <span className="sub-submit-label-full">
+        {isNeedsRevision
+          ? "Submit for Revision"
+          : form.status === "rejected"
+            ? "Resubmit for Review"
+            : "Submit for Approval"}
+      </span>
+      <span className="sub-submit-label-short">
+        {isNeedsRevision
+          ? "Submit"
+          : form.status === "rejected"
+            ? "Resubmit"
+            : "Submit"}
+      </span>
     </button>
   );
 

@@ -125,24 +125,28 @@ export function StepPanelActions({
       {previous && (
         <button
           type="button"
-          className="sub-step-panel-btn secondary"
+          className="sub-step-panel-btn secondary sub-step-panel-prev"
           onClick={() => onStepChange(previous)}
+          title={`Previous: ${stepLabel(previous)}`}
+          aria-label={`Previous: ${stepLabel(previous)}`}
         >
-          <i className="ti ti-arrow-left"></i> Previous
+          <i className="ti ti-arrow-left" aria-hidden="true"></i>
+          <span className="sub-step-btn-text-full">Previous</span>
+          <span className="sub-step-btn-text-short">Prev</span>
         </button>
       )}
       {next ? (
         <>
           <button
             type="button"
-            className={`sub-step-panel-btn ${nextIsLocked ? "locked" : gatePassed && finalAction ? "secondary" : "primary"}`}
+            className={`sub-step-panel-btn ${nextIsLocked ? "locked" : gatePassed && finalAction ? "secondary" : "primary"} sub-step-panel-next`}
             onClick={() => onStepChange(next)}
             title={nextLockedTitle ?? `Go to ${stepLabel(next)}`}
             aria-label={nextLockedTitle ? `Next: ${nextLockedTitle}` : `Next: ${stepLabel(next)}`}
           >
-            {nextIsLocked && <i className="ti ti-lock"></i>}
-            Next
-            {!nextIsLocked && <i className="ti ti-arrow-right"></i>}
+            {nextIsLocked && <i className="ti ti-lock" aria-hidden="true"></i>}
+            <span className="sub-step-btn-text">Next</span>
+            {!nextIsLocked && <i className="ti ti-arrow-right" aria-hidden="true"></i>}
           </button>
           {gatePassed && finalAction}
         </>
@@ -150,7 +154,7 @@ export function StepPanelActions({
         finalAction
       ) : (
         <span className="sub-step-panel-ready">
-          <i className="ti ti-check"></i> Final step
+          <i className="ti ti-check" aria-hidden="true"></i> Final step
         </span>
       )}
     </div>

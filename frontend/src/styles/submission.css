@@ -1487,6 +1487,18 @@
   transform: translateY(-0.5px);
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.35);
 }
+.sub-submit-label-full {
+  display: inline;
+}
+.sub-submit-label-short {
+  display: none;
+}
+.sub-step-btn-text-full {
+  display: inline;
+}
+.sub-step-btn-text-short {
+  display: none;
+}
 .sub-btn-new:disabled,
 .sub-guard-submit-btn:disabled,
 .sub-guard-save-btn:disabled {
@@ -7050,6 +7062,75 @@ section.sub-form-section.sub-field-pulse {
 
   .sub-nav-right {
     gap: 6px;
+  }
+}
+
+/* Mobile bottom step bar: equal-width symmetrical buttons across 3-column or 4-column states with zero empty space */
+@media (max-width: 640px) {
+  .sub-guard-actions {
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .sub-guard-actions .sub-step-panel-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+  }
+  /* All buttons in the actions bar share the width equally (equal column grid) */
+  .sub-guard-actions .sub-step-panel-preview,
+  .sub-guard-actions .sub-step-panel-prev,
+  .sub-guard-actions .sub-step-panel-next,
+  .sub-guard-actions .sub-guard-submit-btn {
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 4px !important;
+    font-size: 12px !important;
+    gap: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 999px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+  }
+  .sub-guard-actions .sub-step-panel-preview i,
+  .sub-guard-actions .sub-step-panel-prev i,
+  .sub-guard-actions .sub-step-panel-next i,
+  .sub-guard-actions .sub-guard-submit-btn i {
+    font-size: 13.5px !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn {
+    font-weight: 700 !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn .sub-submit-label-full {
+    display: none !important;
+  }
+  .sub-guard-actions .sub-guard-submit-btn .sub-submit-label-short {
+    display: inline !important;
+  }
+
+  /* When 4 buttons are present (Submit + Next), compact Previous to 'Prev' */
+  .sub-guard-actions .sub-step-panel-actions:has(.sub-guard-submit-btn) .sub-step-panel-prev .sub-step-btn-text-full {
+    display: none !important;
+  }
+  .sub-guard-actions .sub-step-panel-actions:has(.sub-guard-submit-btn) .sub-step-panel-prev .sub-step-btn-text-short {
+    display: inline !important;
+  }
+
+  /* When 3 or fewer buttons are present (no Next button), show full 'Previous' */
+  .sub-guard-actions .sub-step-panel-actions:not(:has(.sub-step-panel-next)) .sub-step-panel-prev .sub-step-btn-text-full {
+    display: inline !important;
+  }
+  .sub-guard-actions .sub-step-panel-actions:not(:has(.sub-step-panel-next)) .sub-step-panel-prev .sub-step-btn-text-short {
+    display: none !important;
   }
 }
 
