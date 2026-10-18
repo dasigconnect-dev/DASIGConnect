@@ -34,5 +34,7 @@ public enum NotificationEventType {
     subscription_grace_period,
     subscription_restricted,
     subscription_restored,
+    subscription_payment_received,
+    subscription_payment_attention,
     generic
 }

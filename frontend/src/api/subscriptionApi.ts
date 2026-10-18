@@ -49,6 +49,57 @@ export interface SubscriptionUsageMetric {
   unit: "COUNT" | "BYTES";
 }
 
+export interface SubscriptionBilling {
+  providerEnabled: boolean;
+  providerMode: "TEST" | "LIVE";
+  invoices: SubscriptionInvoice[];
+}
+
+export interface SubscriptionInvoice {
+  id: string;
+  invoiceNumber: string;
+  amountCentavos: number;
+  currency: string;
+  status: "OPEN" | "PAID" | "VOID" | "PARTIALLY_REFUNDED" | "REFUNDED";
+  billingPeriodStart: string;
+  billingPeriodEnd: string;
+  dueAt: string;
+  paidAt: string | null;
+  createdAt: string;
+  paymentLink: SubscriptionPaymentLink | null;
+  payments: SubscriptionPayment[];
+}
+
+export interface SubscriptionPaymentLink {
+  id: string;
+  checkoutUrl: string;
+  providerReferenceNumber: string | null;
+  status: "ACTIVE" | "PAID" | "ARCHIVED";
+  liveMode: boolean;
+  createdAt: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  externalPaymentId: string;
+  amountCentavos: number;
+  currency: string;
+  status: "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED";
+  paidAt: string;
+}
+
+export interface CreatedSubscriptionPaymentLink {
+  invoiceId: string;
+  invoiceNumber: string;
+  amountCentavos: number;
+  currency: string;
+  checkoutUrl: string;
+  providerReferenceNumber: string | null;
+  status: string;
+  liveMode: boolean;
+  dueAt: string;
+}
+
 export interface SubscriptionUsageSummary {
   organizationId: string;
   month: string;
@@ -112,4 +163,20 @@ export function recordManualSubscriptionRenewal(billingMonths = 1, paymentRefere
 
 export function extendSubscriptionGracePeriod(days = 7) {
   return api.post<SubscriptionStatus>("/subscription/admin/extend-grace-period", { days });
+}
+
+export function getSubscriptionBilling(signal?: AbortSignal) {
+  return api.get<SubscriptionBilling>("/subscription/billing", { signal });
+}
+
+export function createSubscriptionPaymentLink(payerEmail?: string) {
+  return api.post<CreatedSubscriptionPaymentLink>("/subscription/billing/payment-link", {
+    payerEmail: payerEmail || null,
+  });
+}
+
+export function reconcileSubscriptionBilling() {
+  return api.post<{ checked: number; settled: number; failed: number }>(
+    "/subscription/billing/reconcile",
+  );
 }
