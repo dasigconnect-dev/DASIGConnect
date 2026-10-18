@@ -8,7 +8,7 @@ import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import { submissionListTourSteps } from "../onboarding/tours/submissionTour";
 import type { QueueFilter } from "./types";
-import { statusLabels } from "./constants";
+import { statusGuidance, statusLabels } from "./constants";
 import { formatDate, getSubmissionStatusIcon } from "./utils";
 import { QueueLoadingState, QueueState } from "./components/SharedPrimitives";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
@@ -261,6 +261,23 @@ export default function SubmissionListScreen({ user }: { user: User }) {
                         </span>
                       </div>
                     </div>
+
+                    {statusGuidance[item.status] && (
+                      <div
+                        className="sub-status-guidance-line"
+                        style={{
+                          padding: "6px 16px",
+                          fontSize: "12px",
+                          color: "var(--d-text-mid, #475569)",
+                          background: "var(--d-bg, #f8fafc)",
+                          borderTop: "1px solid var(--d-border, #e2e8f0)",
+                          borderBottom: "1px solid var(--d-border, #e2e8f0)",
+                        }}
+                      >
+                        <i className="ti ti-info-circle" style={{ marginRight: "6px" }} aria-hidden="true" />
+                        {statusGuidance[item.status]}
+                      </div>
+                    )}
 
                     {/* Post Content: Event Title & Caption */}
                     <div className="sub-fb-card-content">

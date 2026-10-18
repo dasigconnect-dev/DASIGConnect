@@ -3419,10 +3419,11 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 ## ***4.2. RP-02 — Next action, plain-language status, task-event log (VF-02; REQ-125, REQ-126)*** {#4.2.-rp-02-—-next-action,-plain-language-status,-task-event-log-(vf-02;-req-125,-req-126)}
 
-* **Next-action card:** new `GET /api/v1/me/next-action` returning `{ kind, label, count, deepLink }` computed per role — Contributor: oldest draft with `nextMissing` items or a `needs_revision` item; Moderator: count of `pending` (Fast-Track first) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen`.  
-* **Status wording:** one shared map `statusCopy[status] = { label, meaning, whoActsNext }` used by submission lists, the review queue, and notification templates (`NotificationEventListener` messages), so the same sentence appears everywhere.  
-* **Task-event log:** new table `task_events (id, user_id, role, task_type, submission_id NULL, event ENUM('started','completed','abandoned'), occurred_at, client_session_id)`, written by a new `POST /api/v1/task-events` (signed in) and by server-side hooks for completion (submit, terminal review action, invitation sent). Used to compute first-attempt completion and Time-on-Task per role. No free text is stored.  
-* **Test:** STD Case-30b; re-validation.
+* **Status:** **Implemented (`refactor/p2-first-time-independence`)**  
+* **Next-action card:** `GET /api/v1/me/next-action` (`TaskTelemetryController` → `TaskTelemetryService.getNextAction`) returns `{ kind, label, count, deepLink }` computed per role — Contributor: `needs_revision` draft first, else oldest `draft` with missing required items; Moderator: count of `pending` (Fast-Track prioritized) with link to the oldest; Administrator: count of `publish_failed`, else pending reviews. Rendered at the top of `DashboardScreen.tsx`.  
+* **Status wording:** shared `statusCopy[status] = { label, meaning, whoActsNext }`, `statusLabels`, and `statusGuidance` in `features/submission/constants.ts`, mirrored in `NotificationEventListener.java` (verified by `NotificationEventListenerTest`), so submission lists, the review queue, and in-app/email/Messenger notifications display identical plain-language status explanations.  
+* **Task-event log:** migration `V123__task_completion_telemetry.sql` creates `task_events (id, user_id, role, task_type, submission_id NULL, event CHECK ('started','completed','abandoned'), occurred_at, client_session_id)` and `task_completion_logs`, written via `POST /api/v1/task-events` and `POST /api/v1/telemetry/tasks/{start,complete}` (`useTaskTelemetry.ts` across `SubmissionScreen`, `ValidationQueueScreen`, `InvitationComposer`, `InviteScreen`) and summarized via `GET /api/v1/telemetry/tasks/summary`. No free text is stored.  
+* **Test:** STD Case-30b (**PASS**).
 
 ## ***4.3. RP-03 — Caption on upload, media-first picker, log-based GO3 (VF-03; REQ-320, REQ-321)*** {#4.3.-rp-03-—-caption-on-upload,-media-first-picker,-log-based-go3-(vf-03;-req-320,-req-321)}
 

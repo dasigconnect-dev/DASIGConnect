@@ -1865,7 +1865,7 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **REQ-125:** each role's home screen shall lead with the single most important pending action (Contributor: "Finish your draft — 1 required item left"; Moderator: "3 submissions awaiting review — Review next"; Administrator: "1 failed publication needs action"). Every submission status shall state what it means and who acts next, using the same wording in the UI and notifications (e.g., "Needs revision — the Moderator asked for changes. Edit and resubmit."). The system shall record the start and finish of each role's core task to compute first-attempt completion and Time-on-Task.  
 * **REQ-126 (NFR — learnability):** see Section 3.4.8.  
 * **Acceptance:** STD Case-30b; re-validation and pilot logs.  
-* **Status:** Partially addressed by view-only guides (composer, review queue, decisions, failed recovery, editing); next-action, status wording, and task logging not implemented.
+* **Status:** **Implemented (`refactor/p2-first-time-independence`)** — role-based Next Action card (`GET /api/v1/me/next-action` + `DashboardScreen`), shared plain-language `statusCopy` across UI and `NotificationEventListener`, and V123 `task_events` / `task_completion_logs` instrumentation (`POST /api/v1/task-events`, `GET /api/v1/telemetry/tasks/summary`).
 
 ### ***3.6.3. AI Caption on Upload, Media First, Log-Based Measurement — REQ-320, REQ-321 (RP-03, VF-03; High)*** {#3.6.3.-ai-caption-on-upload,-media-first,-log-based-measurement-—-req-320,-req-321-(rp-03,-vf-03;-high)}
 

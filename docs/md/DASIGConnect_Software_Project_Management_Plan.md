@@ -223,7 +223,7 @@ The initial product is scoped to Facebook and does not provide a general multi-p
 | Refactoring Priorities | 10 Oct 2026 | Findings → objectives → requirement/design changes → expected improvement | COMPLETED |
 | Software Test Documents | 10 Oct 2026, Week 9 | Test Plan, Test Cases, and Test Reports. | COMPLETED |
 | Deployed System | 17 Oct 2026, Week 10 | Pilot or production deployment with test execution and usability test results. | IN PROGRESS |
-| Refactoring implementation (RP-01–RP-05) | Sprints 7–9 (proposed) | Merged PRs with acceptance tests (STD Case-29, Case-30) | IN PROGRESS (RP-01 implemented on `refactor/p1-submission-gate`) |
+| Refactoring implementation (RP-01–RP-05) | Sprints 7–9 (proposed) | Merged PRs with acceptance tests (STD Case-29, Case-30) | IN PROGRESS (RP-01 merged into dev, Case-30a PASS; RP-02 implemented on `refactor/p2-first-time-independence`, Case-30b PASS; RP-03–RP-05 scheduled) |
 | Source code and migrations | Continuous | Reviewed pull requests, reproducible builds, migration chain, test evidence, and identified baselines. | GitHub development baseline |
 
 #### ***1.1.3.1 Completed MVP Validation Outputs*** {#1.1.3.1-completed-mvp-validation-outputs}
@@ -415,7 +415,7 @@ All five team members remain part-time student developers. Work is assigned by c
 | Updated SRS, SDD, and SPMP | Validation findings traced into updated requirements, design, and management plans. | Completed \- 19 September milestone |
 | Refactoring Priorities and STD | Evidence-based priorities plus Test Plan, Test Cases, and Test Reports. | 10 October 2026 |
 | Deployed System | System ready for testing with execution and usability results. | 17 October 2026 |
-| Refactoring implemented (RP-01–RP-05) | Priorities merged; Case-29 and Case-30 executed | RP-01 implemented (`refactor/p1-submission-gate`, Case-30a PASS); RP-02–RP-05 scheduled |
+| Refactoring implemented (RP-01–RP-05) | Priorities merged; Case-29 and Case-30 executed | RP-01 merged into dev (Case-30a PASS); RP-02 implemented (`refactor/p2-first-time-independence`, Case-30b PASS); RP-03–RP-05 scheduled |
 | Re-validation and final acceptance | SUS ≥ 70; first-attempt completion ≥ 95 %; critical defects closed | TBD |
 | Final acceptance and transition | Critical defects closed; evidence accepted; handover material complete. | TBD \- academic calendar |
 
