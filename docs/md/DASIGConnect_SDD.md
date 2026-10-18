@@ -3435,9 +3435,10 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 ## ***4.4. RP-04 — Mobile operability (VF-04; REQ-218)*** {#4.4.-rp-04-—-mobile-operability-(vf-04;-req-218)}
 
-* **Persistent primary-action bar:** a shared `MobileActionBar` component (fixed bottom, ≤ 900 px) on the composer (Submit / Save Draft), review screen (Approve / Request Revision / Reject), Failed tab (Retry / Manual publish), calendar detail (Reschedule), and invite acceptance.  
-* **Deep links:** notification links include the target state, e.g. `/queue?submission={id}&mode=review`, which opens the submission and acquires the review lock on load; Messenger and email templates use the same links.  
-* **Tests:** a Playwright project with a 360×800 viewport covering the five actions (STD Case-29).
+* **Status:** **Implemented (`refactor/p4-mobile-operability`).**  
+* **Persistent primary-action bar:** each role-critical screen keeps its own sticky bottom action bar at phone/tablet widths — composer (Preview / Next / Submit for Approval), review panel (Approve / Request Revision / Reject / Edit once the lock is held), Failed publications (Retry / Start Manual Publish), Master Calendar (drag a scheduled post → Confirm Reschedule dialog), and invitation activation (Activate). No horizontal scrolling at 360 × 800 or 768 × 1024.  
+* **Deep links:** `NotificationEventListener` sends reviewers `/queue?submissionId={id}&mode=review` for T-01 (new submission) and T-11 (Fast-Track) in-app, by email and by Messenger; `ValidationQueueScreen` opens that submission, acquires the review lock for `pending`/`in_review` items (self-review and locks held by another Moderator are still rejected by `ReviewLockService`), then removes `submissionId` and `mode` from the URL. Publish-failed alerts send Administrators/Moderators `/queue?tab=failed&submissionId={id}` (in-app, email, Messenger) and the Contributor `/submissions/{id}`.  
+* **Tests:** `NotificationEventListenerTest` asserts the exact links; Playwright `e2e/mobile-operability.spec.ts` runs five role scenarios (submit, review decision with lock, reschedule, resolve a failed publication, accept an invitation) at 360 × 800 and 768 × 1024 (STD Case-29, **PASS**).
 
 ## ***4.5. RP-05 — Bulk invitations with preview and batch audit (VF-05; REQ-127)*** {#4.5.-rp-05-—-bulk-invitations-with-preview-and-batch-audit-(vf-05;-req-127)}
 
