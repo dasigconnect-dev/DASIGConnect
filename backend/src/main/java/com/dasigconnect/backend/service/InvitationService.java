@@ -16,16 +16,25 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationRowDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationRowPreviewResultDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.InvitationBatch;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.InvitationBatchRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -53,6 +62,8 @@ public class InvitationService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final InstitutionService institutionService;
+    private final InstitutionRepository institutionRepository;
+    private final InvitationBatchRepository invitationBatchRepository;
     /**
      * Administrator headcount cap (`app.admins.max`, default 3). Enforced by
      * {@link AdminCapPolicy} when an admin invitation is created and again when
@@ -70,7 +81,9 @@ public class InvitationService {
             EmailService emailService,
             AuditLogService auditLogService,
             InstitutionService institutionService,
-            AdminCapPolicy adminCapPolicy) {
+            AdminCapPolicy adminCapPolicy,
+            InstitutionRepository institutionRepository,
+            InvitationBatchRepository invitationBatchRepository) {
         this.invitationTokenRepository = invitationTokenRepository;
         this.userRepository = userRepository;
         this.entityManager = entityManager;
@@ -80,6 +93,8 @@ public class InvitationService {
         this.auditLogService = auditLogService;
         this.institutionService = institutionService;
         this.adminCapPolicy = adminCapPolicy;
+        this.institutionRepository = institutionRepository;
+        this.invitationBatchRepository = invitationBatchRepository;
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
@@ -591,5 +606,244 @@ public class InvitationService {
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Only admins and moderators can view invitations");
+    }
+
+    @Transactional(readOnly = true)
+    public BatchInvitationPreviewResponseDto previewBatch(BatchInvitationPreviewRequestDto dto, JwtUserDetails inviter) {
+        if (inviter == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+        boolean isModerator = "moderator".equalsIgnoreCase(inviter.role());
+        boolean isAdmin = isAdmin(inviter);
+        if (!isModerator && !isAdmin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins and moderators can invite users");
+        }
+
+        List<BatchInvitationRowDto> inputRows = dto != null && dto.rows() != null ? dto.rows() : java.util.Collections.emptyList();
+        if (inputRows.size() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch invitations limit is 200 rows per request");
+        }
+
+        List<BatchInvitationRowPreviewResultDto> previewResults = new java.util.ArrayList<>();
+        java.util.Set<String> seenEmailsInBatch = new java.util.HashSet<>();
+        long currentAdminSlotsInUse = adminCapPolicy.slotsInUse(null, null);
+        long maxAdmins = adminCapPolicy.maxAdmins();
+        long pendingBatchAdminCount = 0;
+
+        for (int i = 0; i < inputRows.size(); i++) {
+            BatchInvitationRowDto row = inputRows.get(i);
+            String rawEmail = row.email() != null ? row.email().trim() : "";
+            String rawRole = row.role() != null ? row.role().trim().toLowerCase() : "";
+            UUID instId = row.institutionId();
+            String instCode = row.institutionCode() != null ? row.institutionCode().trim() : null;
+
+            // 1. Email format validation
+            if (rawEmail.isBlank() || !rawEmail.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                previewResults.add(new BatchInvitationRowPreviewResultDto(
+                        i, rawEmail, rawRole, instId, null, "invalid_email", "Invalid email address format"));
+                continue;
+            }
+
+            String normalizedEmail = rawEmail.toLowerCase();
+
+            // 2. Duplicate in batch check
+            if (seenEmailsInBatch.contains(normalizedEmail)) {
+                previewResults.add(new BatchInvitationRowPreviewResultDto(
+                        i, rawEmail, rawRole, instId, null, "duplicate_in_batch", "Duplicate email in batch"));
+                continue;
+            }
+            seenEmailsInBatch.add(normalizedEmail);
+
+            // 3. Role parsing
+            UserRole assignedRole;
+            try {
+                assignedRole = UserRole.valueOf(rawRole.toLowerCase());
+            } catch (Exception e) {
+                previewResults.add(new BatchInvitationRowPreviewResultDto(
+                        i, rawEmail, rawRole, instId, null, "invalid_role", "Role must be admin, moderator, or contributor"));
+                continue;
+            }
+
+            // 4. Role permission for inviter
+            if (isModerator && assignedRole != UserRole.contributor) {
+                previewResults.add(new BatchInvitationRowPreviewResultDto(
+                        i, rawEmail, rawRole, instId, null, "role_not_permitted", "Moderators may only invite Contributors"));
+                continue;
+            }
+
+            // 5. Institution resolution
+            Institution institution = null;
+            if (assignedRole == UserRole.contributor) {
+                if (instId != null) {
+                    institution = institutionRepository.findById(instId).orElse(null);
+                } else if (instCode != null && !instCode.isBlank()) {
+                    institution = institutionRepository.findByCode(instCode)
+                            .or(() -> institutionRepository.findByNameIgnoreCase(instCode))
+                            .orElse(null);
+                }
+                if (institution == null || institution.getStatus() == InstitutionStatus.inactive) {
+                    previewResults.add(new BatchInvitationRowPreviewResultDto(
+                            i, rawEmail, rawRole, instId, null, "inactive_institution", "Institution not found or inactive"));
+                    continue;
+                }
+                String domain = institution.getEmailDomain();
+                if (domain != null && !domain.isBlank()) {
+                    String normDomain = domain.trim().toLowerCase();
+                    if (!normalizedEmail.endsWith("@" + normDomain)) {
+                        previewResults.add(new BatchInvitationRowPreviewResultDto(
+                                i, rawEmail, rawRole, institution.getId(), institution.getName(), "invalid_email",
+                                "Recipient email must use institution domain: " + normDomain));
+                        continue;
+                    }
+                }
+            }
+
+            // 6. Existing user checks
+            User existingUser = userRepository.findByEmail(normalizedEmail).orElse(null);
+            if (existingUser != null) {
+                if (existingUser.getAccountState() == UserStatus.active) {
+                    previewResults.add(new BatchInvitationRowPreviewResultDto(
+                            i, rawEmail, rawRole, institution != null ? institution.getId() : null,
+                            institution != null ? institution.getName() : null, "active_account_exists",
+                            "An active account already exists for this email"));
+                    continue;
+                }
+                if (existingUser.getAccountState() == UserStatus.inactive) {
+                    previewResults.add(new BatchInvitationRowPreviewResultDto(
+                            i, rawEmail, rawRole, institution != null ? institution.getId() : null,
+                            institution != null ? institution.getName() : null, "deactivated_use_reactivation",
+                            "Deactivated account must be reactivated by an admin"));
+                    continue;
+                }
+            }
+
+            // 7. Admin Cap check
+            if (assignedRole == UserRole.admin) {
+                if (currentAdminSlotsInUse + pendingBatchAdminCount >= maxAdmins) {
+                    previewResults.add(new BatchInvitationRowPreviewResultDto(
+                            i, rawEmail, rawRole, null, null, "admin_cap_exceeded",
+                            "Administrator limit of " + maxAdmins + " reached"));
+                    continue;
+                }
+                pendingBatchAdminCount++;
+            }
+
+            // 8. If pending user exists, it will be superseded
+            String status = "valid";
+            String reason = null;
+            if (existingUser != null && (existingUser.getAccountState() == UserStatus.pending
+                    || existingUser.getAccountState() == UserStatus.pending_email_undelivered)) {
+                status = "pending_will_be_superseded";
+                reason = "Existing pending invitation will be superseded";
+            }
+
+            previewResults.add(new BatchInvitationRowPreviewResultDto(
+                    i, rawEmail, rawRole, institution != null ? institution.getId() : null,
+                    institution != null ? institution.getName() : null, status, reason));
+        }
+
+        int validCount = (int) previewResults.stream()
+                .filter(r -> "valid".equals(r.status()) || "pending_will_be_superseded".equals(r.status()))
+                .count();
+        int invalidCount = previewResults.size() - validCount;
+
+        return new BatchInvitationPreviewResponseDto(previewResults, previewResults.size(), validCount, invalidCount);
+    }
+
+    @Transactional
+    public BatchInvitationSendResponseDto sendBatch(
+            BatchInvitationSendRequestDto dto,
+            JwtUserDetails inviter,
+            String ipAddress,
+            String userAgent) {
+        if (inviter == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+        User inviterUser = userRepository.findById(inviter.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+
+        BatchInvitationPreviewResponseDto preview = previewBatch(
+                new BatchInvitationPreviewRequestDto(dto != null ? dto.rows() : java.util.Collections.emptyList()), inviter);
+
+        List<BatchInvitationRowPreviewResultDto> validRows = preview.rows().stream()
+                .filter(r -> "valid".equals(r.status()) || "pending_will_be_superseded".equals(r.status()))
+                .toList();
+
+        int rowCount = preview.rows().size();
+        int sentCount = 0;
+        int rejectedCount = preview.invalidCount();
+
+        InvitationBatch batch = new InvitationBatch();
+        batch.setCreatedBy(inviterUser);
+        batch.setRowCount(rowCount);
+        batch.setSentCount(0);
+        batch.setRejectedCount(rejectedCount);
+        invitationBatchRepository.save(batch);
+
+        Instant now = Instant.now();
+
+        for (BatchInvitationRowPreviewResultDto row : validRows) {
+            String recipientEmail = row.email().trim().toLowerCase();
+            UserRole assignedRole = UserRole.valueOf(row.role().toLowerCase());
+            Institution institution = row.institutionId() != null
+                    ? entityManager.find(Institution.class, row.institutionId())
+                    : null;
+
+            User invitedUser = userRepository.findByEmail(recipientEmail)
+                    .map(existing -> prepareExistingPendingUser(existing, assignedRole, institution))
+                    .orElseGet(() -> createPendingUser(recipientEmail, assignedRole, institution));
+            invitedUser.setInvitedByUserId(inviter.userId());
+            userRepository.save(invitedUser);
+
+            invalidateOpenInvitations(recipientEmail, now);
+
+            String rawToken = TokenHashUtils.generateRawToken();
+            String tokenHash = TokenHashUtils.sha256Hex(rawToken);
+
+            InvitationToken token = new InvitationToken();
+            token.setRecipientEmail(recipientEmail);
+            token.setAssignedRole(assignedRole);
+            token.setInstitution(institution);
+            token.setTokenHash(tokenHash);
+            token.setExpiresAt(now.plus(Duration.ofHours(72)));
+            token.setCreatedByUserId(inviter.userId());
+            token.setBatchId(batch.getId());
+            invitationTokenRepository.save(token);
+
+            try {
+                emailService.sendInvitationEmail(recipientEmail, rawToken);
+            } catch (RuntimeException ex) {
+                invitedUser.setAccountState(UserStatus.pending_email_undelivered);
+                userRepository.save(invitedUser);
+                log.warn("Batch invitation email delivery failed for {}: {}", recipientEmail, ex.getMessage());
+            }
+            sentCount++;
+        }
+
+        batch.setSentCount(sentCount);
+        batch.setRejectedCount(rowCount - sentCount);
+        invitationBatchRepository.save(batch);
+
+        Map<String, Object> auditMeta = Map.of(
+                "rowCount", rowCount,
+                "sentCount", sentCount,
+                "rejectedCount", rowCount - sentCount
+        );
+        auditLogService.recordByActorId(
+                inviter.userId(),
+                "INVITATION_BATCH_SENT",
+                ipAddress,
+                userAgent,
+                batch.getId(),
+                auditMeta
+        );
+
+        return new BatchInvitationSendResponseDto(
+                batch.getId(),
+                rowCount,
+                sentCount,
+                rowCount - sentCount,
+                preview.rows()
+        );
     }
 }

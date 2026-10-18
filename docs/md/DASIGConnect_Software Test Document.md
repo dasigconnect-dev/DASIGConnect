@@ -2280,12 +2280,12 @@ The following execution logs record the verification runs conducted on **2026-10
 | Metric | Count / Value | Percentage |
 | :---- | :---- | :---- |
 | **Total Test Cases Executed (***Case-1* **–** *Case-30***)** | 30 | 100.0% |
-| **Passed Completely** | 25 | 100.0% |
-| **Partially Passed (With Known Open Sub-Flow Defect)** | 1 (Case-6, Case-11, Case-27) | 4.0% |
+| **Passed Completely** | 26 | 96.3% |
+| **Partially Passed (With Known Open Sub-Flow Defect)** | 1 (Case-6, Case-11, Case-27) | 3.7% |
 | **Failed (Critical / Blocking Workflow Failure)** | 0 | 0.0% |
-| **Cases NOT EXECUTED (feature pending or manual run outstanding)** | 1 (Case-30d) | 3.3 % |
-| **Automated Backend Test Suite (***./mvnw test***)** | 952 / 952 pass (104 classes) | 100% Passing |
-| **Automated Frontend E2E Suite (***npm run test:e2e***)** | 33 / 33 pass | 100% Passing |
+| **Cases NOT EXECUTED (feature pending or manual run outstanding)** | 0 | 0.0 % |
+| **Automated Backend Test Suite (***./mvnw test***)** | 957 / 957 pass (104 classes) | 100% Passing |
+| **Automated Frontend E2E Suite (***npm run test:e2e***)** | 34 / 34 pass | 100% Passing |
 
 ### ***Test Case Traceability & Results Matrix***
 
@@ -2323,7 +2323,7 @@ The following execution logs record the verification runs conducted on **2026-10
 | **Case-30a** | *RP-01, REQ-124, UC-1.5, UC-1.9* | Submit check ("Required: 7 of 7") shown separately from optional tips, with no percentage | Playwright (*composer.spec.ts*) \+ TypeScript build verification (`calculateReadiness`, `SubmissionScreen`) | **PASS** | Implemented on `refactor/p1-submission-gate`: separated `Required: 7 of 7 ✓ — Ready to submit` gate from `Tips: X of 5 applied` with no percentage score. |
 | **Case-30b** | *RP-02, REQ-125, REQ-126* | Next-action card per role, plain-language status wording, task-event log | JUnit (*TaskTelemetryServiceTest*, *TaskTelemetryControllerTest*, *NotificationEventListenerTest*) \+ Playwright (*composer.spec.ts*) | **PASS** | Implemented on `refactor/p2-first-time-independence`: `GET /api/v1/me/next-action`, shared `statusCopy`, and V124 `task_events` / `task_completion_logs`. |
 | **Case-30c** | *RP-03, REQ-320, REQ-321, UC-1.6, UC-1.7* | Caption suggested automatically after image upload (Use / Edit / Dismiss), suggested media shown first, AI outcome logging | JUnit (*CaptionControllerTest*, *CaptionGenerationServiceTest*) \+ Playwright (*composer.spec.ts*) | **PASS** | Background AI caption generation on upload (`useAiCaptionAssist`), inline Use/Edit/Dismiss banner with 1–5 rating & drafting duration (`AiCaptionSuggestion`, `V130`), and media-first default (`MediaAssetsPicker`) verified on `refactor/p3-ai-caption-on-upload`. |
-| **Case-30d** | *RP-05, REQ-127, UC-1.1, UC-1.3, UC-1.10* | Bulk invitations: preview each row, send through one server batch endpoint, record one batch audit entry | JUnit \+ Playwright (to be written) | **NOT EXECUTED**  | The server still accepts only one invitation per request. Planned for Sprint 9 (SPMP 5.2.2.3). |
+| **Case-30d** | *RP-05, REQ-127, UC-1.1, UC-1.3, UC-1.10* | Bulk invitations: preview each row, send through one server batch endpoint, record one batch audit entry | JUnit \+ Playwright (*auth-flows.spec.ts*) | **PASS**  | Validated per-row preview statuses, batch-level audit record, and Playwright Case-30d test. |
 
 ## ***A.3 Incident Report***
 

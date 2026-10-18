@@ -3446,6 +3446,7 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 * **Audit:** new `invitation_batches (id, created_by, row_count, sent_count, rejected_count, created_at)`; each invitation's audit metadata carries `batchId`; one `INVITATION_BATCH_SENT` summary row is written.  
 * **Rules:** Moderators may batch-invite Contributors only; the 3-Admin cap is checked across the whole batch; self-registration remains out of scope (SO 1.4).  
 * **Test:** STD Case-30d.
+* **Status:** Implemented (refactor/p5-bulk-invitations) and verified by STD Case-30d.
 
 # **Appendix** {#appendix}
 

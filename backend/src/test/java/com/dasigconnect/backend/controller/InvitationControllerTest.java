@@ -23,6 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationPreviewResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationRowPreviewResultDto;
+import com.dasigconnect.backend.model.dto.invitation.BatchInvitationSendResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
@@ -244,4 +247,88 @@ class InvitationControllerTest {
         mockMvc.perform(delete("/api/v1/invitations/by-user/{userId}", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void previewBatch_withoutAuth_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/invitations/batch/preview")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void previewBatch_asContributor_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/invitations/batch/preview")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void previewBatch_asAdmin_returns200() throws Exception {
+        BatchInvitationPreviewResponseDto response = new BatchInvitationPreviewResponseDto(
+                List.of(new BatchInvitationRowPreviewResultDto(1, "alice@example.com", "contributor", null, null, "valid", null)),
+                1, 1, 0
+        );
+        when(invitationService.previewBatch(any(), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/invitations/batch/preview")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalRows").value(1))
+                .andExpect(jsonPath("$.data.validCount").value(1))
+                .andExpect(jsonPath("$.data.invalidCount").value(0))
+                .andExpect(jsonPath("$.data.rows[0].status").value("valid"));
+    }
+
+    @Test
+    void sendBatch_withoutAuth_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/invitations/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void sendBatch_asContributor_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/invitations/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void sendBatch_asAdmin_returns201() throws Exception {
+        BatchInvitationSendResponseDto response = new BatchInvitationSendResponseDto(
+                UUID.randomUUID(), 1, 1, 0,
+                List.of(new BatchInvitationRowPreviewResultDto(1, "alice@example.com", "contributor", null, null, "valid", null))
+        );
+        when(invitationService.sendBatch(any(), any(), any(), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/invitations/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"rows":[{"email":"alice@example.com","role":"contributor"}]}
+                        """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.rowCount").value(1))
+                .andExpect(jsonPath("$.data.sentCount").value(1))
+                .andExpect(jsonPath("$.data.rejectedCount").value(0));
+    }
 }
+

@@ -1887,7 +1887,7 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **Finding:** form-by-form invitations (≤ 15 emails, one role and institution per form, errors only after sending) will not scale to network provisioning (SO 1.3, SO 1.10, GO1).  
 * **Requirement:** Administrators and Moderators shall upload or paste rows of `email, role, institution`. Before sending, every row is validated and shown with its status (duplicate in batch, invalid email, unknown or inactive institution, active account exists, deactivated account — use Reactivation, pending invite to be superseded, would exceed the Administrator cap). Only valid rows are sent, in one confirmed action, through a server batch endpoint that repeats the validation and returns per-row results. One batch-summary audit record links the per-invitation records. Moderators may batch-invite Contributors only. Open self-registration is rejected for this version (conflicts with SO 1.4) and recorded as a possible future feature behind an approval queue.  
 * **Acceptance:** STD Case-30d; Administrator time per provisioned user (10–20 users, ≥ 2 roles and institutions).  
-* **Status:** Not implemented.
+* **Status:** Implemented (refactor/p5-bulk-invitations) and verified by STD Case-30d.
 
 ### ***3.6.6. Status Wording for Notifications and Submissions*** {#3.6.6.-status-wording-for-notifications-and-submissions}
 
