@@ -148,6 +148,8 @@ export const queryKeys = {
       scopedKey("subscription", { ...params, view: "institutions" }),
     reconciliation: (params: { userId?: string | null }) =>
       scopedKey("subscription", { ...params, view: "reconciliation" }),
+    billing: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "billing" }),
   },
   resolution: {
     failurePage: (params: {

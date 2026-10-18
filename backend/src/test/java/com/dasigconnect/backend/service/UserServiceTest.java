@@ -712,6 +712,7 @@ class UserServiceTest {
         verify(notificationRepository).deleteByRecipientId(target.getId());
         verify(userRepository).deleteMessengerConnectionByUserId(target.getId());
 
+        @SuppressWarnings("unchecked")
         org.mockito.ArgumentCaptor<java.util.Map<String, ?>> meta =
                 org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
         verify(auditLogService).record(any(), eq("USER_ANONYMIZED"), any(), any(), any(), meta.capture());

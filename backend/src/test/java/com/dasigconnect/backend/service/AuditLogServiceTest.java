@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -99,7 +100,9 @@ class AuditLogServiceTest {
         log.setIpAddress("127.0.0.1");
         log.setMetadata("{\"diff\":{\"caption\":{\"from\":\"Old Caption\",\"to\":\"New Updated Caption\"}},\"remarks\":\"Fixed typo\"}");
 
-        when(auditLogRepository.findAll(any(Specification.class), any(PageRequest.class)))
+        when(auditLogRepository.findAll(
+                ArgumentMatchers.<Specification<AuditLog>>any(),
+                any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(log)));
 
         AuditLogFilterCriteria criteria = new AuditLogFilterCriteria(
@@ -131,7 +134,9 @@ class AuditLogServiceTest {
         log.setAction("SUBMISSION_DELETED");
         log.setResourceId(missingId);
 
-        when(auditLogRepository.findAll(any(Specification.class), any(PageRequest.class)))
+        when(auditLogRepository.findAll(
+                ArgumentMatchers.<Specification<AuditLog>>any(),
+                any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(log)));
 
         Page<AuditLogDto> result = auditLogService.searchAuditLogs(null, PageRequest.of(0, 10));
@@ -150,7 +155,8 @@ class AuditLogServiceTest {
         log.setAction("TOKEN_REAUTHORIZED");
         log.setIpAddress("10.0.0.1");
 
-        when(auditLogRepository.findAll(any(Specification.class))).thenReturn(List.of(log));
+        when(auditLogRepository.findAll(ArgumentMatchers.<Specification<AuditLog>>any()))
+                .thenReturn(List.of(log));
 
         String csv = auditLogService.exportAuditLogsCsv(null);
 

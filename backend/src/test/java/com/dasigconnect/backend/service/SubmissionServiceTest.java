@@ -200,7 +200,7 @@ class SubmissionServiceTest {
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     @Test
