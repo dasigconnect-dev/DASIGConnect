@@ -137,6 +137,18 @@ export const queryKeys = {
     watermark: (params: { role: string; userId?: string | null }) =>
       scopedKey("settings", { ...params, view: "watermark" }),
   },
+  subscription: {
+    status: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "status" }),
+    plans: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "plans" }),
+    usage: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "usage" }),
+    institutions: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "institutions" }),
+    reconciliation: (params: { userId?: string | null }) =>
+      scopedKey("subscription", { ...params, view: "reconciliation" }),
+  },
   resolution: {
     failurePage: (params: {
       role: string;
@@ -185,6 +197,7 @@ export const queryRoots = {
   notifications: ["notifications"],
   analytics: ["analytics"],
   resolution: ["resolution"],
+  subscription: ["subscription"],
 } as const;
 
 export const mutationCacheDependencies = {

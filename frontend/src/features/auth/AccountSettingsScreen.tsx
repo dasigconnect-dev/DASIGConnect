@@ -45,7 +45,7 @@ interface Props {
   onProfileUpdated: () => Promise<void>;
 }
 
-type SettingsTab = "account" | "password" | "page";
+type SettingsTab = "account" | "password" | "page" | "subscription";
 
 type ProfileSettingsForm = {
   name: string;
@@ -56,6 +56,7 @@ type ProfileSettingsForm = {
 const MESSENGER_CONNECTION_STALE_TIME_MS = 60_000;
 const PAGE_SETTINGS_STALE_TIME_MS = 5 * 60_000;
 const WatermarkCanvasEditor = lazy(() => import("../settings/components/WatermarkCanvasEditor"));
+const SubscriptionSettingsPanel = lazy(() => import("../subscription/SubscriptionSettingsPanel"));
 
 interface WatermarkStudioBoundaryProps {
   children: ReactNode;
@@ -89,6 +90,15 @@ function WatermarkStudioLoader() {
       <i className="ti ti-loader-2 settings-spinner" style={{ fontSize: "28px", marginRight: "10px" }} />
       Loading Watermark Studio...
     </div>
+  );
+}
+
+function SubscriptionPanelLoader() {
+  return (
+    <section className="settings-card subscription-state-card" aria-busy="true">
+      <i className="ti ti-loader-2 settings-spinner" aria-hidden="true" />
+      <span>Loading subscription settings...</span>
+    </section>
   );
 }
 
@@ -275,7 +285,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   };
 
   function switchTab(tab: SettingsTab) {
-    if (tab === "page" && !canManagePage) return;
+    if ((tab === "page" || tab === "subscription") && !canManagePage) return;
     navigate(`/settings#${tab}`, { replace: true });
   }
 
@@ -705,6 +715,21 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
               >
                 <i className="ti ti-adjustments-horizontal" />
                 <span>Page Settings</span>
+                <span className="sidebar-admin-tag">Admin</span>
+              </button>
+            </div>
+          )}
+
+          {canManagePage && (
+            <div className="sidebar-nav-group">
+              <div className="sidebar-nav-label">Organization</div>
+              <button
+                type="button"
+                className={`sidebar-link ${activeTab === "subscription" ? "active" : ""}`}
+                onClick={() => switchTab("subscription")}
+              >
+                <i className="ti ti-receipt" />
+                <span>Subscription & Billing</span>
                 <span className="sidebar-admin-tag">Admin</span>
               </button>
             </div>
@@ -1278,6 +1303,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
               </section>
             </div>
           )}
+
+          {activeTab === "subscription" && canManagePage && (
+            <Suspense fallback={<SubscriptionPanelLoader />}>
+              <SubscriptionSettingsPanel userId={user.id} isOwner={user.adminOwner === true} />
+            </Suspense>
+          )}
         </div>
       </div>
       {disconnectConfirmOpen && (
@@ -1340,5 +1371,6 @@ function getActiveTabFromHash(hashValue: string, canManagePage: boolean): Settin
   const hash = hashValue.replace("#", "");
   if (hash === "password") return "password";
   if ((hash === "page" || hash === "watermark-studio") && canManagePage) return "page";
+  if (hash === "subscription" && canManagePage) return "subscription";
   return "account";
 }
