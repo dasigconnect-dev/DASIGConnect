@@ -4,7 +4,7 @@ import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 import dasigLogo from '../../assets/dasigconnect-logo.png'
 
-export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications' | 'upgrade-plan'
 
 interface DashboardShellProps {
   user: User
@@ -164,23 +164,19 @@ export default function DashboardShell({
               <div className={`role-chip ${roleChip(user).className}`} id="role-chip">
                 {roleChip(user).label}
               </div>
-              <div
-                className={`dash-avatar${showDropdown ? ' open' : ''}`}
-                id="dash-avatar"
-                onClick={onToggleDropdown}
-                role="button"
-                tabIndex={0}
-                aria-haspopup="menu"
-                aria-expanded={showDropdown}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onToggleDropdown()
-                  }
-                }}
-              >
-                <span id="dash-initials">{user.initials}</span>
-                <i className="ti ti-chevron-down dash-avatar-caret" aria-hidden="true"></i>
+              <div className="dash-avatar-wrapper">
+                <button
+                  type="button"
+                  className={`dash-avatar${showDropdown ? ' open' : ''}`}
+                  id="dash-avatar"
+                  onClick={onToggleDropdown}
+                  aria-haspopup="menu"
+                  aria-expanded={showDropdown}
+                  aria-label="Open profile menu"
+                >
+                  <span id="dash-initials">{user.initials}</span>
+                  <i className="ti ti-chevron-down dash-avatar-caret" aria-hidden="true"></i>
+                </button>
                 <div className={`user-dropdown${showDropdown ? '' : ' hidden'}`} id="user-dropdown">
                   <div className="udrop-header">
                     <div className="udrop-name" id="dd-name">
@@ -190,10 +186,25 @@ export default function DashboardShell({
                       {capitalize(user.role)} · {getInstitutionName(user)}
                     </div>
                   </div>
+                  {user.role === 'admin' && (
+                    <button
+                      type="button"
+                      className="udrop-item"
+                      onClick={() => {
+                        onToggleDropdown()
+                        navigate('/upgrade-plan')
+                      }}
+                    >
+                      <i className="ti ti-arrow-up-circle" aria-hidden="true"></i> Upgrade Plan
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="udrop-item"
-                    onClick={() => navigate('/settings#account')}
+                    onClick={() => {
+                      onToggleDropdown()
+                      navigate('/settings#account')
+                    }}
                   >
                     <i className="ti ti-settings"></i> Account Settings
                   </button>
@@ -201,7 +212,10 @@ export default function DashboardShell({
                   <button
                     type="button"
                     className="udrop-item danger udrop-button"
-                    onClick={onLogout}
+                    onClick={() => {
+                      onToggleDropdown()
+                      onLogout()
+                    }}
                     disabled={logoutLoading}
                     aria-busy={logoutLoading}
                   >
