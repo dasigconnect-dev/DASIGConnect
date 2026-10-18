@@ -222,11 +222,13 @@ export async function suggestCaption(
   prompt?: string,
   tone?: CaptionTone,
   signal?: AbortSignal,
+  background = false,
 ): Promise<CaptionResponse> {
   let res;
   try {
     res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
-      "/ai/caption",
+      // RP-03: the automatic post-upload suggestion is logged as auto_generated server-side.
+      background ? "/ai/caption/background" : "/ai/caption",
       {
         submissionId,
         // Only send if non-empty — backend treats null/absent as "generate from scratch"

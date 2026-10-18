@@ -271,7 +271,7 @@ public class NotificationEventListener {
                 emailDeliveryService.send(admin,
                         NotificationEventType.submission_publish_failed.name(),
                         "DASIGConnect - Publishing failed",
-                        adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/queue?tab=failed");
+                        adminMsg + "\n\nRecover it here: " + frontendBaseUrl + adminLink);
                 // Messenger alert (A4 / A5)
                 String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
                         + "\". Manual action required: " + frontendBaseUrl + adminLink;
@@ -440,7 +440,8 @@ public class NotificationEventListener {
         Submission s = event.submission();
         String msg = "Live event (immediate review): " + who(s.getContributor()) + " submitted '"
                 + s.getEventTitle() + "' — publishes immediately once approved by a Moderator.";
-        String link = "/submissions/" + s.getId();
+        // RP-04 (REQ-218): open the exact submission in review mode, same as T-01.
+        String link = "/queue?submissionId=" + s.getId() + "&mode=review";
 
         for (User reviewer : reviewers()) {
             notificationService.createNotification(reviewer, NotificationEventType.fast_track_submission, msg, link);

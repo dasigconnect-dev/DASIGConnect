@@ -899,6 +899,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAiUnavailable = aiCaption.state === "error-unavailable" || proofread.state === "error";
   const submitTaskTelemetry = useTaskTelemetry("CONTRIBUTOR_SUBMIT_POST", !isReadOnlySubmission);
 
+  // RP-03 (REQ-320): caption drafting time is measured from opening Post Details.
+  const startCaptionDraftingTimer = useEffectEvent(() => aiCaption.markDraftingStarted());
+  useEffect(() => {
+    if (activeStep === "details") startCaptionDraftingTimer();
+  }, [activeStep, form.id]);
+
   const applyRoutedSubmission = useEffectEvent((summary: SubmissionSummary) => {
     void applySubmission(summary);
   });
