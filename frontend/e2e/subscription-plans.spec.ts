@@ -77,6 +77,17 @@ async function installSubscriptionSession(page: import("@playwright/test").Page)
     "GET /api/v1/subscription": subscriptionStatus,
     "GET /api/v1/subscription/plans": [freePlan, plusPlan, premiumPlan],
     "POST /api/v1/subscription/admin/change-plan": { ...subscriptionStatus, plan: plusPlan },
+    "POST /api/v1/subscription/billing/payment-link": {
+      invoiceId: "00000000-0000-0000-0000-000000000301",
+      invoiceNumber: "INV-2026-0001",
+      amountCentavos: plusPlan.monthlyPriceCentavos,
+      currency: "PHP",
+      checkoutUrl: "https://paymongo.test/checkout/plus",
+      providerReferenceNumber: "TEST-0001",
+      status: "ACTIVE",
+      liveMode: false,
+      dueAt: "2026-10-25T00:00:00Z",
+    },
   });
 }
 
@@ -105,13 +116,20 @@ test("plan page displays backend prices, inclusions, and current plan", async ({
   await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Choose Plus" }).click();
-  await expect(page.getByText("Choose Plus?", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
+  await expect(page.getByText("Secure QRPh checkout", { exact: true })).toBeVisible();
+  await page.getByLabel("Payer email Optional").fill("payer@example.org");
   const changeRequest = page.waitForRequest((request) =>
     request.method() === "POST" && request.url().endsWith("/api/v1/subscription/admin/change-plan"),
   );
-  await page.getByRole("button", { name: "Confirm plan" }).click();
+  const paymentRequest = page.waitForRequest((request) =>
+    request.method() === "POST" && request.url().endsWith("/api/v1/subscription/billing/payment-link"),
+  );
+  await page.route("https://paymongo.test/**", (route) => route.fulfill({ status: 200, body: "Payment portal" }));
+  await page.getByRole("button", { name: "Continue to QRPh" }).click();
   expect((await changeRequest).postDataJSON()).toEqual({ planId: plusPlan.id });
-  await expect(page).toHaveURL(/\/settings#subscription$/);
+  expect((await paymentRequest).postDataJSON()).toEqual({ payerEmail: "payer@example.org" });
+  await expect(page).toHaveURL("https://paymongo.test/checkout/plus");
 });
 
 test("plan cards remain within the mobile viewport", async ({ page }) => {

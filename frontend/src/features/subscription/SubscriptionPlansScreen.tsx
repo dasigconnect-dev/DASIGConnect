@@ -1,10 +1,12 @@
 import axios from "axios";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { SubscriptionPlan } from "../../api/subscriptionApi";
 import {
   changeSubscriptionPlan,
+  createSubscriptionPaymentLink,
   getCurrentSubscription,
   getSubscriptionPlans,
 } from "../../api/subscriptionApi";
@@ -47,6 +49,15 @@ export default function SubscriptionPlansScreen({ user }: Props) {
       await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
     },
   });
+  const paidCheckoutMutation = useMutation({
+    mutationFn: async ({ plan, payerEmail }: { plan: SubscriptionPlan; payerEmail?: string }) => {
+      await changeSubscriptionPlan(plan.id);
+      return createSubscriptionPaymentLink(payerEmail);
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
+    },
+  });
 
   const plans = useMemo(
     () => [...(plansQuery.data ?? [])].sort((left, right) => left.monthlyPriceCentavos - right.monthlyPriceCentavos),
@@ -63,12 +74,23 @@ export default function SubscriptionPlansScreen({ user }: Props) {
     if (!pendingPlan) return;
     try {
       await changePlanMutation.mutateAsync(pendingPlan.id);
-      const paidPlan = pendingPlan.monthlyPriceCentavos > 0;
       toast.success(`${displayPlanName(pendingPlan)} is now the selected organization plan.`);
       setPendingPlan(null);
-      navigate(paidPlan ? "/settings#subscription" : "/upgrade-plan");
     } catch (changeError) {
       toast.error(errorMessage(changeError, "The organization plan could not be changed."));
+    }
+  }
+
+  async function continueToPayment(payerEmail?: string) {
+    if (!pendingPlan || pendingPlan.monthlyPriceCentavos <= 0) return;
+    try {
+      const response = await paidCheckoutMutation.mutateAsync({ plan: pendingPlan, payerEmail });
+      toast.success(`QRPh payment link ready for ${response.data.invoiceNumber}.`);
+      window.location.assign(response.data.checkoutUrl);
+    } catch (checkoutError) {
+      throw new Error(errorMessage(checkoutError, "The QRPh payment portal could not be prepared."), {
+        cause: checkoutError,
+      });
     }
   }
 
@@ -175,18 +197,115 @@ export default function SubscriptionPlansScreen({ user }: Props) {
         </>
       )}
 
-      {pendingPlan && (
+      {pendingPlan && pendingPlan.monthlyPriceCentavos > 0 && (
+        <PaymentPortalDialog
+          plan={pendingPlan}
+          loading={paidCheckoutMutation.isPending}
+          onContinue={continueToPayment}
+          onCancel={() => setPendingPlan(null)}
+        />
+      )}
+      {pendingPlan && pendingPlan.monthlyPriceCentavos === 0 && (
         <ConfirmDialog
           title={`Choose ${displayPlanName(pendingPlan)}?`}
-          message={pendingPlan.monthlyPriceCentavos > 0
-            ? "The new pooled limits take effect immediately. Continue to Subscription & Billing afterward to create or open the QRPh payment link. Current-period usage will not reset."
-            : "The Free plan limits take effect immediately. Existing data is preserved, but new activity may be restricted when usage exceeds the lower limits."}
+          message="The Free plan limits take effect immediately. Existing data is preserved, but new activity may be restricted when usage exceeds the lower limits."
           confirmLabel={changePlanMutation.isPending ? "Changing..." : "Confirm plan"}
           onConfirm={() => void confirmPlanChange()}
           onCancel={() => setPendingPlan(null)}
         />
       )}
     </div>
+  );
+}
+
+function PaymentPortalDialog({
+  plan,
+  loading,
+  onContinue,
+  onCancel,
+}: {
+  plan: SubscriptionPlan;
+  loading: boolean;
+  onContinue: (payerEmail?: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const emailId = useId();
+  const titleId = useId();
+  const [payerEmail, setPayerEmail] = useState("");
+  const [checkoutError, setCheckoutError] = useState("");
+
+  if (typeof document === "undefined") return null;
+
+  async function submitPayment() {
+    setCheckoutError("");
+    try {
+      await onContinue(payerEmail.trim() || undefined);
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "The QRPh payment portal could not be prepared.");
+    }
+  }
+
+  return createPortal(
+    <div
+      className="subscription-checkout-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onMouseDown={(event) => {
+        if (!loading && event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div className="subscription-checkout-dialog">
+        <header className="subscription-checkout-header">
+          <div>
+            <span className="subscription-plans-eyebrow">Secure QRPh checkout</span>
+            <h2 id={titleId}>Upgrade to {displayPlanName(plan)}</h2>
+          </div>
+          <button type="button" onClick={onCancel} disabled={loading} aria-label="Close payment portal">
+            <i className="ti ti-x" aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="subscription-checkout-plan">
+          <div><span>Organization plan</span><strong>{displayPlanName(plan)}</strong></div>
+          <div><span>Amount due monthly</span><strong>{formatPriceAmount(plan.monthlyPriceCentavos)}</strong></div>
+        </div>
+
+        <ol className="subscription-checkout-steps" aria-label="Payment process">
+          <li><span>1</span><div><strong>Confirm this plan</strong><small>The organization limits are updated for the selected tier.</small></div></li>
+          <li><span>2</span><div><strong>Open PayMongo</strong><small>A secure hosted QRPh payment page will open in this tab.</small></div></li>
+          <li><span>3</span><div><strong>Verify payment</strong><small>DASIGConnect activates the paid period only after signed confirmation.</small></div></li>
+        </ol>
+
+        <div className="subscription-checkout-field">
+          <label htmlFor={emailId}>Payer email <span>Optional</span></label>
+          <input
+            id={emailId}
+            type="email"
+            value={payerEmail}
+            placeholder="billing@example.org"
+            disabled={loading}
+            onChange={(event) => setPayerEmail(event.target.value)}
+          />
+          <small>When provided, DASIGConnect also sends the payment link to this address.</small>
+        </div>
+
+        {checkoutError && (
+          <div className="subscription-checkout-error" role="alert">
+            <i className="ti ti-alert-circle" aria-hidden="true" />
+            <span>{checkoutError}</span>
+          </div>
+        )}
+
+        <div className="subscription-checkout-actions">
+          <button type="button" className="subscription-checkout-cancel" onClick={onCancel} disabled={loading}>Cancel</button>
+          <button type="button" className="subscription-checkout-continue" onClick={() => void submitPayment()} disabled={loading}>
+            {loading ? <><i className="ti ti-loader-2 settings-spinner" aria-hidden="true" /> Preparing payment...</> : <><i className="ti ti-qrcode" aria-hidden="true" /> Continue to QRPh</>}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
