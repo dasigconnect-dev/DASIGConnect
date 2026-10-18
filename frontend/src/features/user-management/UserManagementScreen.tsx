@@ -656,6 +656,9 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 onRemoveChip={(index) => setEmailChips((prev) => prev.filter((_, i) => i !== index))}
                 onRoleChange={setInviteRole}
                 onSubmit={(event) => void handleSendInvitations(event)}
+                onBatchSuccess={() => {
+                  void invalidateUserManagementData()
+                }}
               />
 
               {inviteResults && (

@@ -47,6 +47,9 @@ public class InvitationToken {
     @Column(name = "created_by_user_id")
     private UUID createdByUserId;
 
+    @Column(name = "batch_id")
+    private UUID batchId;
+
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -121,5 +124,13 @@ public class InvitationToken {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getBatchId() {
+        return batchId;
+    }
+
+    public void setBatchId(UUID batchId) {
+        this.batchId = batchId;
     }
 }

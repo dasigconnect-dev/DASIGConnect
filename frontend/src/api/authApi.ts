@@ -396,6 +396,47 @@ export function inviteUser(data: InviteUserRequest) {
   return api.post<InvitationResponse>("/invitations", data);
 }
 
+export interface BatchInvitationRow {
+  email: string;
+  role?: string;
+  institutionId?: string | null;
+  institutionName?: string | null;
+  institutionCode?: string | null;
+}
+
+export interface BatchInvitationRowPreviewResult {
+  index: number;
+  email: string;
+  role: string;
+  institutionId: string | null;
+  institutionName: string | null;
+  status: string;
+  reason: string | null;
+}
+
+export interface BatchInvitationPreviewResponse {
+  rows: BatchInvitationRowPreviewResult[];
+  totalRows: number;
+  validCount: number;
+  invalidCount: number;
+}
+
+export interface BatchInvitationSendResponse {
+  batchId: string;
+  rowCount: number;
+  sentCount: number;
+  rejectedCount: number;
+  results: BatchInvitationRowPreviewResult[];
+}
+
+export function previewBatchInvitations(rows: BatchInvitationRow[]) {
+  return api.post<BatchInvitationPreviewResponse>("/invitations/batch/preview", { rows });
+}
+
+export function sendBatchInvitations(rows: BatchInvitationRow[]) {
+  return api.post<BatchInvitationSendResponse>("/invitations/batch", { rows });
+}
+
 export function deleteUser(id: string) {
   return api.delete<{ action: 'deactivated' | 'deleted' }>(`/users/${id}`);
 }
