@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.CaptionResponseDto;
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.entity.AiInteractionLog;
@@ -23,7 +23,7 @@ import java.util.UUID;
  * Orchestrates on-demand AI caption generation (UC-3.2).
  *
  * Transaction discipline: DB reads happen in a short read-only transaction.
- * The ClaudeVisionClient call executes OUTSIDE any open transaction so the
+ * The AiVisionClient call executes OUTSIDE any open transaction so the
  * HikariCP connection pool is not held during the external HTTP round-trip.
  */
 @Service
@@ -31,16 +31,16 @@ public class CaptionGenerationService {
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
-    private final ClaudeVisionClient claudeVisionClient;
+    private final AiVisionClient aiVisionClient;
     private final AiInteractionLogRepository aiInteractionLogRepository;
 
     public CaptionGenerationService(SubmissionRepository submissionRepository,
                                     SubmissionMediaAssetRepository submissionMediaAssetRepository,
-                                    ClaudeVisionClient claudeVisionClient,
+                                    AiVisionClient aiVisionClient,
                                     AiInteractionLogRepository aiInteractionLogRepository) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
-        this.claudeVisionClient = claudeVisionClient;
+        this.aiVisionClient = aiVisionClient;
         this.aiInteractionLogRepository = aiInteractionLogRepository;
     }
 
@@ -50,20 +50,20 @@ public class CaptionGenerationService {
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
                                                String existingCaption, String prompt, String tone) {
-        int requestedWords = ClaudeVisionClient.extractRequestedWordCount(prompt);
-        if (requestedWords > ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
+        int requestedWords = AiVisionClient.extractRequestedWordCount(prompt);
+        if (requestedWords > AiVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "AI captions are limited to "
-                            + ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS
+                            + AiVisionClient.MAX_REQUESTED_CAPTION_WORDS
                             + " requested words.");
         }
 
         // Step 1: Fetch submission data in a short read-only transaction
         SubmissionContext ctx = loadSubmissionContext(submissionId, institutionId);
 
-        // Step 2: Call Claude outside any transaction (timeout enforced by client)
-        List<CaptionVariantDto> variants = claudeVisionClient.generateCaptions(
+        // Step 2: Call AI client outside any transaction (timeout enforced by client)
+        List<CaptionVariantDto> variants = aiVisionClient.generateCaptions(
                 ctx.imageUrls(),
                 ctx.mediaMetadata(),
                 ctx.eventTitle(),
@@ -74,19 +74,25 @@ public class CaptionGenerationService {
                 tone);
 
         // Step 3: Log generation event in a new transaction
-        logInteraction(submissionId, ctx.institutionId(), "re_generate", null);
+        logInteraction(submissionId, ctx.institutionId(), "re_generate", tone, null, null);
 
         return new CaptionResponseDto(submissionId, variants);
     }
 
     /**
-     * Logs a post-generation user action (use / use_then_edited / edit / dismiss).
-     * Called via the separate /ai/caption/log endpoint; failures are swallowed so
-     * they cannot block the UI.
+     * Logs a post-generation user action (use / use_then_edited / edit / dismiss / generated),
+     * optional 1-5 quality rating, and caption drafting duration (RP-03 / REQ-320, REQ-321).
      */
     @Transactional
     public void logInteraction(UUID submissionId, UUID institutionId,
                                String actionTaken, String toneSelected) {
+        logInteraction(submissionId, institutionId, actionTaken, toneSelected, null, null);
+    }
+
+    @Transactional
+    public void logInteraction(UUID submissionId, UUID institutionId,
+                               String actionTaken, String toneSelected,
+                               Integer qualityRating, Long draftingDurationMs) {
         try {
             AiInteractionLog entry = new AiInteractionLog();
             entry.setSubmissionId(submissionId);
@@ -94,6 +100,12 @@ public class CaptionGenerationService {
             entry.setInteractionType("caption_suggestion");
             entry.setActionTaken(actionTaken);
             entry.setToneSelected(toneSelected);
+            if (qualityRating != null && qualityRating >= 1 && qualityRating <= 5) {
+                entry.setQualityRating(qualityRating.shortValue());
+            }
+            if (draftingDurationMs != null && draftingDurationMs >= 0) {
+                entry.setDraftingDurationMs(draftingDurationMs);
+            }
             aiInteractionLogRepository.save(entry);
         } catch (Exception e) {
             // Never let logging fail the caller

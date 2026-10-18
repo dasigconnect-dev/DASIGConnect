@@ -207,4 +207,106 @@ test.describe("auth flows", () => {
 
     await expect(page).toHaveURL(/\/$/);
   });
+
+  test("Case-30d: Bulk invitations preview, validation pill badges, and batch send (RP-05 / REQ-127)", async ({ page }) => {
+    await installSession(page, "admin");
+    await installFragmentableSse(page);
+
+    const mockPreviewResponse = {
+      totalRows: 3,
+      validCount: 2,
+      invalidCount: 1,
+      rows: [
+        {
+          index: 1,
+          email: "contributor1@cit.edu",
+          role: "contributor",
+          institutionId: "11111111-1111-4111-8111-111111111111",
+          institutionName: "CITU",
+          status: "valid",
+          reason: null,
+        },
+        {
+          index: 2,
+          email: "moderator1@cit.edu",
+          role: "moderator",
+          institutionId: "11111111-1111-4111-8111-111111111111",
+          institutionName: "CITU",
+          status: "valid",
+          reason: null,
+        },
+        {
+          index: 3,
+          email: "duplicate@cit.edu",
+          role: "contributor",
+          institutionId: "11111111-1111-4111-8111-111111111111",
+          institutionName: "CITU",
+          status: "duplicate_in_batch",
+          reason: "Duplicate email in batch",
+        },
+      ],
+    };
+
+    const mockSendResponse = {
+      batchId: "55555555-5555-4555-8555-555555555555",
+      rowCount: 3,
+      sentCount: 2,
+      rejectedCount: 1,
+      results: mockPreviewResponse.rows,
+    };
+
+    await mockApi(page, "admin", {
+      "GET /api/v1/users": [],
+      "GET /api/v1/invitations/pending/network": [],
+      "GET /api/v1/invitations/pending/admins": [],
+      "POST /api/v1/invitations/batch/preview": mockPreviewResponse,
+      "POST /api/v1/invitations/batch": mockSendResponse,
+    });
+
+    await page.goto("/admin/user-management");
+    await expect(page.locator(".um-screen")).toBeVisible();
+
+    // Open Invite User modal
+    const inviteBtn = page.getByRole("button", { name: /Invite User/i });
+    await expect(inviteBtn).toBeVisible();
+    await inviteBtn.click();
+
+    // Switch to Bulk CSV tab
+    const bulkTab = page.getByRole("tab", { name: /Bulk CSV/i });
+    await expect(bulkTab).toBeVisible();
+    await bulkTab.click();
+
+    // Fill CSV input
+    const textarea = page.locator("#bulk-invitation-input");
+    await expect(textarea).toBeVisible();
+    await textarea.fill(
+      "contributor1@cit.edu, contributor, CITU\nmoderator1@cit.edu, moderator, CITU\nduplicate@cit.edu, contributor, CITU",
+    );
+
+    // Preview Batch
+    const previewBtn = page.getByRole("button", { name: /Preview Batch & Validate/i });
+    await previewBtn.click();
+
+    // Verify preview table and status badges
+    const previewTable = page.locator("table[aria-label='Batch Preview Table']");
+    await expect(previewTable).toBeVisible();
+    await expect(page.locator(".um-batch-pill.is-valid")).toContainText("2 Valid");
+    await expect(page.locator(".um-batch-pill.is-error")).toContainText("1 Issues");
+    await expect(page.locator(".status-valid").first()).toHaveText("Valid");
+    await expect(page.locator(".status-duplicate_in_batch")).toHaveText("Duplicate in Batch");
+    await expect(page.locator(".um-batch-reason").last()).toContainText("Duplicate email in batch");
+
+    // Send Batch
+    const sendBatchBtn = page.getByRole("button", { name: /Confirm & Send 2 Valid Invitation/i });
+    await expect(sendBatchBtn).toBeVisible();
+    await sendBatchBtn.click();
+
+    // Verify batch summary success banner
+    const successBanner = page.locator(".um-batch-success");
+    await expect(successBanner).toBeVisible();
+    await expect(page.locator(".um-batch-success-title")).toContainText("Batch Invitations Processed");
+    await expect(page.locator(".um-batch-success-desc")).toContainText("Sent 2 invitations. 1 row(s) were rejected/skipped.");
+    await expect(page.locator(".um-batch-success-meta")).toContainText("55555555-5555-4555-8555-555555555555");
+  });
 });
+

@@ -47,5 +47,7 @@ The actor holds a valid, authenticated, ACTIVE session. Administrator privileges
 * **Moderator → Contributor (Demotion):** The Admin selects Contributor and is required to assign an active target institution. This change is immediate.
 * **Either direction:** Any submissions the account currently holds under an active review lock are released back to the queue.
 
+**A12 — Moderator Bulk Inviting Contributors (RP-05 / REQ-127):** A Moderator may upload or paste a CSV list of Contributor invitations. The preview endpoint validates that all rows specify the Contributor role; if any row specifies Moderator or Admin, it is flagged as 'role_not_permitted'. Upon confirmation, valid Contributor rows are created in batch and an audit summary record is generated.
+
 ### Postcondition(s)
 A new Moderator account exists in PENDING or ACTIVE state, whether created through invitation or through role change from Contributor. An existing Moderator account has been deactivated, reactivated, removed (or deactivated if footprint exists), anonymized, demoted to Contributor, or had its pending invitation cancelled or resent. Any review locks held at the time of a role change or deactivation have been released back to the Approval Queue. All state-changing actions are reflected in the audit log.

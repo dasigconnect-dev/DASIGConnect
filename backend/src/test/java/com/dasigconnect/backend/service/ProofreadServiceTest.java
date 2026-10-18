@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiApiException;
+import com.dasigconnect.backend.external.AiVisionClient;
 import com.dasigconnect.backend.model.dto.ai.ProofreadIssueDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProofreadServiceTest {
 
     private final ProofreadService service =
-            new ProofreadService(Mockito.mock(ClaudeVisionClient.class), new ObjectMapper());
+            new ProofreadService(Mockito.mock(AiVisionClient.class), new ObjectMapper());
 
     private static final String TEXT = "We recieve the award on Sept 12 at Cebu.";
 
@@ -71,6 +72,6 @@ class ProofreadServiceTest {
     @Test
     void unreadableResponseIsAnApiError() {
         assertThatThrownBy(() -> service.parseIssues("sorry, I can't", TEXT))
-                .isInstanceOf(ClaudeVisionClient.ClaudeApiException.class);
+                .isInstanceOf(AiApiException.class);
     }
 }

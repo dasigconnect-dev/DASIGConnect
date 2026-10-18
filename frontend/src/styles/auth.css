@@ -2840,6 +2840,11 @@ body {
 
 /* Small mobile screens (<= 600px) */
 @media (max-width: 600px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
   .dash-body {
     padding: 18px 14px 44px;
   }

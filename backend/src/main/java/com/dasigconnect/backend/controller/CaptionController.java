@@ -1,6 +1,6 @@
 package com.dasigconnect.backend.controller;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.AiApiException;
 import com.dasigconnect.backend.model.dto.ai.CaptionLogRequestDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.ai.CaptionRequestDto;
@@ -33,7 +33,7 @@ public class CaptionController {
         this.subscriptionEntitlementService = subscriptionEntitlementService;
     }
 
-    @PostMapping("/caption")
+    @PostMapping({"/caption", "/caption/background"})
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
@@ -56,7 +56,7 @@ public class CaptionController {
                     .header("X-RateLimit-Remaining", String.valueOf(reservation.remaining()))
                     .header("X-RateLimit-Reset", String.valueOf(reservation.resetAt().getEpochSecond()))
                     .body(ApiResponse.success(response));
-        } catch (ClaudeVisionClient.ClaudeApiException e) {
+        } catch (AiApiException e) {
             subscriptionEntitlementService.release(reservation.reservationId());
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {
@@ -79,7 +79,9 @@ public class CaptionController {
                 dto.getSubmissionId(),
                 user.institutionId(),
                 dto.getActionTaken(),
-                dto.getToneSelected());
+                dto.getToneSelected(),
+                dto.getQualityRating(),
+                dto.getDraftingDurationMs());
         return ResponseEntity.noContent().build();
     }
 

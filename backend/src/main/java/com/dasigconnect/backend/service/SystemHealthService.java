@@ -81,6 +81,7 @@ public class SystemHealthService {
     private final double storageWarningThreshold;
     private final double storageCriticalThreshold;
     private final String anthropicApiKey;
+    private final String geminiApiKey;
     private final String voyageApiKey;
     private final String mailApiKey;
     private final String mailApiBaseUrl;
@@ -99,6 +100,7 @@ public class SystemHealthService {
             @Value("${app.system-health.storage-warning-threshold-percent:80}") double storageWarningThreshold,
             @Value("${app.system-health.storage-critical-threshold-percent:95}") double storageCriticalThreshold,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
+            @Value("${gemini.api.key:}") String geminiApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey,
             @Value("${app.mail.api-key:}") String mailApiKey,
             @Value("${app.mail.api-base-url:https://api.resend.com}") String mailApiBaseUrl) {
@@ -113,6 +115,7 @@ public class SystemHealthService {
         this.storageWarningThreshold = storageWarningThreshold;
         this.storageCriticalThreshold = Math.max(storageCriticalThreshold, storageWarningThreshold);
         this.anthropicApiKey = anthropicApiKey;
+        this.geminiApiKey = geminiApiKey;
         this.voyageApiKey = voyageApiKey;
         this.mailApiKey = mailApiKey;
         this.mailApiBaseUrl = mailApiBaseUrl;
@@ -166,10 +169,21 @@ public class SystemHealthService {
         services.add(databaseHealth());
         services.add(mediaObjectStorageHealth());
         services.add(facebookTokenHealth());
+        services.add(geminiHealth());
         services.add(httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey));
         services.add(httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey));
         services.add(emailHealth());
         return services;
+    }
+
+    private ExternalServiceHealthDto geminiHealth() {
+        if (geminiApiKey == null || geminiApiKey.isBlank()) {
+            return service("Google Gemini API", HealthStatus.UNAVAILABLE,
+                    "Gemini API key is not configured.", null, null);
+        }
+        return httpReachability("Google Gemini API",
+                "https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey,
+                geminiApiKey);
     }
 
     /**

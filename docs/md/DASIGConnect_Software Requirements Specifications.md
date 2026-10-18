@@ -1872,22 +1872,22 @@ These requirements come from the MVP Validation Findings & Refactoring Prioritie
 * **Finding:** captions were generated only on request; 6 of 16 participants met any AI feature; 4 of 5 who saw a caption accepted it (GO3(c)(d), SO 1.6, RQ5).  
 * **REQ-320:** once a draft has ≥ 1 image and an event title, the system shall generate a caption suggestion in the background and offer it inline as "AI draft ready — Use / Edit / Dismiss", never inserting it automatically. For each suggestion the system shall log generated, used, used-after-edit, or dismissed, a one-click 1–5 quality rating at decision time, and the time from opening Post Details to saving a caption. Existing rate limits apply; failure falls back to manual entry without blocking.  
 * **REQ-321:** suggested media shall be the default media-picker view once there is enough event context; GO3(c) and GO3(d) shall be computed from these logs over ≥ 20 pilot submissions (coverage \= suggestions ÷ submissions with images; acceptance \= used \+ used-after-edit ÷ generated; quality \= mean rating).  
-* **Acceptance:** STD Case-30c.  
-* **Status:** Not implemented.
+* **Acceptance:** STD Case-30c (**PASS**).  
+* **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).** Background AI caption generation on first image upload + event title (`useAiCaptionAssist`), inline `"AI draft ready — Use / Edit / Dismiss"` banner with 1–5 quality rating and drafting duration telemetry (`AiCaptionSuggestion`, `CaptionController`, `V123__ai_caption_suggestions_telemetry.sql`), and media-first default tab (`MediaAssetsPicker`) are implemented and verified.
 
 ### ***3.6.4. Mobile Operability of Role-Critical Actions — REQ-218 (RP-04, VF-04; Medium)*** {#3.6.4.-mobile-operability-of-role-critical-actions-—-req-218-(rp-04,-vf-04;-medium)}
 
 * **Finding:** 8 of 16 sessions were on phones or tablets; a Moderator could not find the review button; Moderator SUS 58.1 (GO2(a)(b), SO 2.4, SO 3.3, SO 1.9, RQ6).  
 * **Requirement (NFR):** at 360 px width each role-critical action — submit, approve, request revision, reject, reschedule, resolve a failed publication, accept an invitation — shall be reachable on its screen without horizontal scrolling, through a persistent primary-action bar. Messenger and email alerts shall open the exact submission in review mode.  
 * **Acceptance:** STD Case-29 on 360 × 800 and 768 × 1024 viewports, automated in Playwright.  
-* **Status:** Partially implemented (responsive My Submissions, review-queue mobile layout, sticky composer actions); not verified.
+* **Status:** Implemented (refactor/p4-mobile-operability) and verified by STD Case-29 (Playwright mobile-operability.spec.ts across 360×800 and 768×1024 viewports and JUnit NotificationEventListenerTest).
 
 ### ***3.6.5. Bulk Invitations with Preview and Batch Audit — REQ-127 (RP-05, VF-05; Low–Medium)*** {#3.6.5.-bulk-invitations-with-preview-and-batch-audit-—-req-127-(rp-05,-vf-05;-low–medium)}
 
 * **Finding:** form-by-form invitations (≤ 15 emails, one role and institution per form, errors only after sending) will not scale to network provisioning (SO 1.3, SO 1.10, GO1).  
 * **Requirement:** Administrators and Moderators shall upload or paste rows of `email, role, institution`. Before sending, every row is validated and shown with its status (duplicate in batch, invalid email, unknown or inactive institution, active account exists, deactivated account — use Reactivation, pending invite to be superseded, would exceed the Administrator cap). Only valid rows are sent, in one confirmed action, through a server batch endpoint that repeats the validation and returns per-row results. One batch-summary audit record links the per-invitation records. Moderators may batch-invite Contributors only. Open self-registration is rejected for this version (conflicts with SO 1.4) and recorded as a possible future feature behind an approval queue.  
 * **Acceptance:** STD Case-30d; Administrator time per provisioned user (10–20 users, ≥ 2 roles and institutions).  
-* **Status:** Not implemented.
+* **Status:** Implemented (refactor/p5-bulk-invitations) and verified by STD Case-30d.
 
 ### ***3.6.6. Status Wording for Notifications and Submissions*** {#3.6.6.-status-wording-for-notifications-and-submissions}
 

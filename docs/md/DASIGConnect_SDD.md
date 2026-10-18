@@ -3427,10 +3427,11 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 
 ## ***4.3. RP-03 — Caption on upload, media-first picker, log-based GO3 (VF-03; REQ-320, REQ-321)*** {#4.3.-rp-03-—-caption-on-upload,-media-first-picker,-log-based-go3-(vf-03;-req-320,-req-321)}
 
-* **Background caption:** after the first image is attached to a saved draft that has an event title, the composer calls a new `POST /api/v1/ai/caption/background` (same 30/h limit and 30 s timeout as `POST /ai/caption`); `CaptionGenerationService` stores the result in a new `ai_caption_suggestions (id, submission_id, user_id, tone, caption, model, status ENUM('generated','used','used_edited','dismissed','failed'), rating SMALLINT NULL, generated_at, decided_at)`. The caption field shows "AI draft ready — Use / Edit / Dismiss"; it is never inserted automatically. Failure falls back silently to manual entry.  
-* **Measurement:** coverage \= suggestions generated ÷ submissions with images; acceptance \= (`used` \+ `used_edited`) ÷ generated; quality \= mean `rating` (one-click 1–5 at decision); drafting time \= time from opening Post Details to first caption save, recorded as a task event (§4.2).  
-* **Media-first:** `MediaAssetsPicker` initial tab becomes `suggestions` when `AIRecommendationService` reports enough context (≥ 10 characters or a selected image); otherwise `upload`.  
-* **Test:** STD Case-30c.
+* **Status:** **Implemented (`refactor/p3-ai-caption-on-upload`).**  
+* **Background caption:** after the first image is attached to a saved draft that has an event title, `useAiCaptionAssist` triggers background caption generation (`POST /api/v1/ai/caption` / `/api/v1/ai/caption/background`, same 30/h limit and 30 s timeout); `CaptionGenerationService` and `AiCaptionSuggestion` offer the result inline as **"AI draft ready — Use / Edit / Dismiss"**, never inserting it automatically. Failure falls back silently to manual entry.  
+* **Measurement:** coverage \= suggestions generated ÷ submissions with images; acceptance \= (`used` \+ `used_edited`) ÷ generated; quality \= mean `quality_rating` (one-click 1–5 at decision in `AiCaptionSuggestion`); drafting time \= `drafting_duration_ms` from opening Post Details to caption decision, recorded via `POST /api/v1/ai/caption/log` (`V123__ai_caption_suggestions_telemetry.sql`).  
+* **Media-first:** `MediaAssetsPicker` initial tab defaults to `ai` (**AI Suggestions**) when event context (≥ 10 characters or a selected image) is present; otherwise `upload`.  
+* **Test:** STD Case-30c (**PASS**).
 
 ## ***4.4. RP-04 — Mobile operability (VF-04; REQ-218)*** {#4.4.-rp-04-—-mobile-operability-(vf-04;-req-218)}
 
@@ -3444,6 +3445,7 @@ These items come from the MVP Validation Findings & Refactoring Priorities (12 O
 * **Audit:** new `invitation_batches (id, created_by, row_count, sent_count, rejected_count, created_at)`; each invitation's audit metadata carries `batchId`; one `INVITATION_BATCH_SENT` summary row is written.  
 * **Rules:** Moderators may batch-invite Contributors only; the 3-Admin cap is checked across the whole batch; self-registration remains out of scope (SO 1.4).  
 * **Test:** STD Case-30d.
+* **Status:** Implemented (refactor/p5-bulk-invitations) and verified by STD Case-30d.
 
 # **Appendix** {#appendix}
 

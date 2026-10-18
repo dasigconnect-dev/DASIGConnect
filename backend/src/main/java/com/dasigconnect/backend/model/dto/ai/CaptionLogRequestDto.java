@@ -1,5 +1,7 @@
 package com.dasigconnect.backend.model.dto.ai;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
@@ -13,10 +15,21 @@ public class CaptionLogRequestDto {
 
     private String toneSelected;
 
+    @Min(1)
+    @Max(5)
+    private Integer qualityRating;
+
+    @Min(0)
+    private Long draftingDurationMs;
+
     public UUID getSubmissionId() { return submissionId; }
     public void setSubmissionId(UUID submissionId) { this.submissionId = submissionId; }
     public String getActionTaken() { return actionTaken; }
     public void setActionTaken(String actionTaken) { this.actionTaken = actionTaken; }
     public String getToneSelected() { return toneSelected; }
     public void setToneSelected(String toneSelected) { this.toneSelected = toneSelected; }
+    public Integer getQualityRating() { return qualityRating; }
+    public void setQualityRating(Integer qualityRating) { this.qualityRating = qualityRating; }
+    public Long getDraftingDurationMs() { return draftingDurationMs; }
+    public void setDraftingDurationMs(Long draftingDurationMs) { this.draftingDurationMs = draftingDurationMs; }
 }

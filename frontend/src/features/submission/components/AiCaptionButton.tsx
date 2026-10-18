@@ -6,6 +6,7 @@ interface Props {
   rateLimitReset: number | null;
   notice?: string | null;
   hideInlineNotice?: boolean;
+  isUnavailable?: boolean;
   onSuggest: () => void;
 }
 
@@ -22,6 +23,7 @@ export default function AiCaptionButton({
   rateLimitReset,
   notice,
   hideInlineNotice = false,
+  isUnavailable: isUnavailableProp = false,
   onSuggest,
 }: Props) {
   if (!canSuggest) return null;
@@ -44,6 +46,7 @@ export default function AiCaptionButton({
   const isLoading = state === "loading";
   const isTimeout = state === "error-timeout";
   const isUnavailable =
+    isUnavailableProp ||
     state === "error-unavailable" ||
     Boolean(notice && notice.toLowerCase().includes("unavailable"));
   const isError = isTimeout || isUnavailable;
@@ -68,7 +71,7 @@ export default function AiCaptionButton({
         disabled={isLoading || isUnavailable}
         title={
           isUnavailable
-            ? notice ?? "AI caption service is unavailable. You can still write captions manually."
+            ? notice ?? "AI service is unavailable. You can still write captions manually."
             : isTimeout
               ? "AI request timed out. Click to retry."
               : "Generate a suggested caption based on selected media and event details (auto-saves draft if needed)."
@@ -82,7 +85,7 @@ export default function AiCaptionButton({
         ) : isUnavailable ? (
           <>
             <i className="ti ti-cloud-x" aria-hidden />
-            <span className="ai-caption-text">AI Caption Unavailable</span>
+            <span className="ai-caption-text">AI service unavailable</span>
           </>
         ) : isTimeout ? (
           <>
