@@ -19,6 +19,9 @@ export interface ExternalServiceHealth {
   checkedAt: string;
   expiresAt: string | null;
   secondsUntilExpiry: number | null;
+  quotaRemaining?: number | null;
+  quotaLimit?: number | null;
+  resetAt?: string | null;
 }
 
 export interface BackgroundJobHealth {

@@ -21,6 +21,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.GeminiVisionClient;
 import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
 import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
@@ -85,6 +87,12 @@ public class SystemHealthService {
     private final String voyageApiKey;
     private final String mailApiKey;
     private final String mailApiBaseUrl;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GeminiVisionClient geminiVisionClient;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ClaudeVisionClient claudeVisionClient;
 
     public SystemHealthService(
             JdbcTemplate jdbcTemplate,
@@ -170,7 +178,7 @@ public class SystemHealthService {
         services.add(mediaObjectStorageHealth());
         services.add(facebookTokenHealth());
         services.add(geminiHealth());
-        services.add(httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey));
+        services.add(claudeHealth());
         services.add(httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey));
         services.add(emailHealth());
         return services;
@@ -181,9 +189,80 @@ public class SystemHealthService {
             return service("Google Gemini API", HealthStatus.UNAVAILABLE,
                     "Gemini API key is not configured.", null, null);
         }
-        return httpReachability("Google Gemini API",
-                "https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey,
-                geminiApiKey);
+
+        GeminiVisionClient.QuotaStatus quota
+                = geminiVisionClient != null ? geminiVisionClient.getQuotaStatus() : null;
+
+        if (quota != null && quota.isExceeded()) {
+            Long secondsRemaining = quota.resetAt() != null
+                    ? Math.max(0, Duration.between(Instant.now(), quota.resetAt()).getSeconds())
+                    : null;
+            String durationStr = secondsRemaining != null ? formatDuration(secondsRemaining) : "a few hours";
+            String detail = String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.",
+                    quota.limit(), durationStr);
+            return new ExternalServiceHealthDto(
+                    "Google Gemini API", HealthStatus.WARNING, detail,
+                    Instant.now(), quota.resetAt(), secondsRemaining,
+                    0, quota.limit(), quota.resetAt());
+        }
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey))
+                    .header("content-type", "application/json")
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 429) {
+                if (geminiVisionClient != null) {
+                    geminiVisionClient.recordRateLimit(response.body());
+                    quota = geminiVisionClient.getQuotaStatus();
+                }
+                Long secondsRemaining = (quota != null && quota.resetAt() != null)
+                        ? Math.max(0, Duration.between(Instant.now(), quota.resetAt()).getSeconds())
+                        : 20400L;
+                Instant resetAt = quota != null && quota.resetAt() != null ? quota.resetAt() : Instant.now().plusSeconds(secondsRemaining);
+                int limit = quota != null ? quota.limit() : 20;
+                String detail = String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.",
+                        limit, formatDuration(secondsRemaining));
+                return new ExternalServiceHealthDto(
+                        "Google Gemini API", HealthStatus.WARNING, detail,
+                        Instant.now(), resetAt, secondsRemaining,
+                        0, limit, resetAt);
+            }
+
+            HealthStatus status = response.statusCode() >= 500 ? HealthStatus.UNHEALTHY : HealthStatus.HEALTHY;
+            int limit = quota != null ? quota.limit() : 20;
+            int remaining = quota != null ? quota.remaining() : 20;
+            Instant resetAt = quota != null ? quota.resetAt() : null;
+            Long secondsRemaining = resetAt != null ? Math.max(0, Duration.between(Instant.now(), resetAt).getSeconds()) : null;
+            String model = geminiVisionClient != null ? geminiVisionClient.modelName() : "gemini-3.8-flash";
+            String detail = status == HealthStatus.HEALTHY
+                    ? String.format("Connected — Model: %s (%d/%d credits remaining). Auto-fallback to Claude active.", model, remaining, limit)
+                    : "Service endpoint reported an unhealthy response.";
+            return new ExternalServiceHealthDto(
+                    "Google Gemini API", status, detail,
+                    Instant.now(), resetAt, secondsRemaining,
+                    remaining, limit, resetAt);
+        } catch (Exception ex) {
+            return new ExternalServiceHealthDto(
+                    "Google Gemini API", HealthStatus.UNAVAILABLE, "Reachability probe could not be completed.",
+                    Instant.now(), null, null, null, null, null);
+        }
+    }
+
+    private ExternalServiceHealthDto claudeHealth() {
+        if (anthropicApiKey == null || anthropicApiKey.isBlank()) {
+            return service("Anthropic Claude Vision API", HealthStatus.UNAVAILABLE, "API key is not configured.", null, null);
+        }
+        ExternalServiceHealthDto probe = httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey);
+        String detail = probe.status() == HealthStatus.HEALTHY
+                ? "Connected and active (fallback enabled)."
+                : probe.detail();
+        return new ExternalServiceHealthDto(
+                "Anthropic Claude Vision API", probe.status(), detail,
+                Instant.now(), null, null, null, null, null);
     }
 
     /**
@@ -550,13 +629,14 @@ public class SystemHealthService {
     }
 
     /**
-     * Share of submissions that reached a review outcome in the window (approved,
-     * rejected, or missed) whose outcome was actually "missed" -- their scheduled
-     * review deadline passed while still unreviewed (StaleSubmissionDetectorJob's
-     * findAndMarkMissedReview sweep). A submission only ever reaches MISSED_REVIEW
-     * via that sweep, and saveAll() there bumps updated_at, so filtering the
-     * submissions table on status + updated_at correctly captures "went missed
-     * within this window" without needing its own audit trail.
+     * Share of submissions that reached a review outcome in the window
+     * (approved, rejected, or missed) whose outcome was actually "missed" --
+     * their scheduled review deadline passed while still unreviewed
+     * (StaleSubmissionDetectorJob's findAndMarkMissedReview sweep). A
+     * submission only ever reaches MISSED_REVIEW via that sweep, and saveAll()
+     * there bumps updated_at, so filtering the submissions table on status +
+     * updated_at correctly captures "went missed within this window" without
+     * needing its own audit trail.
      */
     private OperationalMetricDto missedReviewRate(Instant start) {
         try {
@@ -583,7 +663,7 @@ public class SystemHealthService {
             return metric("missed_review_rate", "Missed-review rate", rate, "percent", total,
                     rate > 10 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
                     "Submissions whose scheduled review deadline passed unreviewed, divided by all submissions "
-                            + "that reached a review outcome (approved, rejected, or missed), in the last 30 days.");
+                    + "that reached a review outcome (approved, rejected, or missed), in the last 30 days.");
         } catch (Exception ex) {
             return unavailableMetric("missed_review_rate", "Missed-review rate", "percent", ex);
         }
@@ -685,6 +765,18 @@ public class SystemHealthService {
 
     private static double round(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private static String formatDuration(long seconds) {
+        if (seconds <= 0) {
+            return "now";
+        }
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        if (hours > 0) {
+            return minutes > 0 ? hours + "h " + minutes + "m" : hours + "h";
+        }
+        return Math.max(1, minutes) + "m";
     }
 
     private static void row(StringBuilder csv, String section, String metric, HealthStatus status, Object value, String unit, String detail) {
