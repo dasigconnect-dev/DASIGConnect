@@ -22,8 +22,12 @@ public class MediaImageEmbeddingService {
     private final ClaudeVisionClient imagePreparation;
     private final VoyageAIClient voyageAIClient;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public MediaImageEmbeddingService(
             MediaAssetEmbeddingRepository embeddingRepository,

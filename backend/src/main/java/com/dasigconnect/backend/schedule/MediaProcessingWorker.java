@@ -40,11 +40,18 @@ public class MediaProcessingWorker {
     private final boolean enrichmentConfigured;
     private final boolean imageEmbeddingConfigured;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
+    private com.dasigconnect.backend.service.MediaSearchCacheService mediaSearchCache;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.dasigconnect.backend.service.MediaSearchCacheService mediaSearchCache;
+    void setMediaAiTelemetry(com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaSearchCache(com.dasigconnect.backend.service.MediaSearchCacheService mediaSearchCache) {
+        this.mediaSearchCache = mediaSearchCache;
+    }
 
     public MediaProcessingWorker(
             MediaProcessingQueueService queue,

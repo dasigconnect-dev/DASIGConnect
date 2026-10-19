@@ -52,8 +52,12 @@ public class AIClassificationService {
     private final MediaImageEmbeddingService mediaImageEmbeddingService;
     private final MediaProcessingQueueService mediaProcessingQueueService;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,

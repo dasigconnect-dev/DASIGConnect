@@ -48,11 +48,18 @@ public class InvitationService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private SubscriptionEntitlementService subscriptionEntitlementService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private SubscriptionEntitlementService subscriptionEntitlementService;
+    void setEventPublisher(org.springframework.context.ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSubscriptionEntitlementService(SubscriptionEntitlementService subscriptionEntitlementService) {
+        this.subscriptionEntitlementService = subscriptionEntitlementService;
+    }
 
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;

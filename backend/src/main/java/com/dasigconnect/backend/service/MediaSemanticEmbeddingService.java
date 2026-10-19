@@ -30,8 +30,12 @@ public class MediaSemanticEmbeddingService {
     private final VoyageAIClient voyageAIClient;
     private final MediaSearchCacheService mediaSearchCache;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public MediaSemanticEmbeddingService(
             MediaAssetRepository assetRepository,

@@ -87,8 +87,12 @@ public class SystemHealthService {
     private final String mailApiKey;
     private final String mailApiBaseUrl;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private GeminiVisionClient geminiVisionClient;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setGeminiVisionClient(GeminiVisionClient geminiVisionClient) {
+        this.geminiVisionClient = geminiVisionClient;
+    }
 
     public SystemHealthService(
             JdbcTemplate jdbcTemplate,
