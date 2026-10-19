@@ -26,6 +26,7 @@ class SubscriptionPaymentSettlementServiceTest {
     @Mock SubscriptionInvoiceRepository invoiceRepository;
     @Mock OrganizationSubscriptionRepository subscriptionRepository;
     @Mock AuditLogService auditLogService;
+    @Mock SubscriptionPlanSnapshotService snapshotService;
     @Mock ApplicationEventPublisher eventPublisher;
     SubscriptionPaymentSettlementService service;
 
@@ -33,7 +34,7 @@ class SubscriptionPaymentSettlementServiceTest {
     void setUp() {
         service = new SubscriptionPaymentSettlementService(
                 linkRepository, paymentRepository, invoiceRepository, subscriptionRepository,
-                auditLogService, eventPublisher);
+                auditLogService, snapshotService, eventPublisher);
     }
 
     @Test
@@ -46,6 +47,7 @@ class SubscriptionPaymentSettlementServiceTest {
         when(subscriptionRepository.findByOrganizationIdForUpdate(fixture.organization.getId()))
                 .thenReturn(Optional.of(fixture.subscription));
         when(paymentRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(snapshotService.entitlements(fixture.targetPlan)).thenReturn("{\"plan\":\"PLUS_NETWORK\"}");
 
         assertThat(service.settle("link_1", payment, "WEBHOOK"))
                 .isEqualTo(SubscriptionPaymentSettlementService.SettlementResult.SETTLED);
@@ -53,6 +55,8 @@ class SubscriptionPaymentSettlementServiceTest {
         assertThat(fixture.link.getStatus()).isEqualTo(SubscriptionPaymentLinkStatus.PAID);
         assertThat(fixture.subscription.getStatus()).isEqualTo(SubscriptionLifecycleStatus.ACTIVE);
         assertThat(fixture.subscription.getCurrentPeriodEnd()).isEqualTo(fixture.invoice.getBillingPeriodEnd());
+        assertThat(fixture.subscription.getPlan()).isSameAs(fixture.targetPlan);
+        assertThat(fixture.subscription.getPlanCodeSnapshot()).isEqualTo("PLUS_NETWORK");
         verify(eventPublisher).publishEvent(any(SubscriptionPaymentReceivedEvent.class));
         verify(auditLogService).recordByActorId(
                 isNull(), eq("SUBSCRIPTION_PAYMONGO_PAYMENT_CONFIRMED"), isNull(), isNull(),
@@ -91,16 +95,25 @@ class SubscriptionPaymentSettlementServiceTest {
         SubscriptionPlan plan = new SubscriptionPlan();
         plan.setId(UUID.randomUUID());
         plan.setMonthlyPriceCentavos(749900);
+        plan.setCode("FREE_PILOT");
+        plan.setVersion(1);
+        SubscriptionPlan targetPlan = new SubscriptionPlan();
+        targetPlan.setId(UUID.randomUUID());
+        targetPlan.setCode("PLUS_NETWORK");
+        targetPlan.setVersion(2);
+        targetPlan.setMonthlyPriceCentavos(749900);
         OrganizationSubscription subscription = new OrganizationSubscription();
         subscription.setId(UUID.randomUUID());
         subscription.setOrganization(organization);
         subscription.setPlan(plan);
+        subscription.setPlanCodeSnapshot("FREE_PILOT");
         subscription.setStatus(SubscriptionLifecycleStatus.PAST_DUE);
         subscription.setCurrentPeriodStart(Instant.parse("2026-09-01T00:00:00Z"));
         subscription.setCurrentPeriodEnd(Instant.parse("2026-10-01T00:00:00Z"));
         SubscriptionInvoice invoice = new SubscriptionInvoice();
         invoice.setId(UUID.randomUUID());
         invoice.setSubscription(subscription);
+        invoice.setPlan(targetPlan);
         invoice.setInvoiceNumber("DC-20261018-TEST");
         invoice.setAmountCentavos(749900);
         invoice.setCurrency("PHP");
@@ -112,12 +125,13 @@ class SubscriptionPaymentSettlementServiceTest {
         link.setInvoice(invoice);
         link.setExternalLinkId("link_1");
         link.setStatus(SubscriptionPaymentLinkStatus.ACTIVE);
-        return new Fixture(organization, subscription, invoice, link);
+        return new Fixture(organization, subscription, targetPlan, invoice, link);
     }
 
     private record Fixture(
             Organization organization,
             OrganizationSubscription subscription,
+            SubscriptionPlan targetPlan,
             SubscriptionInvoice invoice,
             SubscriptionPaymentLink link) {}
 }

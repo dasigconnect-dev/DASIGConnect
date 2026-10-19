@@ -96,6 +96,26 @@ class PaymongoWebhookServiceTest {
     }
 
     @Test
+    void accept_paidLink_supportsFlatPaymentLinkPayload() {
+        String payload = """
+                {"data":{"id":"evt_paid_flat","attributes":{"type":"link.payment.paid",
+                "livemode":false,"data":{"link_id":"link_flat","payment_id":"pay_flat",
+                "amount":100,"currency":"PHP","status":"paid","paid_at":1792324800}}}}
+                """;
+        PaymongoWebhookReceipt receipt = receipt("evt_paid_flat", "link.payment.paid");
+        when(receiptRepository.insertIfAbsent(eq("evt_paid_flat"), eq("link.payment.paid"),
+                eq(false), anyString(), any())).thenReturn(1);
+        when(receiptRepository.findByExternalEventId("evt_paid_flat")).thenReturn(Optional.of(receipt));
+        when(settlementService.settle(eq("link_flat"), any(), eq("WEBHOOK")))
+                .thenReturn(SubscriptionPaymentSettlementService.SettlementResult.SETTLED);
+
+        assertThat(service.accept(payload.getBytes(StandardCharsets.UTF_8)))
+                .isEqualTo(PaymongoWebhookService.WebhookResult.PROCESSED);
+        verify(settlementService).settle(eq("link_flat"), argThat(payment ->
+                payment.id().equals("pay_flat") && payment.amountCentavos() == 100), eq("WEBHOOK"));
+    }
+
+    @Test
     void accept_liveEventInTestMode_isRejectedWithoutSettlement() {
         String payload = """
                 {"data":{"id":"evt_live_1","attributes":{"type":"link.payment.paid",

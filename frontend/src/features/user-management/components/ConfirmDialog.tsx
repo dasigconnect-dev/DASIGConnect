@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { createPortal } from 'react-dom'
+import '../../../styles/user-management.css'
 
 interface ConfirmDialogProps {
   title: string

@@ -51,8 +51,7 @@ export default function SubscriptionPlansScreen({ user }: Props) {
   });
   const paidCheckoutMutation = useMutation({
     mutationFn: async ({ plan, payerEmail }: { plan: SubscriptionPlan; payerEmail?: string }) => {
-      await changeSubscriptionPlan(plan.id);
-      return createSubscriptionPaymentLink(payerEmail);
+      return createSubscriptionPaymentLink(plan.id, payerEmail);
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
@@ -63,6 +62,8 @@ export default function SubscriptionPlansScreen({ user }: Props) {
     () => [...(plansQuery.data ?? [])].sort((left, right) => left.monthlyPriceCentavos - right.monthlyPriceCentavos),
     [plansQuery.data],
   );
+  const currentPlan = statusQuery.data?.plan;
+  const paidSubscriptionActive = Boolean(currentPlan && currentPlan.monthlyPriceCentavos > 0);
   const isLoading = statusQuery.isLoading || plansQuery.isLoading;
   const error = statusQuery.error ?? plansQuery.error;
 
@@ -145,6 +146,7 @@ export default function SubscriptionPlansScreen({ user }: Props) {
             {plans.map((plan) => {
               const current = plan.id === statusQuery.data?.plan.id;
               const recommended = plan.code === "PLUS_NETWORK";
+              const freeComparisonOnly = paidSubscriptionActive && plan.monthlyPriceCentavos === 0;
               return (
                 <article
                   className={`subscription-plan-card${current ? " is-current" : ""}${recommended ? " is-recommended" : ""}`}
@@ -165,16 +167,18 @@ export default function SubscriptionPlansScreen({ user }: Props) {
                   <button
                     type="button"
                     className={`subscription-plan-action${recommended && !current ? " primary" : ""}`}
-                    disabled={current || !user.adminOwner || changePlanMutation.isPending}
+                    disabled={current || freeComparisonOnly || !user.adminOwner || changePlanMutation.isPending}
                     onClick={() => setPendingPlan(plan)}
                   >
                     {current
                       ? "Current plan"
                       : !user.adminOwner
                         ? "Admin Owner required"
-                        : plan.monthlyPriceCentavos === 0
-                          ? "Switch to Free"
-                          : `Choose ${displayPlanName(plan)}`}
+                        : freeComparisonOnly
+                          ? "Free plan"
+                        : currentPlan && plan.monthlyPriceCentavos > currentPlan.monthlyPriceCentavos
+                          ? "Upgrade plan"
+                          : `Switch to ${displayPlanName(plan)}`}
                   </button>
                   <div className="subscription-plan-divider" />
                   <h3>Plan includes</h3>
@@ -272,7 +276,7 @@ function PaymentPortalDialog({
         </div>
 
         <ol className="subscription-checkout-steps" aria-label="Payment process">
-          <li><span>1</span><div><strong>Confirm this plan</strong><small>The organization limits are updated for the selected tier.</small></div></li>
+          <li><span>1</span><div><strong>Confirm this plan</strong><small>The current plan remains active until payment is verified.</small></div></li>
           <li><span>2</span><div><strong>Open PayMongo</strong><small>A secure hosted QRPh payment page will open in this tab.</small></div></li>
           <li><span>3</span><div><strong>Verify payment</strong><small>DASIGConnect activates the paid period only after signed confirmation.</small></div></li>
         </ol>
