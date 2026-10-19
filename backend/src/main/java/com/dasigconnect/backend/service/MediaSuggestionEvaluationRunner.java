@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.CandidatePoolDataset;
 import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.EvaluationDataset;
 import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.EvaluationReport;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,35 +24,49 @@ public class MediaSuggestionEvaluationRunner implements ApplicationRunner {
     private final ObjectMapper objectMapper;
     private final String datasetPath;
     private final String outputPath;
+    private final String mode;
 
     public MediaSuggestionEvaluationRunner(
             MediaSuggestionEvaluationService evaluationService,
             ObjectMapper objectMapper,
             @Value("${app.ai.media-evaluation.dataset:}") String datasetPath,
-            @Value("${app.ai.media-evaluation.output:media-ai-evaluation-report.json}") String outputPath) {
+            @Value("${app.ai.media-evaluation.output:media-ai-evaluation-report.json}") String outputPath,
+            @Value("${app.ai.media-evaluation.mode:evaluate}") String mode) {
         this.evaluationService = evaluationService;
         this.objectMapper = objectMapper;
         this.datasetPath = datasetPath;
         this.outputPath = outputPath;
+        this.mode = mode;
     }
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         if (datasetPath == null || datasetPath.isBlank()) {
-            throw new IllegalStateException(
-                    "MEDIA_AI_EVALUATION_DATASET must point to a human-labeled JSON dataset.");
+            throw new IllegalStateException("MEDIA_AI_EVALUATION_DATASET must point to a JSON dataset.");
         }
         Path source = Path.of(datasetPath).toAbsolutePath().normalize();
         if (!Files.isRegularFile(source)) {
             throw new IllegalStateException("Evaluation dataset does not exist: " + source);
         }
 
-        EvaluationDataset dataset = objectMapper.readValue(source.toFile(), EvaluationDataset.class);
-        EvaluationReport report = evaluationService.evaluate(dataset);
         Path destination = Path.of(outputPath).toAbsolutePath().normalize();
         if (destination.getParent() != null) {
             Files.createDirectories(destination.getParent());
         }
+        if ("pool".equalsIgnoreCase(mode)) {
+            CandidatePoolDataset dataset = objectMapper.readValue(source.toFile(), CandidatePoolDataset.class);
+            EvaluationDataset labelingDataset = evaluationService.generateLabelingDataset(dataset);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(destination.toFile(), labelingDataset);
+            log.info("Media suggestion candidate pool completed: scenarios={}, labelingTemplate={}",
+                    labelingDataset.scenarios().size(), destination);
+            return;
+        }
+        if (!"evaluate".equalsIgnoreCase(mode)) {
+            throw new IllegalStateException(
+                    "MEDIA_AI_EVALUATION_MODE must be either 'pool' or 'evaluate'.");
+        }
+        EvaluationDataset dataset = objectMapper.readValue(source.toFile(), EvaluationDataset.class);
+        EvaluationReport report = evaluationService.evaluate(dataset);
         objectMapper.writerWithDefaultPrettyPrinter().writeValue(destination.toFile(), report);
         log.info("Media suggestion evaluation completed: scenarios={}, report={}",
                 report.scenarioCount(), destination);

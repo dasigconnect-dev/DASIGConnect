@@ -24,6 +24,15 @@ Each scenario references an existing draft submission. The selected asset IDs
 must already be attached to that submission so the normal authorization and
 candidate filters remain active.
 
+The workflow has two explicit modes. `pool` executes all four strategies and
+creates a strategy-blinded labeling template. `evaluate` accepts the completed
+template and calculates the comparison metrics. Candidate IDs in the template
+are deduplicated and UUID-sorted, so strategy names, scores, and ranking order
+do not influence reviewers.
+
+Pool generation stops without writing a labeling artifact if any strategy
+returns an asset outside the submission's institution.
+
 Human reviewers assign every pooled candidate one relevance grade before
 examining aggregate results:
 
@@ -35,29 +44,55 @@ examining aggregate results:
 | 3 | Highly relevant |
 
 Use at least two reviewers where practical and resolve disagreements before the
-final run. Include candidates pooled from every experiment plus any known
-relevant library assets. This reduces the risk of favoring one strategy because
-only its results were labeled.
+final run. Add `knownRelevantAssetIds` to a pool scenario when a relevant,
+same-institution library asset may not be returned by any strategy. This reduces
+the risk of favoring one strategy because only its results were labeled. The
+runner verifies those additional assets are active and belong to the scenario's
+institution.
 
-`dataset.example.json` shows the shape only. It intentionally has one scenario
-and will be rejected by the runner until it is replaced with at least 30 real,
-human-labeled scenarios.
+`pool-dataset.example.json` and `dataset.example.json` show the two input shapes.
+They intentionally contain one scenario and will be rejected until replaced
+with at least 30 real scenarios.
 
-## Run locally
+## Step 1: Generate the blinded candidate pool
 
 Use the local PostgreSQL database containing the original test media and current
 Voyage embeddings. Set these environment variables from PowerShell:
 
+Pool generation uses the normal retrieval path. Scenarios with text context may
+call the configured Voyage query-embedding API; repeated identical text is
+subject to the application's short-lived query cache. Run this only with an
+approved evaluation dataset and provider budget.
+
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "media-ai-evaluation"
-$env:MEDIA_AI_EVALUATION_DATASET = "C:\path\to\media-evaluation.json"
+$env:MEDIA_AI_EVALUATION_MODE = "pool"
+$env:MEDIA_AI_EVALUATION_DATASET = "C:\path\to\media-candidate-pool.json"
+$env:MEDIA_AI_EVALUATION_OUTPUT = "C:\path\to\media-labeling-template.json"
+.\mvnw.cmd spring-boot:run
+```
+
+Replace every `null` value under `relevanceLabels` with a human grade from 0 to
+3. Do not remove irrelevant candidates; grade them 0. Keep the generated IDs
+and scenario context unchanged during review.
+
+If a scenario produces no candidates, the pool run stops and identifies that
+scenario. Add at least one known relevant asset from the same institution so
+the no-result behavior can still be measured against a valid relevance set.
+
+## Step 2: Calculate the evaluation report
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "media-ai-evaluation"
+$env:MEDIA_AI_EVALUATION_MODE = "evaluate"
+$env:MEDIA_AI_EVALUATION_DATASET = "C:\path\to\completed-media-labels.json"
 $env:MEDIA_AI_EVALUATION_OUTPUT = "C:\path\to\media-evaluation-report.json"
 .\mvnw.cmd spring-boot:run
 ```
 
-The profile writes one JSON report. It does not expose an HTTP evaluation
-endpoint and does not write evaluation records to application tables. Stop the
-process after the completion log appears.
+The profile writes local JSON artifacts only. It does not expose an HTTP
+evaluation endpoint and does not write evaluation records to application
+tables. Stop the process after the completion log appears.
 
 ## Reported measurements
 
