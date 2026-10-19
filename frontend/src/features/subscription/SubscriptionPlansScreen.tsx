@@ -51,8 +51,7 @@ export default function SubscriptionPlansScreen({ user }: Props) {
   });
   const paidCheckoutMutation = useMutation({
     mutationFn: async ({ plan, payerEmail }: { plan: SubscriptionPlan; payerEmail?: string }) => {
-      await changeSubscriptionPlan(plan.id);
-      return createSubscriptionPaymentLink(payerEmail);
+      return createSubscriptionPaymentLink(plan.id, payerEmail);
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
@@ -272,7 +271,7 @@ function PaymentPortalDialog({
         </div>
 
         <ol className="subscription-checkout-steps" aria-label="Payment process">
-          <li><span>1</span><div><strong>Confirm this plan</strong><small>The organization limits are updated for the selected tier.</small></div></li>
+          <li><span>1</span><div><strong>Confirm this plan</strong><small>The current plan remains active until payment is verified.</small></div></li>
           <li><span>2</span><div><strong>Open PayMongo</strong><small>A secure hosted QRPh payment page will open in this tab.</small></div></li>
           <li><span>3</span><div><strong>Verify payment</strong><small>DASIGConnect activates the paid period only after signed confirmation.</small></div></li>
         </ol>

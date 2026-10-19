@@ -10,8 +10,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SubscriptionInvoiceRepository extends JpaRepository<SubscriptionInvoice, UUID> {
-    @EntityGraph(attributePaths = {"subscription", "subscription.organization", "subscription.plan"})
+    @EntityGraph(attributePaths = {"subscription", "subscription.organization", "subscription.plan", "plan"})
     List<SubscriptionInvoice> findAllByOrderByCreatedAtDesc(Pageable pageable);
-    @EntityGraph(attributePaths = {"subscription", "subscription.organization", "subscription.plan"})
+    @EntityGraph(attributePaths = {"subscription", "subscription.organization", "subscription.plan", "plan"})
     Optional<SubscriptionInvoice> findFirstByStatusOrderByCreatedAtDesc(SubscriptionInvoiceStatus status);
 }

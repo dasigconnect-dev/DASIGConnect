@@ -119,16 +119,15 @@ test("plan page displays backend prices, inclusions, and current plan", async ({
   await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
   await expect(page.getByText("Secure QRPh checkout", { exact: true })).toBeVisible();
   await page.getByLabel("Payer email Optional").fill("payer@example.org");
-  const changeRequest = page.waitForRequest((request) =>
-    request.method() === "POST" && request.url().endsWith("/api/v1/subscription/admin/change-plan"),
-  );
   const paymentRequest = page.waitForRequest((request) =>
     request.method() === "POST" && request.url().endsWith("/api/v1/subscription/billing/payment-link"),
   );
   await page.route("https://paymongo.test/**", (route) => route.fulfill({ status: 200, body: "Payment portal" }));
   await page.getByRole("button", { name: "Continue to QRPh" }).click();
-  expect((await changeRequest).postDataJSON()).toEqual({ planId: plusPlan.id });
-  expect((await paymentRequest).postDataJSON()).toEqual({ payerEmail: "payer@example.org" });
+  expect((await paymentRequest).postDataJSON()).toEqual({
+    planId: plusPlan.id,
+    payerEmail: "payer@example.org",
+  });
   await expect(page).toHaveURL("https://paymongo.test/checkout/plus");
 });
 

@@ -126,7 +126,8 @@ public class PaymongoClient {
         if (!data.isArray()) return payments;
         for (JsonNode payment : data) {
             JsonNode value = payment.path("attributes").isObject() ? payment.path("attributes") : payment;
-            String id = payment.path("id").asText(value.path("id").asText(""));
+            String id = payment.path("id").asText(
+                    value.path("id").asText(value.path("payment_id").asText("")));
             if (!id.isBlank()) {
                 payments.add(new Payment(
                         id,

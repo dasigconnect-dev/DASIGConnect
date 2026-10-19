@@ -10,8 +10,6 @@ import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
 import com.dasigconnect.backend.repository.SubscriptionPlanRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -31,7 +29,7 @@ public class SubscriptionAdministrationService {
     private final UserRepository userRepository;
     private final SubscriptionQueryService queryService;
     private final AuditLogService auditLogService;
-    private final ObjectMapper objectMapper;
+    private final SubscriptionPlanSnapshotService snapshotService;
     private final ApplicationEventPublisher eventPublisher;
 
     public SubscriptionAdministrationService(
@@ -40,14 +38,14 @@ public class SubscriptionAdministrationService {
             UserRepository userRepository,
             SubscriptionQueryService queryService,
             AuditLogService auditLogService,
-            ObjectMapper objectMapper,
+            SubscriptionPlanSnapshotService snapshotService,
             ApplicationEventPublisher eventPublisher) {
         this.subscriptionRepository = subscriptionRepository;
         this.planRepository = planRepository;
         this.userRepository = userRepository;
         this.queryService = queryService;
         this.auditLogService = auditLogService;
-        this.objectMapper = objectMapper;
+        this.snapshotService = snapshotService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -57,6 +55,11 @@ public class SubscriptionAdministrationService {
         SubscriptionPlan plan = planRepository.findByIdAndActiveTrue(planId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "The selected subscription plan is unavailable."));
+        if (plan.getMonthlyPriceCentavos() > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Paid plans become active only after PayMongo confirms payment.");
+        }
         OrganizationSubscription current = subscriptionRepository.findFirstByOrderByCreatedAtAsc()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No organization subscription is configured."));
@@ -73,7 +76,7 @@ public class SubscriptionAdministrationService {
         subscription.setPlan(plan);
         subscription.setPlanCodeSnapshot(plan.getCode());
         subscription.setPlanVersionSnapshot(plan.getVersion());
-        subscription.setEntitlementsSnapshot(entitlementsSnapshot(plan));
+        subscription.setEntitlementsSnapshot(snapshotService.entitlements(plan));
         subscriptionRepository.saveAndFlush(subscription);
 
         User actorUser = userRepository.findById(actor.userId())
@@ -181,25 +184,6 @@ public class SubscriptionAdministrationService {
     private User actorUser(JwtUserDetails actor) {
         return userRepository.findById(actor.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found."));
-    }
-
-    private String entitlementsSnapshot(SubscriptionPlan plan) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("institutionLimit", plan.getInstitutionLimit());
-        values.put("activeUserLimit", plan.getActiveUserLimit());
-        values.put("mediaStorageBytes", plan.getMediaStorageBytes());
-        values.put("monthlySubmissionLimit", plan.getMonthlySubmissionLimit());
-        values.put("monthlyAiCaptionLimit", plan.getMonthlyAiCaptionLimit());
-        values.put("monthlyAiMediaSuggestionLimit", plan.getMonthlyAiMediaSuggestionLimit());
-        values.put("perUserDailyCaptionLimit", plan.getPerUserDailyCaptionLimit());
-        values.put("analyticsRetentionDays", plan.getAnalyticsRetentionDays());
-        values.put("exportLevel", plan.getExportLevel().name());
-        values.put("supportLevel", plan.getSupportLevel().name());
-        try {
-            return objectMapper.writeValueAsString(values);
-        } catch (JsonProcessingException error) {
-            throw new IllegalStateException("Could not snapshot subscription entitlements.", error);
-        }
     }
 
     private static void requireOwner(JwtUserDetails actor) {

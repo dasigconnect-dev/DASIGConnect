@@ -19,7 +19,6 @@ import com.dasigconnect.backend.repository.OrganizationSubscriptionRepository;
 import com.dasigconnect.backend.repository.SubscriptionPlanRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +37,7 @@ class SubscriptionAdministrationServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private SubscriptionQueryService queryService;
     @Mock private AuditLogService auditLogService;
+    @Mock private SubscriptionPlanSnapshotService snapshotService;
     @Mock private ApplicationEventPublisher eventPublisher;
 
     private final UUID ownerId = UUID.randomUUID();
@@ -52,7 +52,7 @@ class SubscriptionAdministrationServiceTest {
                 userRepository,
                 queryService,
                 auditLogService,
-                new ObjectMapper(),
+                snapshotService,
                 eventPublisher);
     }
 
@@ -72,6 +72,7 @@ class SubscriptionAdministrationServiceTest {
                 .thenReturn(Optional.of(subscription));
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(ownerUser));
         when(queryService.currentSubscription()).thenReturn(expected);
+        when(snapshotService.entitlements(targetPlan)).thenReturn("{\"monthlyAiCaptionLimit\":1500,\"analyticsRetentionDays\":null}");
 
         SubscriptionStatusDto result = service.changePlan(targetPlan.getId(), owner());
 
@@ -86,6 +87,19 @@ class SubscriptionAdministrationServiceTest {
         verify(auditLogService).record(
                 eq(ownerUser), eq("SUBSCRIPTION_PLAN_CHANGED"), eq(null), eq(null),
                 eq(subscription.getId()), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void changePlan_toPaidPlanRequiresVerifiedPayment() {
+        SubscriptionPlan paidPlan = plan("PREMIUM_NETWORK", 1);
+        paidPlan.setMonthlyPriceCentavos(200);
+        when(planRepository.findByIdAndActiveTrue(paidPlan.getId())).thenReturn(Optional.of(paidPlan));
+
+        assertThatThrownBy(() -> service.changePlan(paidPlan.getId(), owner()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409 CONFLICT")
+                .hasMessageContaining("PayMongo confirms payment");
+        verify(subscriptionRepository, never()).findFirstByOrderByCreatedAtAsc();
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.dasigconnect.backend.model.dto.subscription.SubscriptionPaymentLinkDt
 import com.dasigconnect.backend.model.entity.SubscriptionInvoice;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,13 +33,14 @@ public class SubscriptionBillingService {
         this.emailService = emailService;
     }
 
-    public SubscriptionPaymentLinkDto createOrReusePaymentLink(String payerEmail, JwtUserDetails actor) {
+    public SubscriptionPaymentLinkDto createOrReusePaymentLink(
+            UUID planId, String payerEmail, JwtUserDetails actor) {
         SubscriptionBillingPersistenceService.requireOwner(actor);
         if (!properties.enabled()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "PayMongo QRPh billing is not enabled.");
         }
-        SubscriptionInvoice invoice = persistence.findOrCreateOpenInvoice(actor);
+        SubscriptionInvoice invoice = persistence.findOrCreateOpenInvoice(planId, actor);
         SubscriptionPaymentLinkDto existing = persistence.activeLink(invoice.getId());
         if (existing != null) return existing;
 

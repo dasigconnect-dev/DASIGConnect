@@ -25,6 +25,7 @@ public class SubscriptionBillingPersistenceService {
     private static final DateTimeFormatter INVOICE_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final OrganizationSubscriptionRepository subscriptionRepository;
+    private final SubscriptionPlanRepository planRepository;
     private final SubscriptionInvoiceRepository invoiceRepository;
     private final SubscriptionPaymentLinkRepository linkRepository;
     private final SubscriptionPaymentRepository paymentRepository;
@@ -33,12 +34,14 @@ public class SubscriptionBillingPersistenceService {
 
     public SubscriptionBillingPersistenceService(
             OrganizationSubscriptionRepository subscriptionRepository,
+            SubscriptionPlanRepository planRepository,
             SubscriptionInvoiceRepository invoiceRepository,
             SubscriptionPaymentLinkRepository linkRepository,
             SubscriptionPaymentRepository paymentRepository,
             UserRepository userRepository,
             PaymongoProperties properties) {
         this.subscriptionRepository = subscriptionRepository;
+        this.planRepository = planRepository;
         this.invoiceRepository = invoiceRepository;
         this.linkRepository = linkRepository;
         this.paymentRepository = paymentRepository;
@@ -47,19 +50,30 @@ public class SubscriptionBillingPersistenceService {
     }
 
     @Transactional
-    public SubscriptionInvoice findOrCreateOpenInvoice(JwtUserDetails actor) {
+    public SubscriptionInvoice findOrCreateOpenInvoice(UUID planId, JwtUserDetails actor) {
         requireOwner(actor);
+        SubscriptionPlan plan = planRepository.findByIdAndActiveTrue(planId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "The selected subscription plan is unavailable."));
+        if (plan.getMonthlyPriceCentavos() <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "The selected free plan does not require a payment link.");
+        }
         SubscriptionInvoice existing = invoiceRepository
                 .findFirstByStatusOrderByCreatedAtDesc(SubscriptionInvoiceStatus.OPEN).orElse(null);
-        if (existing != null) return existing;
+        if (existing != null) {
+            if (!existing.getPlan().getId().equals(plan.getId())
+                    || existing.getAmountCentavos() != plan.getMonthlyPriceCentavos()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Another subscription payment is already pending. Complete or reconcile it before choosing a different plan.");
+            }
+            return existing;
+        }
 
         OrganizationSubscription subscription = subscriptionRepository.findFirstByOrderByCreatedAtAsc()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No organization subscription is configured."));
-        if (subscription.getPlan().getMonthlyPriceCentavos() <= 0) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "The current free plan does not require a payment link.");
-        }
         Instant now = Instant.now();
         Instant periodStart = subscription.getCurrentPeriodEnd().isAfter(now)
                 ? subscription.getCurrentPeriodEnd() : now;
@@ -69,9 +83,10 @@ public class SubscriptionBillingPersistenceService {
 
         SubscriptionInvoice invoice = new SubscriptionInvoice();
         invoice.setSubscription(subscription);
+        invoice.setPlan(plan);
         invoice.setInvoiceNumber("DC-" + INVOICE_DATE.format(now.atZone(BILLING_ZONE)) + "-"
                 + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT));
-        invoice.setAmountCentavos(subscription.getPlan().getMonthlyPriceCentavos());
+        invoice.setAmountCentavos(plan.getMonthlyPriceCentavos());
         invoice.setCurrency("PHP");
         invoice.setStatus(SubscriptionInvoiceStatus.OPEN);
         invoice.setBillingPeriodStart(periodStart);

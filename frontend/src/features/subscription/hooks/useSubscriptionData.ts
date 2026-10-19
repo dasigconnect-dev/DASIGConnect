@@ -65,7 +65,11 @@ export function useSubscriptionData(userId?: string | null, isOwner = false) {
   });
 
   const createPaymentLinkMutation = useMutation({
-    mutationFn: (payerEmail?: string) => createSubscriptionPaymentLink(payerEmail),
+    mutationFn: (payerEmail?: string) => {
+      const planId = statusQuery.data?.plan.id;
+      if (!planId) throw new Error("The current subscription plan is unavailable.");
+      return createSubscriptionPaymentLink(planId, payerEmail);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryRoots.subscription });
     },
