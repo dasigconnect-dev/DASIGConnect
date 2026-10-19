@@ -6,8 +6,6 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -34,8 +32,6 @@ import com.dasigconnect.backend.service.NotificationService;
  */
 @Component
 public class NotificationEventListener {
-
-    private static final Logger log = LoggerFactory.getLogger(NotificationEventListener.class);
 
     private static final DateTimeFormatter SLOT_FMT
             = DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'");

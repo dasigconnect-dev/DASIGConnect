@@ -107,7 +107,7 @@ export default function SystemHealthScreen({ user }: Props) {
 
   function handleTabChange(tab: SystemHealthTab) {
     setActiveTab(tab);
-    window.location.hash = tab;
+    window.history.pushState(null, "", `#${tab}`);
   }
 
   function refreshHealth() {

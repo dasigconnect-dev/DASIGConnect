@@ -8,7 +8,6 @@ import com.dasigconnect.backend.model.entity.PaymongoWebhookReceiptStatus;
 import com.dasigconnect.backend.repository.PaymongoWebhookReceiptRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;

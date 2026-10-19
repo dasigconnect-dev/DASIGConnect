@@ -9,18 +9,15 @@ import com.dasigconnect.backend.model.dto.audit.AuditLogCategory;
 import com.dasigconnect.backend.model.dto.audit.AuditLogDto;
 import com.dasigconnect.backend.model.dto.audit.AuditLogFilterCriteria;
 import com.dasigconnect.backend.model.entity.AuditLog;
-import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.AuditLogRepository;
-import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,9 +52,6 @@ class AuditLogServiceTest {
     @Mock
     private InstitutionRepository institutionRepository;
 
-    @Mock
-    private FacebookPageTokenRepository facebookPageTokenRepository;
-
     private ObjectMapper objectMapper;
     private AuditLogService auditLogService;
 
@@ -71,7 +65,6 @@ class AuditLogServiceTest {
                 userRepository,
                 mediaAssetRepository,
                 institutionRepository,
-                facebookPageTokenRepository,
                 objectMapper
         );
     }

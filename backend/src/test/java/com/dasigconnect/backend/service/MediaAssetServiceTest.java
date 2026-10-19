@@ -1,7 +1,6 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -243,7 +242,6 @@ class MediaAssetServiceTest {
     void list_hidesAssetAttachedOnlyToDraftSubmissionEvenFromUploader() {
         UUID institutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
-        UUID assetId = UUID.randomUUID();
         stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto resultForUploader = mediaAssetService.list(
@@ -339,8 +337,6 @@ class MediaAssetServiceTest {
     @Test
     void list_queryWithNoMatchingTagOrFilename_excludesAsset() {
         UUID institutionId = UUID.randomUUID();
-        UUID uploaderId = UUID.randomUUID();
-        UUID assetId = UUID.randomUUID();
         stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(

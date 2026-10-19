@@ -70,8 +70,6 @@ class InvitationServiceTest {
     @Mock
     AuditLogService auditLogService;
     @Mock
-    InstitutionService institutionService;
-    @Mock
     AdminCapPolicy adminCapPolicy;
     @Mock
     InstitutionRepository institutionRepository;
@@ -280,7 +278,6 @@ class InvitationServiceTest {
                 "user@example.com", institutionId, UserRole.contributor);
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
         assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
-        verify(institutionService, never()).transitionToPending(any());
         verify(emailService).sendInvitationEmail(eq("user@example.com"), any());
     }
 
@@ -339,7 +336,6 @@ class InvitationServiceTest {
                 new CreateInvitationRequestDto("contributor2@example.com", institutionId, UserRole.contributor),
                 adminPrincipal);
 
-        verify(institutionService, never()).transitionToPending(any());
     }
 
     @Test
@@ -502,8 +498,6 @@ class InvitationServiceTest {
         verify(invitationTokenRepository).save(tokenCaptor.capture());
         assertThat(tokenCaptor.getValue().getUsedAt()).isNotNull();
 
-        // contributor acceptance must NOT trigger institution status change
-        verify(institutionService, never()).transitionToActive(any());
     }
 
     @Test
@@ -530,7 +524,6 @@ class InvitationServiceTest {
                 -> user.getRole() == UserRole.admin
                 && user.getInstitution() == null
                 && user.getAccountState() == UserStatus.active));
-        verify(institutionService, never()).transitionToActive(any());
     }
 
     @Test
@@ -600,7 +593,6 @@ class InvitationServiceTest {
         invitationService.acceptInvitation(
                 new AcceptInvitationRequestDto("tok", "Jane", "Doe", STRONG_PASSWORD));
 
-        verify(institutionService, never()).transitionToActive(any());
     }
 
     @Test

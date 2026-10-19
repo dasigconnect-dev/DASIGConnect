@@ -37,14 +37,17 @@ class MediaSemanticEmbeddingServiceTest {
         asset.setId(assetId);
         asset.setDisplayTitle("Innovation Summit");
         asset.setFileName("IMG_hackathon-day1.jpg");
-        asset.setAssetType("event-photo");
-        asset.setAiCategory("Event");
+        asset.setMetadataAssetType("photograph");
+        asset.setAssetSubtype("workshop_activity_photo");
+        asset.setCommunicationPurpose("event_documentation");
         asset.setAiDescription("Students presenting projects in a lecture hall.");
+        asset.setPrimarySubject("students presenting projects");
+        asset.setVisualSetting("lecture hall");
+        asset.setSemanticTopics(new String[]{"innovation", "student projects"});
         asset.setVisibleObjects(new String[]{"presentation screen", "tables"});
         asset.setObservedActivities(new String[]{"project presentation"});
         asset.setOcrText(new String[]{"Innovation Summit 2026"});
-        asset.setAiTags(new String[]{"student projects", "indoor event"});
-        asset.setTemporalClassification("evergreen");
+        asset.setDetectedTitle("Innovation Summit 2026");
         MediaAlbum album = new MediaAlbum();
         album.setName("Student Events");
         asset.setMediaAlbum(album);
@@ -71,14 +74,17 @@ class MediaSemanticEmbeddingServiceTest {
                 .contains("filename: IMG hackathon day1")
                 .contains("album: Student Events")
                 .contains("tags: hackathon")
-                .contains("category: Event")
-                .contains("description: Students presenting projects in a lecture hall")
-                .contains("asset type: event-photo")
+                .contains("caption: Students presenting projects in a lecture hall")
+                .contains("primary subject: students presenting projects")
+                .contains("asset type: photograph")
+                .contains("asset subtype: workshop_activity_photo")
+                .contains("communication purpose: event_documentation")
+                .contains("topics: innovation, student projects")
                 .contains("visible objects: presentation screen, tables")
                 .contains("activities: project presentation")
                 .contains("visible text: Innovation Summit 2026")
-                .contains("ai tags: indoor event, student projects")
-                .contains("temporal: evergreen")
+                .contains("detected title: Innovation Summit 2026")
+                .contains("setting: lecture hall")
                 .doesNotContain("ignored-ai-tag");
         verify(embeddings).upsertSemanticIfCurrent(
                 eq(assetId), eq("[0.2]"), eq("voyage-4-lite"), anyString(),
