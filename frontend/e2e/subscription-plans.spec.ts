@@ -94,13 +94,14 @@ async function installSubscriptionSession(
   });
 }
 
-test("paid subscribers no longer see Free and can upgrade to a higher tier", async ({ page }) => {
+test("paid subscribers can compare Free without selecting it and can upgrade", async ({ page }) => {
   await installSubscriptionSession(page, plusPlan);
   await page.goto("/upgrade-plan");
 
-  await expect(page.getByRole("heading", { name: "Free", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Free", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Plus", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Premium", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Free plan" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Upgrade plan" })).toBeVisible();
 });

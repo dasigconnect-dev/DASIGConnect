@@ -63,12 +63,7 @@ export default function SubscriptionPlansScreen({ user }: Props) {
     [plansQuery.data],
   );
   const currentPlan = statusQuery.data?.plan;
-  const visiblePlans = useMemo(
-    () => currentPlan && currentPlan.monthlyPriceCentavos > 0
-      ? plans.filter((plan) => plan.monthlyPriceCentavos > 0)
-      : plans,
-    [currentPlan, plans],
-  );
+  const paidSubscriptionActive = Boolean(currentPlan && currentPlan.monthlyPriceCentavos > 0);
   const isLoading = statusQuery.isLoading || plansQuery.isLoading;
   const error = statusQuery.error ?? plansQuery.error;
 
@@ -148,9 +143,10 @@ export default function SubscriptionPlansScreen({ user }: Props) {
           </div>
 
           <section className="subscription-plans-grid" aria-label="Available subscription plans">
-            {visiblePlans.map((plan) => {
+            {plans.map((plan) => {
               const current = plan.id === statusQuery.data?.plan.id;
               const recommended = plan.code === "PLUS_NETWORK";
+              const freeComparisonOnly = paidSubscriptionActive && plan.monthlyPriceCentavos === 0;
               return (
                 <article
                   className={`subscription-plan-card${current ? " is-current" : ""}${recommended ? " is-recommended" : ""}`}
@@ -171,13 +167,15 @@ export default function SubscriptionPlansScreen({ user }: Props) {
                   <button
                     type="button"
                     className={`subscription-plan-action${recommended && !current ? " primary" : ""}`}
-                    disabled={current || !user.adminOwner || changePlanMutation.isPending}
+                    disabled={current || freeComparisonOnly || !user.adminOwner || changePlanMutation.isPending}
                     onClick={() => setPendingPlan(plan)}
                   >
                     {current
                       ? "Current plan"
                       : !user.adminOwner
                         ? "Admin Owner required"
+                        : freeComparisonOnly
+                          ? "Free plan"
                         : currentPlan && plan.monthlyPriceCentavos > currentPlan.monthlyPriceCentavos
                           ? "Upgrade plan"
                           : `Switch to ${displayPlanName(plan)}`}
