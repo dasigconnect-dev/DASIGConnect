@@ -43,7 +43,7 @@ public class SubscriptionBillingController {
             @RequestBody @Valid CreatePaymentLinkRequestDto request,
             @AuthenticationPrincipal JwtUserDetails actor) {
         return ResponseEntity.ok(ApiResponse.success(
-                billingService.createOrReusePaymentLink(request.payerEmail(), actor)));
+                billingService.createOrReusePaymentLink(request.planId(), request.payerEmail(), actor)));
     }
 
     @PostMapping("/payments/{paymentId}/refund")
