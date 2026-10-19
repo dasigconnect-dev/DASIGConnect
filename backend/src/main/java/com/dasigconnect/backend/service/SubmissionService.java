@@ -83,14 +83,24 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class SubmissionService {
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private StorageQuotaService storageQuotaService;
+    private SubscriptionEntitlementService subscriptionEntitlementService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private SubscriptionEntitlementService subscriptionEntitlementService;
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageQuotaService(StorageQuotaService storageQuotaService) {
+        this.storageQuotaService = storageQuotaService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSubscriptionEntitlementService(SubscriptionEntitlementService subscriptionEntitlementService) {
+        this.subscriptionEntitlementService = subscriptionEntitlementService;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 

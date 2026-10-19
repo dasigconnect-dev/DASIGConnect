@@ -68,8 +68,12 @@ public class UserService {
     private final AdminCapPolicy adminCapPolicy;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private SubscriptionEntitlementService subscriptionEntitlementService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSubscriptionEntitlementService(SubscriptionEntitlementService subscriptionEntitlementService) {
+        this.subscriptionEntitlementService = subscriptionEntitlementService;
+    }
 
     public UserService(
             UserRepository userRepository,

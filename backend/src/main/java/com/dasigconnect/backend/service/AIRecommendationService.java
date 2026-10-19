@@ -95,11 +95,18 @@ public class AIRecommendationService {
     private final ConcurrentHashMap<String, QueryEmbeddingCacheEntry> queryEmbeddingCache =
             new ConcurrentHashMap<>();
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaProcessingJobRepository mediaProcessingJobRepository;
+    private MediaAiTelemetryService mediaAiTelemetry;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private MediaAiTelemetryService mediaAiTelemetry;
+    void setMediaProcessingJobRepository(MediaProcessingJobRepository mediaProcessingJobRepository) {
+        this.mediaProcessingJobRepository = mediaProcessingJobRepository;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,

@@ -55,11 +55,18 @@ public class InstitutionService {
     private static final Logger log = LoggerFactory.getLogger(InstitutionService.class);
     private static final long MAX_LOGO_BYTES = 2L * 1024 * 1024;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private SubscriptionEntitlementService subscriptionEntitlementService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private SubscriptionEntitlementService subscriptionEntitlementService;
+    void setEventPublisher(org.springframework.context.ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSubscriptionEntitlementService(SubscriptionEntitlementService subscriptionEntitlementService) {
+        this.subscriptionEntitlementService = subscriptionEntitlementService;
+    }
 
     private final InstitutionRepository institutionRepository;
     private final UserRepository userRepository;
