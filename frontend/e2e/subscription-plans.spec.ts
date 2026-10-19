@@ -94,18 +94,15 @@ async function installSubscriptionSession(
   });
 }
 
-test("switching to Free opens the standard confirmation popup", async ({ page }) => {
+test("paid subscribers no longer see Free and can upgrade to a higher tier", async ({ page }) => {
   await installSubscriptionSession(page, plusPlan);
   await page.goto("/upgrade-plan");
 
-  await page.getByRole("button", { name: "Switch to Free" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "Choose Free?" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("The Free plan limits take effect immediately.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Confirm plan" })).toBeVisible();
-  await expect(page.locator(".um-confirm-backdrop")).toHaveCSS("position", "fixed");
+  await expect(page.getByRole("heading", { name: "Free", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Plus", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Premium", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Upgrade plan" })).toBeVisible();
 });
 
 test("admin profile menu exposes upgrade, settings, and sign out actions", async ({ page }) => {
@@ -132,7 +129,10 @@ test("plan page displays backend prices, inclusions, and current plan", async ({
   await expect(page.getByText("5,000 AI media suggestions per month", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Choose Plus" }).click();
+  const plusCard = page.locator(".subscription-plan-card").filter({
+    has: page.getByRole("heading", { name: "Plus", exact: true }),
+  });
+  await plusCard.getByRole("button", { name: "Upgrade plan" }).click();
   await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
   await expect(page.getByText("Secure QRPh checkout", { exact: true })).toBeVisible();
   await page.getByLabel("Payer email Optional").fill("payer@example.org");

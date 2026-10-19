@@ -62,6 +62,13 @@ export default function SubscriptionPlansScreen({ user }: Props) {
     () => [...(plansQuery.data ?? [])].sort((left, right) => left.monthlyPriceCentavos - right.monthlyPriceCentavos),
     [plansQuery.data],
   );
+  const currentPlan = statusQuery.data?.plan;
+  const visiblePlans = useMemo(
+    () => currentPlan && currentPlan.monthlyPriceCentavos > 0
+      ? plans.filter((plan) => plan.monthlyPriceCentavos > 0)
+      : plans,
+    [currentPlan, plans],
+  );
   const isLoading = statusQuery.isLoading || plansQuery.isLoading;
   const error = statusQuery.error ?? plansQuery.error;
 
@@ -141,7 +148,7 @@ export default function SubscriptionPlansScreen({ user }: Props) {
           </div>
 
           <section className="subscription-plans-grid" aria-label="Available subscription plans">
-            {plans.map((plan) => {
+            {visiblePlans.map((plan) => {
               const current = plan.id === statusQuery.data?.plan.id;
               const recommended = plan.code === "PLUS_NETWORK";
               return (
@@ -171,9 +178,9 @@ export default function SubscriptionPlansScreen({ user }: Props) {
                       ? "Current plan"
                       : !user.adminOwner
                         ? "Admin Owner required"
-                        : plan.monthlyPriceCentavos === 0
-                          ? "Switch to Free"
-                          : `Choose ${displayPlanName(plan)}`}
+                        : currentPlan && plan.monthlyPriceCentavos > currentPlan.monthlyPriceCentavos
+                          ? "Upgrade plan"
+                          : `Switch to ${displayPlanName(plan)}`}
                   </button>
                   <div className="subscription-plan-divider" />
                   <h3>Plan includes</h3>
