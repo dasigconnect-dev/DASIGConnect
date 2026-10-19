@@ -220,7 +220,13 @@ export function useAiMediaSuggestions(
     }
     generatedForSubmissionRef.current = submissionId;
     visualRetryRef.current = { key: requestKey, attempts: 0 };
-    void requestSuggestions();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void requestSuggestions();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [enabled, submissionId, hasContext, state, requestKey, requestSuggestions]);
 
   useEffect(() => () => {
