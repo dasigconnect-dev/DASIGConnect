@@ -71,10 +71,13 @@ const subscriptionStatus = {
   enforcementEnabled: true,
 };
 
-async function installSubscriptionSession(page: import("@playwright/test").Page) {
+async function installSubscriptionSession(
+  page: import("@playwright/test").Page,
+  currentPlan = freePlan,
+) {
   await installSession(page, "admin");
   await mockApi(page, "admin", {
-    "GET /api/v1/subscription": subscriptionStatus,
+    "GET /api/v1/subscription": { ...subscriptionStatus, plan: currentPlan },
     "GET /api/v1/subscription/plans": [freePlan, plusPlan, premiumPlan],
     "POST /api/v1/subscription/admin/change-plan": { ...subscriptionStatus, plan: plusPlan },
     "POST /api/v1/subscription/billing/payment-link": {
@@ -90,6 +93,20 @@ async function installSubscriptionSession(page: import("@playwright/test").Page)
     },
   });
 }
+
+test("switching to Free opens the standard confirmation popup", async ({ page }) => {
+  await installSubscriptionSession(page, plusPlan);
+  await page.goto("/upgrade-plan");
+
+  await page.getByRole("button", { name: "Switch to Free" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Choose Free?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("The Free plan limits take effect immediately.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Confirm plan" })).toBeVisible();
+  await expect(page.locator(".um-confirm-backdrop")).toHaveCSS("position", "fixed");
+});
 
 test("admin profile menu exposes upgrade, settings, and sign out actions", async ({ page }) => {
   await installSubscriptionSession(page);
