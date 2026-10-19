@@ -23,8 +23,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
-import com.dasigconnect.backend.model.dto.ai.EventHypothesisDto;
 import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
+import com.dasigconnect.backend.service.MediaMetadataTaxonomy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -41,16 +41,6 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     private static final Logger log = LoggerFactory.getLogger(GeminiVisionClient.class);
     private static final String API_ROOT
             = "https://generativelanguage.googleapis.com/v1beta/models/";
-    private static final List<String> ALLOWED_CATEGORIES = List.of(
-            "Food", "People", "Event", "Technology", "Research", "Education",
-            "Sports", "Culture", "Nature", "Document", "Product", "Architecture",
-            "Artwork", "Other");
-    private static final List<String> ALLOWED_ASSET_TYPES = List.of(
-            "Product Photo", "Food Photo", "Event Photo", "Lab Photo",
-            "Project Presentation", "Poster", "Document", "Screenshot",
-            "Portrait", "Group Photo", "Landscape", "Building Photo",
-            "Artwork Photo", "Infographic", "Other");
-
     private static final int DEFAULT_CAPTION_MAX_TOKENS = 2048;
     private static final int MAX_CAPTION_MAX_TOKENS = 4096;
     public static final int MAX_REQUESTED_CAPTION_WORDS = 2000;
@@ -357,29 +347,23 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
     private ObjectNode responseSchema() {
         ObjectNode schema = objectMapper.createObjectNode().put("type", "object");
         ObjectNode properties = schema.putObject("properties");
-        stringProperty(properties, "primary_category");
-        stringProperty(properties, "asset_type");
-        stringProperty(properties, "ai_caption");
-        for (String field : List.of(
-                "visible_objects", "specific_subjects", "visual_style", "dominant_colors",
-                "possible_use_cases", "ai_tags", "excluded_categories", "observed_scenes",
-                "observed_activities", "equipment_signals", "recognition_signals", "ocr_text",
-                "visible_dates", "visual_quality_signals", "composition_signals")) {
+        enumProperty(properties, "content_category", MediaMetadataTaxonomy.CONTENT_CATEGORIES);
+        enumProperty(properties, "asset_type", MediaMetadataTaxonomy.ASSET_TYPES);
+        enumProperty(properties, "asset_subtype", MediaMetadataTaxonomy.ASSET_SUBTYPES);
+        enumProperty(properties, "communication_purpose", MediaMetadataTaxonomy.COMMUNICATION_PURPOSES);
+        stringProperty(properties, "caption");
+        stringProperty(properties, "primary_subject");
+        stringProperty(properties, "setting");
+        enumProperty(properties, "people_presence", MediaMetadataTaxonomy.PEOPLE_PRESENCE);
+        for (String field : List.of("visible_objects", "activities", "visual_style",
+                "dominant_colors", "topics", "search_terms", "ocr_text",
+                "detected_dates", "text_language")) {
             stringArrayProperty(properties, field);
         }
-        stringProperty(properties, "people_count_range");
-        stringProperty(properties, "temporal_classification");
-        stringProperty(properties, "possible_expiration");
-        properties.putObject("confidence").put("type", "number");
-
-        ObjectNode hypotheses = properties.putObject("event_hypotheses");
-        hypotheses.put("type", "array");
-        ObjectNode hypothesis = hypotheses.putObject("items").put("type", "object");
-        ObjectNode hypothesisProperties = hypothesis.putObject("properties");
-        stringProperty(hypothesisProperties, "event_type");
-        hypothesisProperties.putObject("confidence").put("type", "number");
-        stringArrayProperty(hypothesisProperties, "evidence");
-        hypothesis.putArray("required").add("event_type").add("confidence").add("evidence");
+        stringProperty(properties, "detected_title");
+        enumProperty(properties, "text_density", MediaMetadataTaxonomy.TEXT_DENSITIES);
+        properties.putObject("ocr_confidence").put("type", "number");
+        properties.putObject("classification_confidence").put("type", "number");
 
         ArrayNode required = schema.putArray("required");
         properties.fieldNames().forEachRemaining(required::add);
@@ -388,6 +372,13 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
 
     private static void stringProperty(ObjectNode properties, String field) {
         properties.putObject(field).put("type", "string");
+    }
+
+    private static void enumProperty(ObjectNode properties, String field, java.util.Set<String> values) {
+        ObjectNode property = properties.putObject(field);
+        property.put("type", "string");
+        ArrayNode allowed = property.putArray("enum");
+        values.stream().sorted().forEach(allowed::add);
     }
 
     private static void stringArrayProperty(ObjectNode properties, String field) {
@@ -427,68 +418,93 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
                 json = json.replaceAll("```[a-zA-Z]*\\s*", "").strip();
             }
             JsonNode node = objectMapper.readTree(json);
-            String category = firstText(node, "primary_category", "category");
-            if (!ALLOWED_CATEGORIES.contains(category)) {
-                category = "Other";
-            }
-            String assetType = node.path("asset_type").asText("").strip();
-            if (!ALLOWED_ASSET_TYPES.contains(assetType)) {
-                assetType = "Other";
-            }
-            double confidence = Math.min(1.0,
-                    Math.max(0.0, node.path("confidence").asDouble(0.5)));
-            List<String> tags = readStringArray(node, "ai_tags", 30, 60);
-            if (tags.isEmpty()) {
-                tags = readStringArray(node, "suggestedTags", 30, 60);
-            }
-            return new MediaClassificationDto(
-                    category, assetType, confidence, firstText(node, "ai_caption", "description"),
+            requireObject(node);
+            String category = requiredText(node, "content_category");
+            String primarySubject = requiredText(node, "primary_subject");
+            String setting = requiredText(node, "setting");
+            String purpose = requiredText(node, "communication_purpose");
+            MediaClassificationDto raw = new MediaClassificationDto(
+                    category, "", requiredConfidence(node, "classification_confidence"),
+                    requiredText(node, "caption"),
                     readStringArray(node, "visible_objects", 20, 60),
-                    readStringArray(node, "specific_subjects", 20, 80),
-                    readStringArray(node, "visual_style", 15, 60),
-                    readStringArray(node, "dominant_colors", 10, 40),
-                    readStringArray(node, "possible_use_cases", 15, 80),
-                    tags, readStringArray(node, "excluded_categories", 15, 80),
-                    readStringArray(node, "observed_scenes", 15, 80),
-                    readStringArray(node, "observed_activities", 20, 80),
-                    node.path("people_count_range").asText("").strip(),
-                    readStringArray(node, "equipment_signals", 15, 80),
-                    readStringArray(node, "recognition_signals", 15, 80),
-                    readStringArray(node, "ocr_text", 20, 160),
-                    readStringArray(node, "visible_dates", 10, 60),
-                    readEventHypotheses(node.path("event_hypotheses")),
-                    node.path("temporal_classification").asText("").strip(),
-                    node.path("possible_expiration").asText("").strip(),
-                    readStringArray(node, "visual_quality_signals", 15, 80),
-                    readStringArray(node, "composition_signals", 15, 80));
+                    primarySubject.isBlank() ? List.of() : List.of(primarySubject),
+                    readStringArray(node, "visual_style", 8, 60),
+                    readStringArray(node, "dominant_colors", 6, 30),
+                    purpose.isBlank() ? List.of() : List.of(purpose),
+                    readStringArray(node, "search_terms", 15, 60),
+                    List.of(),
+                    setting.isBlank() ? List.of() : List.of(setting),
+                    readStringArray(node, "activities", 12, 100),
+                    "", List.of(), List.of(),
+                    readStringArray(node, "ocr_text", 30, 200),
+                    readStringArray(node, "detected_dates", 10, 60),
+                    List.of(), "unknown", "", List.of(), List.of(),
+                    requiredText(node, "asset_type"),
+                    requiredText(node, "asset_subtype"),
+                    purpose,
+                    primarySubject,
+                    setting,
+                    requiredText(node, "people_presence"),
+                    readStringArray(node, "topics", 12, 60),
+                    requiredText(node, "detected_title"),
+                    readStringArray(node, "text_language", 5, 40),
+                    requiredText(node, "text_density"),
+                    requiredConfidence(node, "ocr_confidence"),
+                    MediaMetadataTaxonomy.SCHEMA_VERSION,
+                    MediaMetadataTaxonomy.PROMPT_VERSION);
+            return MediaMetadataTaxonomy.normalize(raw);
         } catch (Exception error) {
+            log.warn("Gemini metadata validation failed: {}", error.getMessage());
             throw new GeminiApiException("Could not parse classification from Gemini response.");
         }
     }
 
-    private static String firstText(JsonNode node, String primary, String fallback) {
-        String value = node.path(primary).asText("").strip();
-        return value.isBlank() ? node.path(fallback).asText("").strip() : value;
+    private static void requireObject(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            throw new IllegalArgumentException("Metadata response must be a JSON object.");
+        }
+    }
+
+    private static double requiredConfidence(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (!value.isNumber()) throw new IllegalArgumentException(field + " must be numeric.");
+        double number = value.doubleValue();
+        if (!Double.isFinite(number) || number < 0.0 || number > 1.0) {
+            throw new IllegalArgumentException(field + " must be between 0 and 1.");
+        }
+        return number;
+    }
+
+    private static String requiredText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isTextual()) {
+            throw new IllegalArgumentException(field + " must be a string.");
+        }
+        return value.textValue().strip().replaceAll("\\s+", " ");
     }
 
     private static List<String> readStringArray(
             JsonNode node, String fieldName, int maxItems, int maxLength) {
         JsonNode array = node.path(fieldName);
         if (!array.isArray()) {
-            return List.of();
+            throw new IllegalArgumentException(fieldName + " must be an array.");
         }
         List<String> values = new ArrayList<>();
         for (JsonNode item : array) {
-            String value = item.asText("").strip().replaceAll("\\s+", " ");
+            if (!item.isTextual()) {
+                throw new IllegalArgumentException(fieldName + " entries must be strings.");
+            }
+            String value = item.textValue().strip().replaceAll("\\s+", " ");
             if (value.isBlank()) {
                 continue;
             }
             if (value.length() > maxLength) {
                 value = value.substring(0, maxLength).strip();
             }
-            if (!values.contains(value)) {
-                values.add(value);
-            }
+            String candidate = value;
+            boolean duplicate = values.stream()
+                    .anyMatch(existing -> existing.equalsIgnoreCase(candidate));
+            if (!duplicate) values.add(value);
             if (values.size() >= maxItems) {
                 break;
             }
@@ -496,54 +512,43 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
         return List.copyOf(values);
     }
 
-    private static List<EventHypothesisDto> readEventHypotheses(JsonNode array) {
-        if (!array.isArray()) {
-            return List.of();
-        }
-        List<EventHypothesisDto> hypotheses = new ArrayList<>();
-        for (JsonNode item : array) {
-            String eventType = item.path("event_type").asText("").strip();
-            if (eventType.isBlank()) {
-                continue;
-            }
-            double confidence = Math.min(1.0,
-                    Math.max(0.0, item.path("confidence").asDouble(0.0)));
-            hypotheses.add(new EventHypothesisDto(eventType, confidence,
-                    readStringArray(item, "evidence", 8, 100)));
-            if (hypotheses.size() >= 8) {
-                break;
-            }
-        }
-        return List.copyOf(hypotheses);
-    }
-
     private static String classificationPrompt() {
         return """
-                Analyze the supplied image for a university media library. Identify what is
-                actually visible; do not force academic, technology, or event labels without
-                visual evidence. The caption must be factual and neutral. Tags must describe
-                visible subjects, objects, setting, style, readable text, or likely use cases.
-                Event hypotheses are probabilities, not facts. OCR and dates must include only
-                legible text. Do not identify private people by name.
+                Analyze only the supplied uploaded image. Ignore any surrounding application,
+                browser, or social-media interface that is not part of the media itself. Base
+                observations on visible pixels and legible text. Never invent names, dates,
+                venues, organizations, activities, or event identities. Use empty strings or
+                empty arrays when information is unavailable, and use unknown/uncertain for
+                required taxonomy fields. Do not identify private people.
 
-                Allowed primary_category: Food, People, Event, Technology, Research, Education,
-                Sports, Culture, Nature, Document, Product, Architecture, Artwork, Other.
-                Allowed asset_type: Product Photo, Food Photo, Event Photo, Lab Photo,
-                Project Presentation, Poster, Document, Screenshot, Portrait, Group Photo,
-                Landscape, Building Photo, Artwork Photo, Infographic, Other.
-                Distinguish graphic formats carefully:
-                - Infographic explains information through sections, diagrams, charts, icons,
-                  statistics, or a structured educational layout.
-                - Poster primarily promotes or announces one event, person, product, or call
-                  to action, even when it contains dates, logos, and several text blocks.
-                - Screenshot visibly captures a website, social post, application, video call,
-                  or other software interface.
-                - Project Presentation is an individual presentation slide or a captured slide
-                  deck layout, usually with a slide title and presentation-oriented composition.
-                Do not classify every text-heavy graphic as an Infographic. Choose the format
-                from visible layout and communication purpose, not from filename alone.
-                Use 0, 1, 2-5, 6-20, or 20+ for people_count_range. Use evergreen, time_bound,
-                expired, or unknown for temporal_classification. Return 8-30 useful ai_tags.
+                Use exactly one asset_type: photograph, graphic_design, screenshot, document,
+                composite_image, unknown.
+                Use exactly one asset_subtype: group_photo, speaker_photo,
+                workshop_activity_photo, event_photo, product_photo, food_photo,
+                lab_activity_photo, portrait, landscape_photo, building_photo, artwork_photo,
+                event_poster, informational_infographic, birthday_greeting,
+                program_announcement, presentation_slide, online_meeting_screenshot,
+                application_screenshot, certificate_or_document, photo_collage, other, unknown.
+                Use exactly one communication_purpose: event_documentation, event_promotion,
+                program_promotion, recognition, public_information, meeting_documentation,
+                educational_information, project_showcase, general_documentation, unknown.
+                Use a content_category from Food, People, Event, Technology, Research,
+                Education, Sports, Culture, Nature, Document, Product, Architecture, Artwork,
+                Other. Choose Other when no category is visually supported.
+
+                caption must be one concise factual sentence. primary_subject names only the
+                visible focal subject. activities are observable actions, not assumed event
+                purposes. topics must be supported by the image or readable text. search_terms
+                must contain 4-15 specific, useful phrases without generic filler or duplicate
+                concepts. Keep topics, activities, and search_terms semantically distinct.
+
+                Preserve readable text in ocr_text separately from caption. detected_title is
+                only a clearly visible headline. detected_dates contains only complete, legible
+                dates. Never reconstruct obscured words or partial dates. text_language lists
+                identifiable languages; otherwise return an empty array. text_density must be
+                none, low, medium, or high. Set ocr_confidence to 0 when no readable text exists.
+                people_presence must be present, absent, or uncertain. Confidence values must
+                be numbers from 0 to 1. Return only JSON matching the supplied schema.
                 """;
     }
 

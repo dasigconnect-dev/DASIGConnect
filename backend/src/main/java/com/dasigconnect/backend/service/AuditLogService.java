@@ -10,7 +10,6 @@ import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AuditLogRepository;
-import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -22,7 +21,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -59,7 +57,6 @@ public class AuditLogService {
     private final UserRepository userRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final InstitutionRepository institutionRepository;
-    private final FacebookPageTokenRepository facebookPageTokenRepository;
     private final ObjectMapper objectMapper;
 
     public AuditLogService(
@@ -69,7 +66,6 @@ public class AuditLogService {
             UserRepository userRepository,
             MediaAssetRepository mediaAssetRepository,
             InstitutionRepository institutionRepository,
-            FacebookPageTokenRepository facebookPageTokenRepository,
             ObjectMapper objectMapper) {
         this.auditLogRepository = auditLogRepository;
         this.auditLogWriter = auditLogWriter;
@@ -77,7 +73,6 @@ public class AuditLogService {
         this.userRepository = userRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.institutionRepository = institutionRepository;
-        this.facebookPageTokenRepository = facebookPageTokenRepository;
         this.objectMapper = objectMapper;
     }
 

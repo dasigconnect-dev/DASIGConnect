@@ -61,7 +61,6 @@ public class InvitationService {
     private final JWTService jwtService;
     private final EmailService emailService;
     private final AuditLogService auditLogService;
-    private final InstitutionService institutionService;
     private final InstitutionRepository institutionRepository;
     private final InvitationBatchRepository invitationBatchRepository;
     /**
@@ -80,7 +79,6 @@ public class InvitationService {
             JWTService jwtService,
             EmailService emailService,
             AuditLogService auditLogService,
-            InstitutionService institutionService,
             AdminCapPolicy adminCapPolicy,
             InstitutionRepository institutionRepository,
             InvitationBatchRepository invitationBatchRepository) {
@@ -91,7 +89,6 @@ public class InvitationService {
         this.jwtService = jwtService;
         this.emailService = emailService;
         this.auditLogService = auditLogService;
-        this.institutionService = institutionService;
         this.adminCapPolicy = adminCapPolicy;
         this.institutionRepository = institutionRepository;
         this.invitationBatchRepository = invitationBatchRepository;
@@ -308,19 +305,6 @@ public class InvitationService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found");
         }
         return institution;
-    }
-
-    private void validateInstitutionEmailDomain(String email, Institution institution) {
-        String domain = institution.getEmailDomain();
-        if (domain == null || domain.isBlank()) {
-            return;
-        }
-        String normalizedDomain = domain.trim().toLowerCase();
-        if (!email.endsWith("@" + normalizedDomain)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Recipient email must use the institution domain: " + normalizedDomain);
-        }
     }
 
     /**

@@ -1500,14 +1500,6 @@ public class MediaAssetService {
         return !submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(singleAssetId).isEmpty();
     }
 
-    private boolean isPublishedToRepository(
-            UUID assetId, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
-        if (!attachedAssetIds.contains(assetId)) {
-            return true;
-        }
-        return assetIdsUsedBeyondDraft.contains(assetId);
-    }
-
     private boolean isContributor(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("contributor");
     }

@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class MediaProcessingQueueService {
 
     public static final String PROCESSING_VERSION = "media-retrieval-v2";
-    public static final String ENRICHMENT_VERSION = "gemini-enrichment-v1";
+    public static final String ENRICHMENT_VERSION = "gemini-enrichment-v2";
     public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
     public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v2";
     public static final String CONTEXT_VERSION = "submission-context-v1";

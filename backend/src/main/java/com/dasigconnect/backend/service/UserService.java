@@ -1,6 +1,5 @@
 package com.dasigconnect.backend.service;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
@@ -46,7 +45,6 @@ public class UserService {
      * within this window.
      */
     private static final Duration ADMIN_PROMOTION_TTL = Duration.ofHours(72);
-    private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
 
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
@@ -631,7 +629,6 @@ public class UserService {
             return UserDto.from(pending);
         }
 
-        UUID fromInstitutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
         String fromInstitutionName = target.getInstitution() != null ? target.getInstitution().getName() : "(none)";
         String toInstitutionName = "(none)";
 
