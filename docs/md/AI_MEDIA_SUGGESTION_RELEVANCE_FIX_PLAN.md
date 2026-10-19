@@ -14,6 +14,8 @@ Improve the relevance of AI Media Suggestion results after the structured Gemini
 
 ## Phase 1 - Retrieval Correctness
 
+Status: Completed.
+
 - Require a real visual or semantic similarity signal to meet the relevance floor before auxiliary boosts are applied.
 - Remove the artificial fallback semantic score.
 - Keep metadata fallback conservative: return only candidates whose real metadata evidence reaches the existing threshold.
@@ -22,6 +24,8 @@ Improve the relevance of AI Media Suggestion results after the structured Gemini
 
 ## Phase 2 - Structured Metadata Alignment
 
+Status: Completed.
+
 - Add V2 type, subtype, purpose, primary subject, topics, setting, activities, objects, detected title, and bounded OCR text to deterministic asset terms.
 - Build selected-media query context from normalized persisted metadata rather than legacy fields alone.
 - Use V2 fields in match explanations and diversity comparison.
@@ -29,7 +33,12 @@ Improve the relevance of AI Media Suggestion results after the structured Gemini
 
 ## Phase 3 - Evaluation and Rollout
 
-- Run the existing offline ranking evaluator against human-reviewed DASIG examples.
+Status: Evaluation tooling completed; human labeling and provider-backed
+benchmark execution remain pending.
+
+- Generate a strategy-blinded candidate pool from the existing offline ranking
+  evaluator, then obtain human relevance grades for at least 30 DASIG scenarios.
+- Run the evaluator against the completed human-reviewed labels.
 - Compare image-only, semantic-only, hybrid, and reciprocal-rank-fusion strategies using top-result relevance and precision-at-k.
 - Keep hybrid rollout flags unchanged until evidence supports enabling them for an institution.
 - Document provider-backed measurements separately; deterministic unit tests do not prove real-world accuracy.
