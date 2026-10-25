@@ -571,6 +571,10 @@ export function useNotifications(user: User) {
             const mapped = mapDto(dto);
             // A fetch that raced the same event can already hold this id.
             prependNotification(mapped);
+            if (dto.eventType.startsWith('admin_transfer') || dto.eventType.startsWith('admin_promotion')) {
+              void queryClient.invalidateQueries({ queryKey: queryRoots.principal });
+              void queryClient.invalidateQueries({ queryKey: queryRoots.administrators });
+            }
           },
           onRead: (id) => {
             if (stopped || connectionController.signal.aborted) return;

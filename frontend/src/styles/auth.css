@@ -1306,10 +1306,10 @@ body {
 .sidebar-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 7px 8px;
   border-radius: var(--r-sm);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--d-muted);
   cursor: pointer;
@@ -1319,6 +1319,12 @@ body {
   font-family: var(--ff-body);
   text-align: left;
   width: 100%;
+  white-space: nowrap;
+}
+
+.sidebar-link > span {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sidebar-link:hover {
@@ -1338,6 +1344,7 @@ body {
 
 .sidebar-notif-badge {
   margin-left: auto;
+  flex-shrink: 0;
   background: var(--d-blue);
   color: #fff;
   font-size: 11px;
@@ -1366,6 +1373,52 @@ body {
 .sidebar-link.active .sidebar-notif-badge,
 .sidebar-link:hover .sidebar-notif-badge {
   background: #1d4ed8;
+}
+
+.sidebar-transfer-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--d-blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.22);
+  animation: sidebar-notif-pop 0.26s ease both;
+}
+
+.sidebar-transfer-badge i {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-link.active .sidebar-transfer-badge,
+.sidebar-link:hover .sidebar-transfer-badge {
+  background: #1d4ed8;
+}
+
+@keyframes sidebar-arrow-up-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-transfer-badge i {
+    animation: none;
+  }
 }
 
 @keyframes sidebar-notif-pop {

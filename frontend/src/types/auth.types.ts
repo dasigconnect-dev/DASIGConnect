@@ -22,4 +22,6 @@ export interface User {
   initials: string
   /** True only for the single Admin Owner (UC-1.1). Gates Owner-only actions like Connect a Different Page. */
   adminOwner?: boolean
+  superAdminTransferRequestedBy?: string | null
+  superAdminTransferExpiresAt?: string | null
 }

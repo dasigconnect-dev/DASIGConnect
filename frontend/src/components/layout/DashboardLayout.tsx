@@ -4,6 +4,7 @@ import DashboardShell, { type DashboardNavId } from './DashboardShell'
 import PageLoader from '../common/PageLoader'
 import PageTransition from '../common/PageTransition'
 import type { User } from '../../types/auth.types'
+import { useCurrentProfile } from '../../hooks/useCurrentProfile'
 import { useNotificationUnreadCount } from '../../features/notifications/hooks/useNotifications'
 
 interface DashboardLayoutProps {
@@ -48,6 +49,15 @@ export default function DashboardLayout({
   const { pathname } = useLocation()
   const unreadCountQuery = useNotificationUnreadCount(user)
   const notificationBadge = unreadCountQuery.data ?? 0
+  const profileQuery = useCurrentProfile(user)
+  const profile = profileQuery.data
+  const transferRequestedBy = profile?.superAdminTransferRequestedBy ?? user.superAdminTransferRequestedBy
+  const transferExpiresAt = profile?.superAdminTransferExpiresAt ?? user.superAdminTransferExpiresAt
+  const hasPendingAdminTransfer = Boolean(
+    user.role === 'admin' &&
+    transferRequestedBy &&
+    (!transferExpiresAt || new Date(transferExpiresAt).getTime() > Date.now())
+  )
 
   return (
     <DashboardShell
@@ -62,6 +72,7 @@ export default function DashboardLayout({
       onLogout={onLogout}
       logoutLoading={logoutLoading}
       notificationBadge={notificationBadge}
+      hasPendingAdminTransfer={hasPendingAdminTransfer}
     >
       <PageTransition>
         <Suspense fallback={<PageLoader contained />}>
