@@ -96,128 +96,178 @@ export default function SubscriptionPlansScreen({ user }: Props) {
   }
 
   return (
-    <div className="subscription-plans-page">
-      <header className="subscription-plans-header">
+    <div className="subscription-plans-page-wrapper">
+      <div className="subscription-plans-nav-row">
         <button
           type="button"
-          className="subscription-plans-back"
-          onClick={() => navigate("/settings#subscription")}
-          aria-label="Back to Subscription and Billing"
+          className="sub-back-btn"
+          onClick={() => navigate(-1)}
+          aria-label="Back to Previous Page"
         >
           <i className="ti ti-arrow-left" aria-hidden="true" />
+          <span>Back</span>
         </button>
-        <div>
-          <span className="subscription-plans-eyebrow">DASIG Central Visayas</span>
-          <h1>Choose your organization plan</h1>
-          <p>Plans share capacity across member institutions while preserving institution-level access controls.</p>
+
+        <div className="subscription-plans-brand-wordmark" aria-label="DASIGConnect">
+          <span className="brand-dasig">DASIG</span>
+          <span className="brand-connect">Connect</span>
         </div>
-        <button
-          type="button"
-          className="subscription-plans-billing-link"
-          onClick={() => navigate("/settings#subscription")}
-        >
-          <i className="ti ti-receipt" aria-hidden="true" />
-          Billing & usage
-        </button>
-      </header>
+      </div>
 
-      {isLoading ? (
-        <section className="settings-card subscription-plans-state" aria-busy="true">
-          <i className="ti ti-loader-2 settings-spinner" aria-hidden="true" />
-          <span>Loading organization plans...</span>
-        </section>
-      ) : error || !statusQuery.data ? (
-        <section className="settings-card subscription-plans-state" role="alert">
-          <i className="ti ti-alert-circle" aria-hidden="true" />
-          <span>{errorMessage(error, "Organization plans could not be loaded.")}</span>
-          <button type="button" className="settings-save-button" onClick={() => void retry()}>
-            <i className="ti ti-refresh" aria-hidden="true" /> Retry
-          </button>
-        </section>
-      ) : (
-        <>
-          <div className="subscription-plans-context" role="status">
-            <span>Current plan</span>
-            <strong>{displayPlanName(statusQuery.data.plan)}</strong>
-            <span>{formatPrice(statusQuery.data.plan.monthlyPriceCentavos)}</span>
-          </div>
-
-          <section className="subscription-plans-grid" aria-label="Available subscription plans">
-            {plans.map((plan) => {
-              const current = plan.id === statusQuery.data?.plan.id;
-              const recommended = plan.code === "PLUS_NETWORK";
-              const freeComparisonOnly = paidSubscriptionActive && plan.monthlyPriceCentavos === 0;
-              return (
-                <article
-                  className={`subscription-plan-card${current ? " is-current" : ""}${recommended ? " is-recommended" : ""}`}
-                  key={plan.id}
-                >
-                  <div className="subscription-plan-card-topline">
-                    {recommended ? <span className="subscription-plan-badge">Recommended</span> : <span />}
-                    {current && <span className="subscription-plan-current"><i className="ti ti-check" /> Current</span>}
-                  </div>
-                  <div className="subscription-plan-card-heading">
-                    <h2>{displayPlanName(plan)}</h2>
-                    <p>{planDescription(plan)}</p>
-                  </div>
-                  <div className="subscription-plan-price">
-                    <strong>{formatPriceAmount(plan.monthlyPriceCentavos)}</strong>
-                    <span>{plan.monthlyPriceCentavos === 0 ? "for pilot use" : "per month"}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className={`subscription-plan-action${recommended && !current ? " primary" : ""}`}
-                    disabled={current || freeComparisonOnly || !user.adminOwner || changePlanMutation.isPending}
-                    onClick={() => setPendingPlan(plan)}
-                  >
-                    {current
-                      ? "Current plan"
-                      : !user.adminOwner
-                        ? "Admin Owner required"
-                        : freeComparisonOnly
-                          ? "Free plan"
-                        : currentPlan && plan.monthlyPriceCentavos > currentPlan.monthlyPriceCentavos
-                          ? "Upgrade plan"
-                          : `Switch to ${displayPlanName(plan)}`}
-                  </button>
-                  <div className="subscription-plan-divider" />
-                  <h3>Plan includes</h3>
-                  <ul className="subscription-plan-features">
-                    {planFeatures(plan).map((feature) => (
-                      <li key={feature}><i className="ti ti-check" aria-hidden="true" /><span>{feature}</span></li>
-                    ))}
-                  </ul>
-                </article>
-              );
-            })}
-          </section>
-
-          {!user.adminOwner && (
-            <div className="subscription-plans-owner-note">
-              <i className="ti ti-info-circle" aria-hidden="true" />
-              Only the Admin Owner can change the organization plan or create payment links.
+      <main className="subscription-plans-page">
+        <header className="subscription-plans-header">
+          <div className="subscription-plans-header-text">
+            <div className="subscription-plans-eyebrow-row">
+              <span className="subscription-plans-eyebrow">
+                <i className="ti ti-building-bank" aria-hidden="true" />
+                {statusQuery.data?.organizationName || "DASIG Central Visayas"}
+              </span>
             </div>
-          )}
-        </>
-      )}
+            <h1>Choose your organization plan</h1>
+            <p>Plans share capacity across member institutions while preserving institution-level access controls.</p>
+          </div>
+        </header>
 
-      {pendingPlan && pendingPlan.monthlyPriceCentavos > 0 && (
-        <PaymentPortalDialog
-          plan={pendingPlan}
-          loading={paidCheckoutMutation.isPending}
-          onContinue={continueToPayment}
-          onCancel={() => setPendingPlan(null)}
-        />
-      )}
-      {pendingPlan && pendingPlan.monthlyPriceCentavos === 0 && (
-        <ConfirmDialog
-          title={`Choose ${displayPlanName(pendingPlan)}?`}
-          message="The Free plan limits take effect immediately. Existing data is preserved, but new activity may be restricted when usage exceeds the lower limits."
-          confirmLabel={changePlanMutation.isPending ? "Changing..." : "Confirm plan"}
-          onConfirm={() => void confirmPlanChange()}
-          onCancel={() => setPendingPlan(null)}
-        />
-      )}
+        {isLoading ? (
+          <section className="settings-card subscription-plans-state" aria-busy="true">
+            <i className="ti ti-loader-2 settings-spinner" aria-hidden="true" />
+            <span>Loading organization plans...</span>
+          </section>
+        ) : error || !statusQuery.data ? (
+          <section className="settings-card subscription-plans-state" role="alert">
+            <i className="ti ti-alert-circle" aria-hidden="true" />
+            <span>{errorMessage(error, "Organization plans could not be loaded.")}</span>
+            <button type="button" className="settings-save-button" onClick={() => void retry()}>
+              <i className="ti ti-refresh" aria-hidden="true" /> Retry
+            </button>
+          </section>
+        ) : (
+          <>
+
+            <section className="subscription-plans-grid" aria-label="Available subscription plans">
+              {plans.map((plan) => {
+                const current = plan.id === statusQuery.data?.plan.id;
+                const recommended = plan.code === "PLUS_NETWORK";
+                const freeComparisonOnly = paidSubscriptionActive && plan.monthlyPriceCentavos === 0;
+                return (
+                  <article
+                    className={`subscription-plan-card${current ? " is-current" : ""}${recommended ? " is-recommended" : ""}`}
+                    key={plan.id}
+                  >
+                    <div className="subscription-plan-card-topline">
+                      {recommended ? (
+                        <span className="subscription-plan-badge">
+                          <i className="ti ti-sparkles" aria-hidden="true" /> Recommended
+                        </span>
+                      ) : (
+                        <span className="subscription-plan-badge-placeholder" aria-hidden="true" />
+                      )}
+                      {current && (
+                        <span className="subscription-plan-current">
+                          <i className="ti ti-check" aria-hidden="true" /> Current
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="subscription-plan-card-heading">
+                      <h2>{displayPlanName(plan)}</h2>
+                      <p>{planDescription(plan)}</p>
+                    </div>
+
+                    <div className="subscription-plan-price">
+                      <strong>{formatPriceAmount(plan.monthlyPriceCentavos)}</strong>
+                      <span>{plan.monthlyPriceCentavos === 0 ? "for pilot use" : "per month"}</span>
+                    </div>
+
+                    <div className="subscription-plan-stats-strip">
+                      <div className="subscription-plan-stat-item">
+                        <span className="subscription-plan-stat-value">{plan.institutionLimit}</span>
+                        <span className="subscription-plan-stat-label">Institutions</span>
+                      </div>
+                      <div className="subscription-plan-stat-divider" aria-hidden="true" />
+                      <div className="subscription-plan-stat-item">
+                        <span className="subscription-plan-stat-value">{plan.activeUserLimit}</span>
+                        <span className="subscription-plan-stat-label">Users</span>
+                      </div>
+                      <div className="subscription-plan-stat-divider" aria-hidden="true" />
+                      <div className="subscription-plan-stat-item">
+                        <span className="subscription-plan-stat-value">{formatBytes(plan.mediaStorageBytes)}</span>
+                        <span className="subscription-plan-stat-label">Storage</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`subscription-plan-action${recommended && !current ? " primary" : ""}`}
+                      disabled={current || freeComparisonOnly || !user.adminOwner || changePlanMutation.isPending}
+                      onClick={() => setPendingPlan(plan)}
+                    >
+                      {current
+                        ? "Current plan"
+                        : !user.adminOwner
+                          ? "Admin Owner required"
+                          : freeComparisonOnly
+                            ? "Free plan"
+                          : currentPlan && plan.monthlyPriceCentavos > currentPlan.monthlyPriceCentavos
+                            ? "Upgrade plan"
+                            : `Switch to ${displayPlanName(plan)}`}
+                    </button>
+
+                    <div className="subscription-plan-divider" />
+
+                    <div className="subscription-plan-features-section">
+                      <h3>Plan includes</h3>
+                      <ul className="subscription-plan-features">
+                        {planFeatures(plan).map((feature) => (
+                          <li key={feature}>
+                            <span className="subscription-plan-feature-icon" aria-hidden="true">
+                              <i className="ti ti-check" />
+                            </span>
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+
+            {!user.adminOwner && (
+              <div className="subscription-plans-owner-note">
+                <i className="ti ti-shield-alert" aria-hidden="true" />
+                <div>
+                  <strong>Admin Owner authorization required</strong>
+                  <p>Only the designated Admin Owner can change the organization plan or create payment links.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="subscription-plans-bsp-footer">
+              <i className="ti ti-shield-check" aria-hidden="true" />
+              <span>Bangko Sentral ng Pilipinas QRPh Compliant · Instant Provisioning</span>
+            </div>
+          </>
+        )}
+
+        {pendingPlan && pendingPlan.monthlyPriceCentavos > 0 && (
+          <PaymentPortalDialog
+            plan={pendingPlan}
+            loading={paidCheckoutMutation.isPending}
+            onContinue={continueToPayment}
+            onCancel={() => setPendingPlan(null)}
+          />
+        )}
+        {pendingPlan && pendingPlan.monthlyPriceCentavos === 0 && (
+          <ConfirmDialog
+            title={`Choose ${displayPlanName(pendingPlan)}?`}
+            message="The Free plan limits take effect immediately. Existing data is preserved, but new activity may be restricted when usage exceeds the lower limits."
+            confirmLabel={changePlanMutation.isPending ? "Changing..." : "Confirm plan"}
+            onConfirm={() => void confirmPlanChange()}
+            onCancel={() => setPendingPlan(null)}
+          />
+        )}
+      </main>
     </div>
   );
 }
@@ -262,7 +312,10 @@ function PaymentPortalDialog({
       <div className="subscription-checkout-dialog">
         <header className="subscription-checkout-header">
           <div>
-            <span className="subscription-plans-eyebrow">Secure QRPh checkout</span>
+            <span className="subscription-plans-eyebrow">
+              <i className="ti ti-shield-lock" aria-hidden="true" />
+              Secure QRPh checkout
+            </span>
             <h2 id={titleId}>Upgrade to {displayPlanName(plan)}</h2>
           </div>
           <button type="button" onClick={onCancel} disabled={loading} aria-label="Close payment portal">
@@ -271,26 +324,55 @@ function PaymentPortalDialog({
         </header>
 
         <div className="subscription-checkout-plan">
-          <div><span>Organization plan</span><strong>{displayPlanName(plan)}</strong></div>
-          <div><span>Amount due monthly</span><strong>{formatPriceAmount(plan.monthlyPriceCentavos)}</strong></div>
+          <div className="subscription-checkout-plan-item">
+            <span>Organization plan</span>
+            <strong>{displayPlanName(plan)}</strong>
+          </div>
+          <div className="subscription-checkout-plan-item">
+            <span>Amount due monthly</span>
+            <strong>{formatPriceAmount(plan.monthlyPriceCentavos)}</strong>
+          </div>
         </div>
 
         <ol className="subscription-checkout-steps" aria-label="Payment process">
-          <li><span>1</span><div><strong>Confirm this plan</strong><small>The current plan remains active until payment is verified.</small></div></li>
-          <li><span>2</span><div><strong>Open PayMongo</strong><small>A secure hosted QRPh payment page will open in this tab.</small></div></li>
-          <li><span>3</span><div><strong>Verify payment</strong><small>DASIGConnect activates the paid period only after signed confirmation.</small></div></li>
+          <li>
+            <span className="subscription-checkout-step-badge">1</span>
+            <div>
+              <strong>Confirm this plan</strong>
+              <small>The current plan remains active until payment is verified.</small>
+            </div>
+          </li>
+          <li>
+            <span className="subscription-checkout-step-badge">2</span>
+            <div>
+              <strong>Open PayMongo</strong>
+              <small>A secure hosted QRPh payment page will open in this tab.</small>
+            </div>
+          </li>
+          <li>
+            <span className="subscription-checkout-step-badge">3</span>
+            <div>
+              <strong>Verify payment</strong>
+              <small>DASIGConnect activates the paid period only after signed confirmation.</small>
+            </div>
+          </li>
         </ol>
 
         <div className="subscription-checkout-field">
-          <label htmlFor={emailId}>Payer email <span>Optional</span></label>
-          <input
-            id={emailId}
-            type="email"
-            value={payerEmail}
-            placeholder="billing@example.org"
-            disabled={loading}
-            onChange={(event) => setPayerEmail(event.target.value)}
-          />
+          <label htmlFor={emailId}>
+            Payer email <span>Optional</span>
+          </label>
+          <div className="subscription-checkout-input-wrapper">
+            <i className="ti ti-mail" aria-hidden="true" />
+            <input
+              id={emailId}
+              type="email"
+              value={payerEmail}
+              placeholder="billing@example.org"
+              disabled={loading}
+              onChange={(event) => setPayerEmail(event.target.value)}
+            />
+          </div>
           <small>When provided, DASIGConnect also sends the payment link to this address.</small>
         </div>
 
@@ -302,9 +384,26 @@ function PaymentPortalDialog({
         )}
 
         <div className="subscription-checkout-actions">
-          <button type="button" className="subscription-checkout-cancel" onClick={onCancel} disabled={loading}>Cancel</button>
-          <button type="button" className="subscription-checkout-continue" onClick={() => void submitPayment()} disabled={loading}>
-            {loading ? <><i className="ti ti-loader-2 settings-spinner" aria-hidden="true" /> Preparing payment...</> : <><i className="ti ti-qrcode" aria-hidden="true" /> Continue to QRPh</>}
+          <button type="button" className="subscription-checkout-cancel" onClick={onCancel} disabled={loading}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="subscription-checkout-continue"
+            onClick={() => void submitPayment()}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <i className="ti ti-loader-2 settings-spinner" aria-hidden="true" />
+                Preparing payment...
+              </>
+            ) : (
+              <>
+                <i className="ti ti-qrcode" aria-hidden="true" />
+                Continue to QRPh
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -361,10 +460,6 @@ function formatPriceAmount(centavos: number) {
     currency: "PHP",
     maximumFractionDigits: 0,
   }).format(centavos / 100);
-}
-
-function formatPrice(centavos: number) {
-  return centavos === 0 ? "Free" : `${formatPriceAmount(centavos)}/month`;
 }
 
 function formatBytes(value: number) {
