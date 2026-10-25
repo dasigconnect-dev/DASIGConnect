@@ -212,7 +212,6 @@ function App() {
                 <Route path="/admin/user-management" element={<UserManagementScreen user={currentUser!} />} />
                 <Route path="/admin/system-health" element={<SystemHealthScreen user={currentUser!} />} />
                 <Route path="/admin/audit-log" element={<AuditLogScreen user={currentUser!} />} />
-                <Route path="/upgrade-plan" element={<SubscriptionPlansScreen user={currentUser!} />} />
               </Route>
             </Route>
 
@@ -220,6 +219,11 @@ function App() {
             <Route element={<RequireSignedIn user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
               <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
               <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
+            </Route>
+
+            {/* ── Signed in: full-screen admin screens (no sidebar) ──── */}
+            <Route element={<RequireAdmin user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
+              <Route path="/upgrade-plan" element={<SubscriptionPlansScreen user={currentUser!} />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />
