@@ -1,6 +1,6 @@
 ---
 name: Production Release Manager
-description: Cuts clean, production-sanitized release branches from dev, increments semantic release versions, generates root RELEASE_NOTES.md adhering to Keep a Changelog standards, and formats release notes comments for GitHub PRs and releases.
+description: Cuts clean, production-sanitized release branches from dev, increments semantic release versions, generates dedicated versioned release note files in release-notes/ adhering to Keep a Changelog standards, and formats release notes comments for GitHub PRs and releases.
 ---
 
 # Production Release Manager Skill
@@ -27,14 +27,14 @@ You can trigger this skill by asking:
    - **MUST RETAIN ONLY:**
      - Production source code: `backend/`, `frontend/`
      - Official PDF deliverables: `docs/pdf/`
-     - Repository root metadata: `README.md`, `RELEASE_NOTES.md`, `docker-compose.yml`, `.gitignore`
+     - Repository root metadata & release history: `README.md`, `release-notes/`, `docker-compose.yml`, `.gitignore`
 2. **Incrementing Version Numbers:**
    - Every release gets a dedicated incrementing branch: `release/v<major>.<minor>.<patch>` (e.g., `release/v3.0.2` following `3.0.1`).
    - Semantic versioning applies: Patch for bug fixes/tests/refactors, Minor for new features, Major for breaking architecture shifts.
 3. **Standardized Release Notes (Keep a Changelog):**
    - Release notes adhere to the **[Keep a Changelog](https://keepachangelog.com/)** and **[SemVer](https://semver.org/)** standards.
    - Categorized strictly under: `Security`, `Fixed`, `Changed`, `Removed`, and `Added`.
-   - Placed at the repository root: `/RELEASE_NOTES.md`.
+   - Placed in dedicated versioned files under `/release-notes/` (e.g. `release-notes/v<version>.md` and indexed in `release-notes/README.md`).
    - Also provided as a formatted markdown block for pasting as a comment on the GitHub PR or under GitHub Releases.
 
 ---
@@ -59,8 +59,8 @@ Create a new branch from `dev`:
 git checkout -b release/v<version>
 ```
 
-### Step 3: Generate Root `RELEASE_NOTES.md`
-Write `/RELEASE_NOTES.md` at the repository root adhering to Keep a Changelog:
+### Step 3: Generate Release Notes in `release-notes/`
+Write `/release-notes/v<version>.md` and update `/release-notes/README.md` adhering to Keep a Changelog:
 - **Header:** `[Version] - YYYY-MM-DD`
 - **Sections:**
   - `Security`: Vulnerability mitigations (e.g. CWE fixes, input sanitization).
@@ -75,11 +75,11 @@ Strip all non-production files:
 ```bash
 git rm -rf docs/md docs/img docs/README.md .agent .claude .gemini CLAUDE.md DEPLOY.md backend/evaluation
 ```
-*Verify that only `backend/`, `frontend/`, `docs/pdf/`, `README.md`, `RELEASE_NOTES.md`, `docker-compose.yml`, and `.gitignore` remain.*
+*Verify that only `backend/`, `frontend/`, `docs/pdf/`, `README.md`, `release-notes/`, `docker-compose.yml`, and `.gitignore` remain.*
 
 Commit the release preparation following Conventional Commits:
 ```bash
-git add RELEASE_NOTES.md
+git add release-notes/
 git commit -m "chore: prepare release v<version>"
 ```
 
