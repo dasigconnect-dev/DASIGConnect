@@ -51,8 +51,7 @@ export default function LoginScreen({
           <div className="form-head">
             <div className="form-title">Welcome back.</div>
             <div className="form-desc">
-              Sign in to your DASIGConnect workspace. Access is by invitation
-              only.
+              Sign in to your DASIGConnect workspace.
             </div>
           </div>
 
