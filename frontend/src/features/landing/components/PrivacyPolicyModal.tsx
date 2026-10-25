@@ -11,13 +11,9 @@ export default function PrivacyPolicyModal({ open, onClose }: PrivacyPolicyModal
       if (e.key === 'Escape') onClose();
     };
     if (open) {
-      document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
     }
     return () => {
-      document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, onClose]);

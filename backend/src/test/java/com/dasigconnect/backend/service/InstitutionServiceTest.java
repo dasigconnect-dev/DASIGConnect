@@ -457,7 +457,7 @@ class InstitutionServiceTest {
                     .thenReturn(0L);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
-            InstitutionDto result = institutionService.deactivateInstitution(institutionId);
+            institutionService.deactivateInstitution(institutionId);
 
             assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
             verify(institutionRepository).save(mockInstitution);

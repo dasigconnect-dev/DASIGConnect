@@ -21,7 +21,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.external.GeminiVisionClient;
 import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
 import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
@@ -88,11 +87,12 @@ public class SystemHealthService {
     private final String mailApiKey;
     private final String mailApiBaseUrl;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private GeminiVisionClient geminiVisionClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private ClaudeVisionClient claudeVisionClient;
+    void setGeminiVisionClient(GeminiVisionClient geminiVisionClient) {
+        this.geminiVisionClient = geminiVisionClient;
+    }
 
     public SystemHealthService(
             JdbcTemplate jdbcTemplate,

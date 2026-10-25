@@ -21,6 +21,22 @@ public class MediaAssetDetailDto {
     private String albumName;
     private BigDecimal aiConfidence;
     private String aiDescription;
+    private String metadataAssetType;
+    private String assetSubtype;
+    private String communicationPurpose;
+    private String primarySubject;
+    private String visualSetting;
+    private String peoplePresence;
+    private String[] semanticTopics;
+    private String[] visibleObjects;
+    private String[] activities;
+    private String[] ocrText;
+    private String detectedTitle;
+    private String[] textLanguages;
+    private String textDensity;
+    private BigDecimal ocrConfidence;
+    private String metadataSchemaVersion;
+    private String metadataPromptVersion;
     private Instant aiClassifiedAt;
     private String aiClassificationModel;
     private Instant embeddingGeneratedAt;
@@ -50,6 +66,22 @@ public class MediaAssetDetailDto {
         }
         dto.aiConfidence = asset.getAiConfidence();
         dto.aiDescription = asset.getAiDescription();
+        dto.metadataAssetType = asset.getMetadataAssetType();
+        dto.assetSubtype = asset.getAssetSubtype();
+        dto.communicationPurpose = asset.getCommunicationPurpose();
+        dto.primarySubject = asset.getPrimarySubject();
+        dto.visualSetting = asset.getVisualSetting();
+        dto.peoplePresence = asset.getPeoplePresence();
+        dto.semanticTopics = asset.getSemanticTopics();
+        dto.visibleObjects = asset.getVisibleObjects();
+        dto.activities = asset.getObservedActivities();
+        dto.ocrText = asset.getOcrText();
+        dto.detectedTitle = asset.getDetectedTitle();
+        dto.textLanguages = asset.getTextLanguages();
+        dto.textDensity = asset.getTextDensity();
+        dto.ocrConfidence = asset.getOcrConfidence();
+        dto.metadataSchemaVersion = asset.getMetadataSchemaVersion();
+        dto.metadataPromptVersion = asset.getMetadataPromptVersion();
         dto.aiClassifiedAt = asset.getAiClassifiedAt();
         dto.aiClassificationModel = asset.getAiClassificationModel();
         dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
@@ -112,6 +144,23 @@ public class MediaAssetDetailDto {
     public String getAiDescription() {
         return aiDescription;
     }
+
+    public String getMetadataAssetType() { return metadataAssetType; }
+    public String getAssetSubtype() { return assetSubtype; }
+    public String getCommunicationPurpose() { return communicationPurpose; }
+    public String getPrimarySubject() { return primarySubject; }
+    public String getVisualSetting() { return visualSetting; }
+    public String getPeoplePresence() { return peoplePresence; }
+    public String[] getSemanticTopics() { return semanticTopics; }
+    public String[] getVisibleObjects() { return visibleObjects; }
+    public String[] getActivities() { return activities; }
+    public String[] getOcrText() { return ocrText; }
+    public String getDetectedTitle() { return detectedTitle; }
+    public String[] getTextLanguages() { return textLanguages; }
+    public String getTextDensity() { return textDensity; }
+    public BigDecimal getOcrConfidence() { return ocrConfidence; }
+    public String getMetadataSchemaVersion() { return metadataSchemaVersion; }
+    public String getMetadataPromptVersion() { return metadataPromptVersion; }
 
     public Instant getAiClassifiedAt() {
         return aiClassifiedAt;

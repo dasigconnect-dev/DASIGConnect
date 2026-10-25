@@ -19,6 +19,7 @@ public class SubscriptionPaymentSettlementService {
     private final SubscriptionInvoiceRepository invoiceRepository;
     private final OrganizationSubscriptionRepository subscriptionRepository;
     private final AuditLogService auditLogService;
+    private final SubscriptionPlanSnapshotService snapshotService;
     private final ApplicationEventPublisher eventPublisher;
 
     public SubscriptionPaymentSettlementService(
@@ -27,12 +28,14 @@ public class SubscriptionPaymentSettlementService {
             SubscriptionInvoiceRepository invoiceRepository,
             OrganizationSubscriptionRepository subscriptionRepository,
             AuditLogService auditLogService,
+            SubscriptionPlanSnapshotService snapshotService,
             ApplicationEventPublisher eventPublisher) {
         this.linkRepository = linkRepository;
         this.paymentRepository = paymentRepository;
         this.invoiceRepository = invoiceRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.auditLogService = auditLogService;
+        this.snapshotService = snapshotService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -66,6 +69,8 @@ public class SubscriptionPaymentSettlementService {
                 .findByOrganizationIdForUpdate(invoice.getSubscription().getOrganization().getId())
                 .orElseThrow(() -> new PaymentValidationException("Organization subscription is unavailable."));
         SubscriptionLifecycleStatus previous = subscription.getStatus();
+        String previousPlan = subscription.getPlanCodeSnapshot();
+        SubscriptionPlan paidPlan = invoice.getPlan();
         Instant now = Instant.now();
         if (!subscription.getCurrentPeriodEnd().isAfter(now)) {
             subscription.setCurrentPeriodStart(invoice.getBillingPeriodStart());
@@ -75,6 +80,10 @@ public class SubscriptionPaymentSettlementService {
         }
         subscription.setGracePeriodEndsAt(null);
         subscription.setStatus(SubscriptionLifecycleStatus.ACTIVE);
+        subscription.setPlan(paidPlan);
+        subscription.setPlanCodeSnapshot(paidPlan.getCode());
+        subscription.setPlanVersionSnapshot(paidPlan.getVersion());
+        subscription.setEntitlementsSnapshot(snapshotService.entitlements(paidPlan));
         subscription.setExternalProvider("PAYMONGO");
         subscriptionRepository.saveAndFlush(subscription);
 
@@ -84,6 +93,8 @@ public class SubscriptionPaymentSettlementService {
         metadata.put("amountCentavos", providerPayment.amountCentavos());
         metadata.put("currency", providerPayment.currency());
         metadata.put("source", source);
+        metadata.put("previousPlan", previousPlan);
+        metadata.put("activatedPlan", paidPlan.getCode());
         auditLogService.recordByActorId(
                 null, "SUBSCRIPTION_PAYMONGO_PAYMENT_CONFIRMED", null, null, invoice.getId(), metadata);
 

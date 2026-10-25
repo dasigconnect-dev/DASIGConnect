@@ -11,6 +11,9 @@ public class SubscriptionInvoice {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "organization_subscription_id", nullable = false)
     private OrganizationSubscription subscription;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "subscription_plan_id", nullable = false)
+    private SubscriptionPlan plan;
     @Column(name = "invoice_number", nullable = false, unique = true, length = 50)
     private String invoiceNumber;
     @Column(name = "amount_centavos", nullable = false) private long amountCentavos;
@@ -40,6 +43,8 @@ public class SubscriptionInvoice {
     public void setId(UUID id) { this.id = id; }
     public OrganizationSubscription getSubscription() { return subscription; }
     public void setSubscription(OrganizationSubscription subscription) { this.subscription = subscription; }
+    public SubscriptionPlan getPlan() { return plan; }
+    public void setPlan(SubscriptionPlan plan) { this.plan = plan; }
     public String getInvoiceNumber() { return invoiceNumber; }
     public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
     public long getAmountCentavos() { return amountCentavos; }

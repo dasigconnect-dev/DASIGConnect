@@ -8,10 +8,12 @@ import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationS
 import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationStrategy;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,10 +37,8 @@ public class MediaSuggestionEvaluationService {
         List<ScenarioResult> scenarios = new ArrayList<>();
         for (EvaluationScenario scenario : dataset.scenarios()) {
             MediaSuggestRequestDto request = toRequest(scenario.request());
-            JwtUserDetails evaluationActor = new JwtUserDetails(
-                    UUID.randomUUID(), "media-evaluation@local.invalid", "admin", null, true);
             MediaEvaluationSnapshot snapshot = recommendationService.evaluateMediaStrategies(
-                    scenario.submissionId(), request, evaluationActor);
+                    scenario.submissionId(), request, evaluationActor());
             Map<UUID, Integer> labels = parseLabels(scenario.relevanceLabels());
             validateLabeledAssets(scenario.id(), labels.keySet(), snapshot.institutionId());
             Map<MediaEvaluationStrategy, StrategyScenarioMetrics> strategyMetrics =
@@ -69,6 +69,50 @@ public class MediaSuggestionEvaluationService {
                 List.copyOf(scenarios),
                 "Human relevance grades: 0=not relevant, 1=somewhat relevant, "
                         + "2=relevant, 3=highly relevant. A relevant result has grade >= 2.");
+    }
+
+    /** Builds a strategy-blinded labeling template from every evaluated ranking. */
+    public EvaluationDataset generateLabelingDataset(CandidatePoolDataset dataset) {
+        validateCandidatePool(dataset);
+        List<EvaluationScenario> scenarios = new ArrayList<>();
+        for (CandidatePoolScenario scenario : dataset.scenarios()) {
+            MediaEvaluationSnapshot snapshot = recommendationService.evaluateMediaStrategies(
+                    scenario.submissionId(), toRequest(scenario.request()), evaluationActor());
+            boolean crossInstitutionCandidate = snapshot.rankings().values().stream()
+                    .flatMap(List::stream)
+                    .anyMatch(candidate -> candidate.institutionId() == null
+                            || !candidate.institutionId().equals(snapshot.institutionId()));
+            if (crossInstitutionCandidate) {
+                throw new IllegalStateException(
+                        "Scenario " + scenario.id()
+                                + " returned a cross-institution candidate; no labeling file was written.");
+            }
+            Set<UUID> candidateIds = new LinkedHashSet<>();
+            snapshot.rankings().values().forEach(candidates -> candidates.stream()
+                    .map(MediaEvaluationCandidate::assetId)
+                    .forEach(candidateIds::add));
+            List<UUID> knownRelevantIds = scenario.knownRelevantAssetIds() == null
+                    ? List.of() : scenario.knownRelevantAssetIds();
+            candidateIds.addAll(knownRelevantIds);
+            if (!knownRelevantIds.isEmpty()) {
+                validateLabeledAssets(scenario.id(), Set.copyOf(knownRelevantIds), snapshot.institutionId());
+            }
+            if (candidateIds.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Scenario " + scenario.id()
+                                + " produced no candidates; add a same-institution knownRelevantAssetId.");
+            }
+
+            Map<String, Integer> blankLabels = new LinkedHashMap<>();
+            candidateIds.stream().sorted().forEach(id -> blankLabels.put(id.toString(), null));
+            scenarios.add(new EvaluationScenario(
+                    scenario.id(),
+                    scenario.topic(),
+                    scenario.submissionId(),
+                    scenario.request(),
+                    Collections.unmodifiableMap(blankLabels)));
+        }
+        return new EvaluationDataset(dataset.name(), List.copyOf(scenarios));
     }
     static StrategyScenarioMetrics calculateScenarioMetrics(
             List<MediaEvaluationCandidate> candidates,
@@ -144,6 +188,33 @@ public class MediaSuggestionEvaluationService {
             if (labels.values().stream().noneMatch(grade -> grade >= RELEVANT_GRADE)) {
                 throw new IllegalArgumentException(
                         "Scenario " + scenario.id() + " needs at least one relevant asset label.");
+            }
+        }
+    }
+
+    static void validateCandidatePool(CandidatePoolDataset dataset) {
+        if (dataset == null || dataset.scenarios() == null) {
+            throw new IllegalArgumentException("A candidate-pool dataset with scenarios is required.");
+        }
+        if (dataset.name() == null || dataset.name().isBlank()) {
+            throw new IllegalArgumentException("The candidate-pool dataset needs a name.");
+        }
+        if (dataset.scenarios().size() < MINIMUM_SCENARIOS) {
+            throw new IllegalArgumentException(
+                    "At least " + MINIMUM_SCENARIOS + " candidate-pool scenarios are required.");
+        }
+        Set<String> scenarioIds = new HashSet<>();
+        for (CandidatePoolScenario scenario : dataset.scenarios()) {
+            if (scenario.id() == null || scenario.id().isBlank() || !scenarioIds.add(scenario.id())) {
+                throw new IllegalArgumentException("Scenario IDs must be present and unique.");
+            }
+            if (scenario.submissionId() == null) {
+                throw new IllegalArgumentException("Scenario " + scenario.id() + " needs a submissionId.");
+            }
+            List<UUID> knownRelevantIds = scenario.knownRelevantAssetIds();
+            if (knownRelevantIds != null && knownRelevantIds.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new IllegalArgumentException(
+                        "Scenario " + scenario.id() + " contains a null known relevant asset ID.");
             }
         }
     }
@@ -224,6 +295,11 @@ public class MediaSuggestionEvaluationService {
                 ? List.of() : safeRequest.selectedAssetIds());
         return dto;
     }
+
+    private static JwtUserDetails evaluationActor() {
+        return new JwtUserDetails(
+                UUID.randomUUID(), "media-evaluation@local.invalid", "admin", null, true);
+    }
     private static double gain(int relevance) {
         return Math.pow(2.0, relevance) - 1.0;
     }
@@ -242,6 +318,15 @@ public class MediaSuggestionEvaluationService {
         return Math.round(value * 10_000.0) / 10_000.0;
     }
     public record EvaluationDataset(String name, List<EvaluationScenario> scenarios) {
+    }
+    public record CandidatePoolDataset(String name, List<CandidatePoolScenario> scenarios) {
+    }
+    public record CandidatePoolScenario(
+            String id,
+            String topic,
+            UUID submissionId,
+            EvaluationRequest request,
+            List<UUID> knownRelevantAssetIds) {
     }
     public record EvaluationScenario(
             String id,

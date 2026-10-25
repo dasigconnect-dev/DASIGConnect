@@ -18,6 +18,7 @@ interface DashboardShellProps {
   onLogout: () => void
   logoutLoading: boolean
   notificationBadge?: number
+  hasPendingAdminTransfer?: boolean
   children: ReactNode
 }
 
@@ -41,11 +42,20 @@ export default function DashboardShell({
   onLogout,
   logoutLoading,
   notificationBadge = 0,
+  hasPendingAdminTransfer,
   children,
 }: DashboardShellProps) {
   const navigate = useNavigate()
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const navItems = dashboardNavItems(user)
+  const isPendingTransfer =
+    hasPendingAdminTransfer ??
+    Boolean(
+      user.role === 'admin' &&
+        user.superAdminTransferRequestedBy &&
+        (!user.superAdminTransferExpiresAt ||
+          new Date(user.superAdminTransferExpiresAt).getTime() > Date.now()),
+    )
 
   // Prevent body scrolling when mobile drawer is open
   useEffect(() => {
@@ -130,6 +140,15 @@ export default function DashboardShell({
                     <span className="sidebar-notif-badge-label">new</span>
                   </span>
                 )}
+                {item.id === 'admin-management' && isPendingTransfer && (
+                  <span
+                    className="sidebar-transfer-badge"
+                    aria-label="Pending admin transfer awaiting confirmation"
+                    title="Incoming admin transfer pending confirmation"
+                  >
+                    <i className="ti ti-arrow-up" aria-hidden="true"></i>
+                  </span>
+                )}
               </button>
                 ))}
               </div>
@@ -147,7 +166,7 @@ export default function DashboardShell({
                 aria-label="Open navigation menu"
               >
                 <i className="ti ti-menu-2" aria-hidden="true" />
-                {notificationBadge > 0 && (
+                {(notificationBadge > 0 || isPendingTransfer) && (
                   <span className="dash-menu-badge-dot" aria-hidden="true" />
                 )}
               </button>

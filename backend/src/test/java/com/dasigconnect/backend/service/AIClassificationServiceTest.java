@@ -157,6 +157,8 @@ class AIClassificationServiceTest {
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         asset.setAiClassifiedAt(java.time.Instant.now());
         asset.setAiClassificationModel("gemini-3.8-flash");
+        asset.setMetadataSchemaVersion(MediaMetadataTaxonomy.SCHEMA_VERSION);
+        asset.setMetadataPromptVersion(MediaMetadataTaxonomy.PROMPT_VERSION);
         asset.setFileName("event.jpg");
         String imageModel = "voyage-multimodal-3.5";
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
@@ -195,6 +197,8 @@ class AIClassificationServiceTest {
         asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
         asset.setAiClassifiedAt(java.time.Instant.now());
         asset.setAiClassificationModel("gemini-3.8-flash");
+        asset.setMetadataSchemaVersion(MediaMetadataTaxonomy.SCHEMA_VERSION);
+        asset.setMetadataPromptVersion(MediaMetadataTaxonomy.PROMPT_VERSION);
         asset.setAiProcessingVersion("media-ai-v2");
         when(classificationClient.modelName()).thenReturn("gemini-3.8-flash");
         String imageModel = "voyage-multimodal-3.5";
@@ -290,6 +294,26 @@ class AIClassificationServiceTest {
     }
 
     @Test
+    void enrichAsset_invalidProviderMetadata_preservesExistingMetadata() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        asset.setAiDescription("Existing valid caption.");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(classificationClient.classifyMedia(any()))
+                .thenReturn(new MediaClassificationDto(
+                        "Event", 1.5, "Invalid replacement.", List.of("event")));
+
+        assertThat(service().enrichAsset(assetId, "https://example.com/a.jpg")).isFalse();
+
+        assertThat(asset.getAiDescription()).isEqualTo("Existing valid caption.");
+        verify(mediaAssetRepository, never()).save(any());
+        verify(mediaAssetRepository, never()).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService, never()).semanticMetadataChangedAfterCommit(assetId);
+    }
+
+    @Test
     void enrichAsset_successInvalidatesOnlySemanticEmbedding() {
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = new MediaAsset();
@@ -303,6 +327,42 @@ class AIClassificationServiceTest {
         verify(mediaAssetRepository).incrementSemanticRevision(assetId);
         verify(mediaProcessingQueueService).semanticMetadataChangedAfterCommit(assetId);
         verify(mediaImageEmbeddingService, never()).generateOrReuse(any(), anyString());
+        assertThat(asset.getMetadataSchemaVersion()).isEqualTo(MediaMetadataTaxonomy.SCHEMA_VERSION);
+        assertThat(asset.getMetadataPromptVersion()).isEqualTo(MediaMetadataTaxonomy.PROMPT_VERSION);
+        assertThat(asset.getMetadataAssetType()).isEqualTo("unknown");
+    }
+
+    @Test
+    void enrichAsset_unchangedNormalizedMetadata_doesNotQueueAnotherSemanticEmbedding() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setAiClassificationModel("gemini-3.8-flash");
+        asset.setMetadataSchemaVersion(MediaMetadataTaxonomy.SCHEMA_VERSION);
+        asset.setMetadataPromptVersion("older-prompt");
+        asset.setAiDescription("A campus event.");
+        asset.setMetadataAssetType("unknown");
+        asset.setAssetSubtype("unknown");
+        asset.setCommunicationPurpose("unknown");
+        asset.setPrimarySubject("");
+        asset.setVisualSetting("");
+        asset.setSemanticTopics(new String[0]);
+        asset.setObservedActivities(new String[0]);
+        asset.setVisibleObjects(new String[0]);
+        asset.setOcrText(new String[0]);
+        asset.setDetectedTitle("");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(classificationClient.modelName()).thenReturn("gemini-3.8-flash");
+        when(classificationClient.classifyMedia(any())).thenReturn(classification());
+
+        assertThat(service().enrichAsset(assetId, "https://example.com/a.jpg")).isTrue();
+
+        verify(classificationClient).classifyMedia(any());
+        verify(mediaAssetRepository, never()).incrementSemanticRevision(assetId);
+        verify(mediaProcessingQueueService, never()).semanticMetadataChangedAfterCommit(assetId);
+        assertThat(asset.getMetadataPromptVersion()).isEqualTo(MediaMetadataTaxonomy.PROMPT_VERSION);
     }
 
     @Test

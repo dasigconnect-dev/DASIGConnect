@@ -1,11 +1,20 @@
 package com.dasigconnect.backend.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationCandidate;
+import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationSnapshot;
+import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationStrategy;
+import com.dasigconnect.backend.service.AIRecommendationService.MediaEvaluationTimings;
+import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.CandidatePoolDataset;
+import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.CandidatePoolScenario;
 import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.EvaluationDataset;
 import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.EvaluationRequest;
 import com.dasigconnect.backend.service.MediaSuggestionEvaluationService.EvaluationScenario;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -70,6 +79,84 @@ class MediaSuggestionEvaluationServiceTest {
         MediaSuggestionEvaluationService.validate(new EvaluationDataset("DASIG pilot", scenarios));
         assertThat(scenarios).hasSize(30);
     }
+
+    @Test
+    void validateCandidatePool_acceptsThirtyScenariosWithoutLabels() {
+        List<CandidatePoolScenario> scenarios = new ArrayList<>();
+        for (int index = 0; index < 30; index++) {
+            scenarios.add(poolScenario("scenario-" + index));
+        }
+
+        MediaSuggestionEvaluationService.validateCandidatePool(
+                new CandidatePoolDataset("DASIG candidate pool", scenarios));
+
+        assertThat(scenarios).hasSize(30);
+    }
+
+    @Test
+    void generateLabelingDataset_unionsCandidatesWithoutExposingStrategyOrder() {
+        AIRecommendationService recommendationService = mock(AIRecommendationService.class);
+        var mediaAssetRepository = mock(com.dasigconnect.backend.repository.MediaAssetRepository.class);
+        MediaSuggestionEvaluationService service =
+                new MediaSuggestionEvaluationService(recommendationService, mediaAssetRepository);
+        UUID institutionId = UUID.randomUUID();
+        UUID first = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID second = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings =
+                new EnumMap<>(MediaEvaluationStrategy.class);
+        rankings.put(MediaEvaluationStrategy.IMAGE_ONLY,
+                List.of(new MediaEvaluationCandidate(second, institutionId, 0.95)));
+        rankings.put(MediaEvaluationStrategy.SEMANTIC_ONLY,
+                List.of(new MediaEvaluationCandidate(first, institutionId, 0.91)));
+        rankings.put(MediaEvaluationStrategy.HYBRID_V2,
+                List.of(new MediaEvaluationCandidate(second, institutionId, 0.99)));
+        rankings.put(MediaEvaluationStrategy.RECIPROCAL_RANK_FUSION, List.of());
+        when(recommendationService.evaluateMediaStrategies(any(), any(), any()))
+                .thenAnswer(invocation -> new MediaEvaluationSnapshot(
+                        invocation.getArgument(0), institutionId, 1, 2,
+                        Map.copyOf(rankings), new MediaEvaluationTimings(2, 3, 5)));
+        List<CandidatePoolScenario> scenarios = new ArrayList<>();
+        for (int index = 0; index < 30; index++) {
+            scenarios.add(poolScenario("scenario-" + index));
+        }
+
+        EvaluationDataset result = service.generateLabelingDataset(
+                new CandidatePoolDataset("DASIG candidate pool", scenarios));
+
+        assertThat(result.scenarios()).hasSize(30);
+        assertThat(result.scenarios().getFirst().relevanceLabels())
+                .containsOnlyKeys(first.toString(), second.toString());
+        assertThat(result.scenarios().getFirst().relevanceLabels().keySet())
+                .containsExactly(first.toString(), second.toString());
+        assertThat(result.scenarios().getFirst().relevanceLabels().values())
+                .containsOnlyNulls();
+    }
+
+    @Test
+    void generateLabelingDataset_rejectsCrossInstitutionCandidates() {
+        AIRecommendationService recommendationService = mock(AIRecommendationService.class);
+        var mediaAssetRepository = mock(com.dasigconnect.backend.repository.MediaAssetRepository.class);
+        MediaSuggestionEvaluationService service =
+                new MediaSuggestionEvaluationService(recommendationService, mediaAssetRepository);
+        UUID institutionId = UUID.randomUUID();
+        Map<MediaEvaluationStrategy, List<MediaEvaluationCandidate>> rankings =
+                new EnumMap<>(MediaEvaluationStrategy.class);
+        rankings.put(MediaEvaluationStrategy.IMAGE_ONLY, List.of(new MediaEvaluationCandidate(
+                UUID.randomUUID(), UUID.randomUUID(), 0.95)));
+        when(recommendationService.evaluateMediaStrategies(any(), any(), any()))
+                .thenAnswer(invocation -> new MediaEvaluationSnapshot(
+                        invocation.getArgument(0), institutionId, 1, 1,
+                        Map.copyOf(rankings), new MediaEvaluationTimings(2, 3, 5)));
+        List<CandidatePoolScenario> scenarios = new ArrayList<>();
+        for (int index = 0; index < 30; index++) {
+            scenarios.add(poolScenario("scenario-" + index));
+        }
+
+        assertThatThrownBy(() -> service.generateLabelingDataset(
+                new CandidatePoolDataset("DASIG candidate pool", scenarios)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cross-institution");
+    }
     private static EvaluationScenario scenario(String id, int grade) {
         return new EvaluationScenario(
                 id,
@@ -82,5 +169,18 @@ class MediaSuggestionEvaluationServiceTest {
                         List.of("startup", "pitching"),
                         List.of(UUID.randomUUID())),
                 Map.of(UUID.randomUUID().toString(), grade));
+    }
+
+    private static CandidatePoolScenario poolScenario(String id) {
+        return new CandidatePoolScenario(
+                id,
+                "startup bootcamp",
+                UUID.randomUUID(),
+                new EvaluationRequest(
+                        "Startup bootcamp",
+                        "Teams presented their prototypes.",
+                        List.of("startup", "pitching"),
+                        List.of(UUID.randomUUID())),
+                List.of());
     }
 }

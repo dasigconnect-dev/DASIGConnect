@@ -24,6 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 @ExtendWith(MockitoExtension.class)
 class SubscriptionBillingServiceTest {
 
+    private final UUID planId = UUID.randomUUID();
+
     @Mock PaymongoClient paymongoClient;
     @Mock SubscriptionBillingPersistenceService persistence;
     @Mock AuditLogService auditLogService;
@@ -33,7 +35,7 @@ class SubscriptionBillingServiceTest {
     void createOrReusePaymentLink_whenDisabled_returnsServiceUnavailable() {
         SubscriptionBillingService service = service(false);
 
-        assertThatThrownBy(() -> service.createOrReusePaymentLink(null, owner()))
+        assertThatThrownBy(() -> service.createOrReusePaymentLink(planId, null, owner()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
         verifyNoInteractions(persistence, paymongoClient);
@@ -43,10 +45,10 @@ class SubscriptionBillingServiceTest {
     void createOrReusePaymentLink_reusesActiveLinkWithoutProviderCall() {
         SubscriptionInvoice invoice = invoice();
         SubscriptionPaymentLinkDto existing = linkDto(invoice);
-        when(persistence.findOrCreateOpenInvoice(any())).thenReturn(invoice);
+        when(persistence.findOrCreateOpenInvoice(eq(planId), any())).thenReturn(invoice);
         when(persistence.activeLink(invoice.getId())).thenReturn(existing);
 
-        assertThat(service(true).createOrReusePaymentLink(null, owner())).isSameAs(existing);
+        assertThat(service(true).createOrReusePaymentLink(planId, null, owner())).isSameAs(existing);
         verifyNoInteractions(paymongoClient);
     }
 
@@ -58,12 +60,12 @@ class SubscriptionBillingServiceTest {
                 invoice.getAmountCentavos(), "unpaid", false, List.of());
         SubscriptionPaymentLinkDto saved = linkDto(invoice);
         JwtUserDetails owner = owner();
-        when(persistence.findOrCreateOpenInvoice(owner)).thenReturn(invoice);
+        when(persistence.findOrCreateOpenInvoice(planId, owner)).thenReturn(invoice);
         when(persistence.activeLink(invoice.getId())).thenReturn(null);
         when(paymongoClient.createPaymentLink(anyLong(), anyString(), anyString())).thenReturn(provider);
         when(persistence.saveLink(invoice.getId(), provider)).thenReturn(saved);
 
-        assertThat(service(true).createOrReusePaymentLink("payer@dasig.test", owner)).isSameAs(saved);
+        assertThat(service(true).createOrReusePaymentLink(planId, "payer@dasig.test", owner)).isSameAs(saved);
 
         verify(auditLogService).recordByActorId(eq(owner.userId()),
                 eq("SUBSCRIPTION_PAYMENT_LINK_CREATED"), isNull(), isNull(), eq(invoice.getId()), anyMap());
@@ -73,13 +75,13 @@ class SubscriptionBillingServiceTest {
     @Test
     void createOrReusePaymentLink_rejectsProviderAmountMismatch() {
         SubscriptionInvoice invoice = invoice();
-        when(persistence.findOrCreateOpenInvoice(any())).thenReturn(invoice);
+        when(persistence.findOrCreateOpenInvoice(eq(planId), any())).thenReturn(invoice);
         when(persistence.activeLink(invoice.getId())).thenReturn(null);
         when(paymongoClient.createPaymentLink(anyLong(), anyString(), anyString())).thenReturn(
                 new PaymongoClient.PaymentLink("link_1", "https://paymongo.test/link_1", null,
                         invoice.getAmountCentavos() - 1, "unpaid", false, List.of()));
 
-        assertThatThrownBy(() -> service(true).createOrReusePaymentLink(null, owner()))
+        assertThatThrownBy(() -> service(true).createOrReusePaymentLink(planId, null, owner()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY));
         verify(persistence, never()).saveLink(any(), any());
@@ -88,12 +90,12 @@ class SubscriptionBillingServiceTest {
     @Test
     void createOrReusePaymentLink_mapsProviderFailureToBadGateway() {
         SubscriptionInvoice invoice = invoice();
-        when(persistence.findOrCreateOpenInvoice(any())).thenReturn(invoice);
+        when(persistence.findOrCreateOpenInvoice(eq(planId), any())).thenReturn(invoice);
         when(persistence.activeLink(invoice.getId())).thenReturn(null);
         when(paymongoClient.createPaymentLink(anyLong(), anyString(), anyString()))
                 .thenThrow(new PaymongoApiException("timeout"));
 
-        assertThatThrownBy(() -> service(true).createOrReusePaymentLink(null, owner()))
+        assertThatThrownBy(() -> service(true).createOrReusePaymentLink(planId, null, owner()))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }

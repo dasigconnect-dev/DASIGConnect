@@ -52,8 +52,12 @@ public class AIClassificationService {
     private final MediaImageEmbeddingService mediaImageEmbeddingService;
     private final MediaProcessingQueueService mediaProcessingQueueService;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public AIClassificationService(MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
@@ -104,15 +108,18 @@ public class AIClassificationService {
         }
 
         MediaClassificationDto result = null;
+        boolean metadataChanged = false;
         boolean requiresStructuredRefresh = requiredProcessingVersion != null
                 && !requiredProcessingVersion.equals(asset.getAiProcessingVersion());
         boolean classifiedByCurrentModel = asset.getAiClassifiedAt() != null
-                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel());
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel())
+                && MediaMetadataTaxonomy.SCHEMA_VERSION.equals(asset.getMetadataSchemaVersion())
+                && MediaMetadataTaxonomy.PROMPT_VERSION.equals(asset.getMetadataPromptVersion());
         if (!classifiedByCurrentModel || requiresStructuredRefresh) {
             long classificationStartedAt = System.nanoTime();
             try {
-                result = classificationClient.classifyMedia(List.of(storageUrl));
-                persistClassification(assetId, result);
+                result = classifyAndNormalize(storageUrl);
+                metadataChanged = persistClassification(assetId, result);
                 persistSuggestedTags(assetId, result.suggestedTags());
                 recordProviderStage("GEMINI_CLASSIFICATION", assetId,
                         classificationStartedAt, "SUCCESS");
@@ -132,7 +139,7 @@ public class AIClassificationService {
             return false;
         }
 
-        boolean needsSemanticEmbedding = result != null || mediaAssetEmbeddingRepository
+        boolean needsSemanticEmbedding = metadataChanged || mediaAssetEmbeddingRepository
                 .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty();
         if (needsSemanticEmbedding) {
             MediaClassificationDto classification = result;
@@ -170,7 +177,9 @@ public class AIClassificationService {
             return true;
         }
         if (asset.getAiClassifiedAt() != null
-                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel())) {
+                && Objects.equals(classificationClient.modelName(), asset.getAiClassificationModel())
+                && MediaMetadataTaxonomy.SCHEMA_VERSION.equals(asset.getMetadataSchemaVersion())
+                && MediaMetadataTaxonomy.PROMPT_VERSION.equals(asset.getMetadataPromptVersion())) {
             recordProviderStage("GEMINI_CLASSIFICATION", assetId,
                     System.nanoTime(), "REUSED", 0, 1);
             return true;
@@ -178,11 +187,13 @@ public class AIClassificationService {
 
         long startedAt = System.nanoTime();
         try {
-            MediaClassificationDto result = classificationClient.classifyMedia(List.of(storageUrl));
-            persistClassification(assetId, result);
+            MediaClassificationDto result = classifyAndNormalize(storageUrl);
+            boolean metadataChanged = persistClassification(assetId, result);
             persistSuggestedTags(assetId, result.suggestedTags());
-            mediaAssetRepository.incrementSemanticRevision(assetId);
-            mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
+            if (metadataChanged) {
+                mediaAssetRepository.incrementSemanticRevision(assetId);
+                mediaProcessingQueueService.semanticMetadataChangedAfterCommit(assetId);
+            }
             recordProviderStage("GEMINI_CLASSIFICATION", assetId, startedAt, "SUCCESS");
             return true;
         } catch (Exception error) {
@@ -205,7 +216,7 @@ public class AIClassificationService {
         // Step 1: Classify via Gemini (external HTTP, no DB connection held)
         MediaClassificationDto result;
         try {
-            result = classificationClient.classifyMedia(List.of(storageUrl));
+            result = classifyAndNormalize(storageUrl);
         } catch (Exception e) {
             log.warn("AI classification failed for asset {}: {}", assetId, e.getMessage());
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
@@ -324,13 +335,34 @@ public class AIClassificationService {
         }
     }
 
-    private void persistClassification(UUID assetId, MediaClassificationDto result) {
+    private MediaClassificationDto classifyAndNormalize(String storageUrl) {
+        return MediaMetadataTaxonomy.normalize(
+                classificationClient.classifyMedia(List.of(storageUrl)));
+    }
+
+    private boolean persistClassification(UUID assetId, MediaClassificationDto rawResult) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
-        if (asset == null) return;
+        if (asset == null) return false;
+        MediaClassificationDto result = MediaMetadataTaxonomy.normalize(rawResult);
+        boolean semanticMetadataChanged = semanticMetadataChanged(asset, result);
         asset.setAiCategory(result.category());
         asset.setAiConfidence(java.math.BigDecimal.valueOf(result.confidence()));
         asset.setAiDescription(result.description());
         asset.setAssetType(result.assetType());
+        asset.setMetadataAssetType(result.metadataAssetType());
+        asset.setAssetSubtype(result.assetSubtype());
+        asset.setCommunicationPurpose(result.communicationPurpose());
+        asset.setPrimarySubject(result.primarySubject());
+        asset.setVisualSetting(result.setting());
+        asset.setPeoplePresence(result.peoplePresence());
+        asset.setSemanticTopics(toArray(result.topics()));
+        asset.setDetectedTitle(result.detectedTitle());
+        asset.setTextLanguages(toArray(result.textLanguages()));
+        asset.setTextDensity(result.textDensity());
+        asset.setOcrConfidence(result.ocrConfidence() == null
+                ? null : java.math.BigDecimal.valueOf(result.ocrConfidence()));
+        asset.setMetadataSchemaVersion(MediaMetadataTaxonomy.SCHEMA_VERSION);
+        asset.setMetadataPromptVersion(MediaMetadataTaxonomy.PROMPT_VERSION);
         asset.setVisibleObjects(toArray(result.visibleObjects()));
         asset.setSpecificSubjects(toArray(result.specificSubjects()));
         asset.setVisualStyle(toArray(result.visualStyle()));
@@ -353,26 +385,21 @@ public class AIClassificationService {
         asset.setAiClassifiedAt(java.time.Instant.now());
         asset.setAiClassificationModel(classificationClient.modelName());
         mediaAssetRepository.save(asset);
+        return semanticMetadataChanged;
     }
 
-    private void generateMetadataOnlyEmbedding(UUID assetId) {
-        try {
-            List<String> tagLabels = assetTagRepository
-                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
-                    .stream()
-                    .map(AssetTag::getLabel)
-                    .toList();
-            String embeddingText = mediaAssetRepository.findActiveById(assetId)
-                    .map(asset -> buildEmbeddingText(asset, tagLabels))
-                    .orElse("");
-            if (embeddingText.isBlank()) {
-                log.warn("Metadata-only embedding skipped for asset {} because no asset metadata was found.", assetId);
-                return;
-            }
-            generateAndStoreEmbedding(assetId, embeddingText);
-        } catch (Exception e) {
-            log.warn("Metadata-only embedding failed for asset {}: {}", assetId, e.getMessage());
-        }
+    private static boolean semanticMetadataChanged(MediaAsset asset, MediaClassificationDto result) {
+        return !Objects.equals(asset.getAiDescription(), result.description())
+                || !Objects.equals(asset.getMetadataAssetType(), result.metadataAssetType())
+                || !Objects.equals(asset.getAssetSubtype(), result.assetSubtype())
+                || !Objects.equals(asset.getCommunicationPurpose(), result.communicationPurpose())
+                || !Objects.equals(asset.getPrimarySubject(), result.primarySubject())
+                || !Objects.equals(asset.getVisualSetting(), result.setting())
+                || !Arrays.equals(asset.getSemanticTopics(), toArray(result.topics()))
+                || !Arrays.equals(asset.getObservedActivities(), toArray(result.observedActivities()))
+                || !Arrays.equals(asset.getVisibleObjects(), toArray(result.visibleObjects()))
+                || !Arrays.equals(asset.getOcrText(), toArray(result.ocrText()))
+                || !Objects.equals(asset.getDetectedTitle(), result.detectedTitle());
     }
 
     /**
@@ -420,27 +447,18 @@ public class AIClassificationService {
 
     public static String buildEmbeddingText(MediaClassificationDto result) {
         StringBuilder sb = new StringBuilder();
-        append(sb, "category", result.category());
-        append(sb, "asset_type", result.assetType());
-        append(sb, "description", result.description());
-        appendAll(sb, "visible_objects", result.visibleObjects());
-        appendAll(sb, "specific_subjects", result.specificSubjects());
-        appendAll(sb, "visual_style", result.visualStyle());
-        appendAll(sb, "dominant_colors", result.dominantColors());
-        appendAll(sb, "possible_use_cases", result.possibleUseCases());
-        appendAll(sb, "ai_tags", result.suggestedTags());
-        appendAll(sb, "scenes", result.observedScenes());
-        appendAll(sb, "activities", result.observedActivities());
-        append(sb, "people_count", result.peopleCountRange());
-        appendAll(sb, "equipment", result.equipmentSignals());
-        appendAll(sb, "recognition", result.recognitionSignals());
-        appendAll(sb, "ocr", result.ocrText());
-        appendAll(sb, "visible_dates", result.visibleDates());
-        appendAll(sb, "event_hypotheses", result.eventHypotheses().stream()
-                .map(hypothesis -> hypothesis.eventType()).toList());
-        append(sb, "temporal", result.temporalClassification());
-        appendAll(sb, "visual_quality", result.visualQualitySignals());
-        appendAll(sb, "composition", result.compositionSignals());
+        MediaClassificationDto normalized = MediaMetadataTaxonomy.normalize(result);
+        append(sb, "caption", normalized.description());
+        append(sb, "primary_subject", normalized.primarySubject());
+        append(sb, "asset_type", normalized.metadataAssetType());
+        append(sb, "asset_subtype", normalized.assetSubtype());
+        append(sb, "communication_purpose", normalized.communicationPurpose());
+        appendAll(sb, "topics", normalized.topics());
+        appendAll(sb, "activities", normalized.observedActivities());
+        appendAll(sb, "visible_objects", normalized.visibleObjects());
+        appendAll(sb, "ocr", normalized.ocrText());
+        append(sb, "detected_title", normalized.detectedTitle());
+        append(sb, "setting", normalized.setting());
         return sb.toString().trim();
     }
 
@@ -450,30 +468,43 @@ public class AIClassificationService {
         append(sb, "filename", normalizeFileName(asset.getFileName()));
         append(sb, "media_type", asset.getFileType() != null ? asset.getFileType().name() : null);
         append(sb, "uploaded_month", asset.getCreatedAt() != null ? UPLOAD_MONTH_FORMATTER.format(asset.getCreatedAt()) : null);
-        append(sb, "category", firstNonBlank(result.category(), asset.getAiCategory()));
-        append(sb, "asset_type", firstNonBlank(result.assetType(), asset.getAssetType()));
-        append(sb, "description", firstNonBlank(result.description(), asset.getAiDescription()));
+        append(sb, "caption", firstNonBlank(result.description(), asset.getAiDescription()));
+        append(sb, "primary_subject", firstNonBlank(result.primarySubject(), asset.getPrimarySubject()));
+        append(sb, "asset_type", firstNonBlank(result.metadataAssetType(), asset.getMetadataAssetType()));
+        append(sb, "asset_subtype", firstNonBlank(result.assetSubtype(), asset.getAssetSubtype()));
+        append(sb, "communication_purpose", firstNonBlank(
+                result.communicationPurpose(), asset.getCommunicationPurpose()));
+        appendAll(sb, "topics", firstNonEmpty(result.topics(), asset.getSemanticTopics()));
         appendAll(sb, "visible_objects", firstNonEmpty(result.visibleObjects(), asset.getVisibleObjects()));
-        appendAll(sb, "specific_subjects", firstNonEmpty(result.specificSubjects(), asset.getSpecificSubjects()));
-        appendAll(sb, "visual_style", firstNonEmpty(result.visualStyle(), asset.getVisualStyle()));
-        appendAll(sb, "dominant_colors", firstNonEmpty(result.dominantColors(), asset.getDominantColors()));
-        appendAll(sb, "possible_use_cases", firstNonEmpty(result.possibleUseCases(), asset.getPossibleUseCases()));
-        appendAll(sb, "ai_tags", result.suggestedTags());
         appendAll(sb, "asset_tags", manualTags);
-        appendAll(sb, "scenes", Arrays.asList(asset.getObservedScenes() == null ? new String[0] : asset.getObservedScenes()));
-        appendAll(sb, "activities", Arrays.asList(asset.getObservedActivities() == null ? new String[0] : asset.getObservedActivities()));
-        append(sb, "people_count", asset.getPeopleCountRange());
+        appendAll(sb, "activities", firstNonEmpty(
+                result.observedActivities(), asset.getObservedActivities()));
+        appendAll(sb, "ocr", firstNonEmpty(result.ocrText(), asset.getOcrText()));
+        append(sb, "detected_title", firstNonBlank(result.detectedTitle(), asset.getDetectedTitle()));
+        append(sb, "setting", firstNonBlank(result.setting(), asset.getVisualSetting()));
         return sb.toString().trim();
     }
 
     public static String buildEmbeddingText(MediaAsset asset, Collection<String> manualTags) {
-        MediaClassificationDto dto = new MediaClassificationDto(
-                asset.getAiCategory(),
-                asset.getAiConfidence() != null ? asset.getAiConfidence().doubleValue() : 0.5,
-                asset.getAiDescription(),
-                List.of()
-        );
-        return buildEmbeddingText(asset, dto, manualTags);
+        StringBuilder sb = new StringBuilder();
+        append(sb, "asset_code", asset.getAssetCode());
+        append(sb, "filename", normalizeFileName(asset.getFileName()));
+        append(sb, "media_type", asset.getFileType() != null ? asset.getFileType().name() : null);
+        append(sb, "uploaded_month", asset.getCreatedAt() != null
+                ? UPLOAD_MONTH_FORMATTER.format(asset.getCreatedAt()) : null);
+        append(sb, "caption", asset.getAiDescription());
+        append(sb, "primary_subject", asset.getPrimarySubject());
+        append(sb, "asset_type", asset.getMetadataAssetType());
+        append(sb, "asset_subtype", asset.getAssetSubtype());
+        append(sb, "communication_purpose", asset.getCommunicationPurpose());
+        appendAll(sb, "topics", asset.getSemanticTopics());
+        appendAll(sb, "visible_objects", asset.getVisibleObjects());
+        appendAll(sb, "asset_tags", manualTags);
+        appendAll(sb, "activities", asset.getObservedActivities());
+        appendAll(sb, "ocr", asset.getOcrText());
+        append(sb, "detected_title", asset.getDetectedTitle());
+        append(sb, "setting", asset.getVisualSetting());
+        return sb.toString().trim();
     }
 
     private static String[] toArray(Collection<String> values) {
@@ -499,6 +530,10 @@ public class AIClassificationService {
         if (!cleaned.isEmpty()) {
             sb.append(label).append(": ").append(String.join(", ", cleaned)).append(". ");
         }
+    }
+
+    private static void appendAll(StringBuilder sb, String label, String[] values) {
+        if (values != null) appendAll(sb, label, Arrays.asList(values));
     }
 
     private static String firstNonBlank(String first, String fallback) {

@@ -61,6 +61,24 @@ class AIRecommendationServiceTest {
         assertFalse(AIRecommendationService.hasCompatibleMediaFormat(eventPhoto, List.of(infographic)));
     }
     @Test
+    void mediaFormatCompatibility_usesBroadV2TypeWhenSubtypeIsUnknown() {
+        MediaAsset selected = asset(UUID.randomUUID(), "selected.jpg", "Event");
+        selected.setAssetType("Other");
+        selected.setMetadataAssetType("photograph");
+        selected.setAssetSubtype("unknown");
+        MediaAsset photo = asset(UUID.randomUUID(), "photo.jpg", "Event");
+        photo.setAssetType("Other");
+        photo.setMetadataAssetType("photograph");
+        photo.setAssetSubtype("unknown");
+        MediaAsset graphic = asset(UUID.randomUUID(), "graphic.png", "Event");
+        graphic.setAssetType("Other");
+        graphic.setMetadataAssetType("graphic_design");
+        graphic.setAssetSubtype("unknown");
+
+        assertTrue(AIRecommendationService.hasCompatibleMediaFormat(photo, List.of(selected)));
+        assertFalse(AIRecommendationService.hasCompatibleMediaFormat(graphic, List.of(selected)));
+    }
+    @Test
     void reciprocalRankFusion_prioritizesCandidatesSupportedByBothSignals() {
         UUID visualOnly = UUID.randomUUID();
         UUID supportedByBoth = UUID.randomUUID();
@@ -154,6 +172,7 @@ class AIRecommendationServiceTest {
         submission.setContributor(contributor);
         MediaAsset attached = asset(attachedId, "cookie-selected.jpg", "Event");
         MediaAsset fallback = asset(fallbackId, "cookie-library.jpg", "Event");
+        fallback.setSemanticTopics(new String[]{"cookie", "capstone", "cutie"});
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
         when(voyageAIClient.embedQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn("[0.1,0.2]");
@@ -182,8 +201,7 @@ class AIRecommendationServiceTest {
                 true
         );
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
-        dto.setEventTitle("Cookie so good");
-        dto.setCaption("Passed Capstone Cutie should be good");
+        dto.setEventTitle("Cookie capstone cutie");
         List<MediaSuggestResultDto> results = service.suggestMedia(
                 submissionId,
                 dto,
@@ -192,7 +210,7 @@ class AIRecommendationServiceTest {
         assertEquals(1, results.size());
         assertEquals(fallbackId, results.getFirst().getId());
         assertTrue(results.getFirst().getMatchReasons().stream()
-                .anyMatch(reason -> reason.toLowerCase().contains("asset details")));
+                .anyMatch(reason -> reason.toLowerCase().contains("metadata matches")));
         List<MediaSuggestResultDto> moderatorResults = service.suggestMedia(
                 submissionId,
                 dto,
@@ -322,6 +340,88 @@ class AIRecommendationServiceTest {
         assertFalse(batch.processing());
         assertEquals(AIRecommendationService.MediaSuggestionOutcome.READY, batch.outcome());
         verify(voyage, never()).embedQuery(anyString());
+    }
+    @Test
+    void suggestMedia_doesNotPromoteWeakRetrievalWithFormatBoost() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset selected = asset(UUID.randomUUID(), "selected.png", "Event");
+        selected.setAssetType("Infographic");
+        MediaAsset weak = asset(UUID.randomUUID(), "unrelated.png", "Event");
+        weak.setAssetType("Infographic");
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(selected));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(
+                List.of(selected.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.IMAGE,
+                List.of(selected.getId()), 12, 30))
+                .thenReturn(List.<Object[]>of(new Object[]{weak.getId().toString(), 0.35, 1.0}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC,
+                List.of(selected.getId()), 12, 30)).thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(List.of(weak.getId()))).thenReturn(List.of(weak));
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
+                true, false, false);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertTrue(results.isEmpty());
+    }
+    @Test
+    void suggestMedia_excludesDuplicateContentOfSelectedAsset() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset selected = asset(UUID.randomUUID(), "selected.jpg", "Event");
+        selected.setContentHash("same-binary-content");
+        MediaAsset duplicate = asset(UUID.randomUUID(), "duplicate.jpg", "Event");
+        duplicate.setContentHash("same-binary-content");
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(selected));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.countEmbeddingsForAssets(
+                List.of(selected.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.IMAGE,
+                List.of(selected.getId()), 12, 30))
+                .thenReturn(List.<Object[]>of(new Object[]{duplicate.getId().toString(), 0.98, 1.0}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC,
+                List.of(selected.getId()), 12, 30)).thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(List.of(duplicate.getId()))).thenReturn(List.of(duplicate));
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
+                true, true, false);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertTrue(results.isEmpty());
     }
     @Test
     void suggestMedia_complementarySelectionUsesEveryImageAndReturnsUnifiedResults() {
@@ -601,7 +701,13 @@ class AIRecommendationServiceTest {
         UUID contributorId = UUID.randomUUID();
         UUID candidateId = UUID.randomUUID();
         MediaAsset attached = asset(UUID.randomUUID(), "selected.jpg", "Event");
+        attached.setMetadataAssetType("photograph");
+        attached.setAssetSubtype("workshop_activity_photo");
+        attached.setPrimarySubject("students building robots");
+        attached.setSemanticTopics(new String[]{"robotics", "innovation"});
         MediaAsset candidate = asset(candidateId, "candidate.jpg", "Event");
+        candidate.setMetadataAssetType("photograph");
+        candidate.setAssetSubtype("event_photo");
         SubmissionRepository submissions = mock(SubmissionRepository.class);
         SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
         MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
@@ -641,7 +747,10 @@ class AIRecommendationServiceTest {
         assertEquals(1, results.size());
         assertEquals(candidateId, results.getFirst().getId());
         assertEquals(candidateId, refreshedResults.getFirst().getId());
-        verify(voyage, times(1)).embedQuery(anyString());
+        verify(voyage, times(1)).embedQuery(argThat(text ->
+                text.contains("asset_subtype: workshop_activity_photo")
+                        && text.contains("primary_subject: students building robots")
+                        && text.contains("topics: robotics, innovation")));
         verify(embeddings, never()).findTopSimilarToAssetsWithScore(
                 eq(institutionId), eq(submissionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30));
     }

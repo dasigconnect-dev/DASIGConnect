@@ -22,7 +22,6 @@ import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
-import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -90,9 +89,6 @@ class SubmissionServiceTest {
 
     @Mock
     private AuditLogService auditLogService;
-
-    @Mock
-    private NotificationService notificationService;
 
     @Mock
     private UserRepository userRepository;

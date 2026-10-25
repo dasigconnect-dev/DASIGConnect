@@ -76,6 +76,46 @@ public class MediaAsset {
     @Column(name = "asset_type")
     private String assetType;
 
+    /** Broad v2 format. The legacy assetType remains for recommendation compatibility. */
+    @Column(name = "metadata_asset_type", length = 30)
+    private String metadataAssetType;
+
+    @Column(name = "asset_subtype", length = 50)
+    private String assetSubtype;
+
+    @Column(name = "communication_purpose", length = 50)
+    private String communicationPurpose;
+
+    @Column(name = "primary_subject", length = 255)
+    private String primarySubject;
+
+    @Column(name = "visual_setting", length = 160)
+    private String visualSetting;
+
+    @Column(name = "people_presence", length = 20)
+    private String peoplePresence;
+
+    @Column(name = "semantic_topics")
+    private String[] semanticTopics;
+
+    @Column(name = "detected_title", length = 255)
+    private String detectedTitle;
+
+    @Column(name = "text_languages")
+    private String[] textLanguages;
+
+    @Column(name = "text_density", length = 10)
+    private String textDensity;
+
+    @Column(name = "ocr_confidence", precision = 5, scale = 4)
+    private java.math.BigDecimal ocrConfidence;
+
+    @Column(name = "metadata_schema_version", length = 30)
+    private String metadataSchemaVersion;
+
+    @Column(name = "metadata_prompt_version", length = 50)
+    private String metadataPromptVersion;
+
     @Column(name = "visible_objects")
     private String[] visibleObjects;
 
@@ -300,6 +340,33 @@ public class MediaAsset {
     public void setAssetType(String assetType) {
         this.assetType = assetType;
     }
+
+    public String getMetadataAssetType() { return metadataAssetType; }
+    public void setMetadataAssetType(String value) { this.metadataAssetType = value; }
+    public String getAssetSubtype() { return assetSubtype; }
+    public void setAssetSubtype(String value) { this.assetSubtype = value; }
+    public String getCommunicationPurpose() { return communicationPurpose; }
+    public void setCommunicationPurpose(String value) { this.communicationPurpose = value; }
+    public String getPrimarySubject() { return primarySubject; }
+    public void setPrimarySubject(String value) { this.primarySubject = value; }
+    public String getVisualSetting() { return visualSetting; }
+    public void setVisualSetting(String value) { this.visualSetting = value; }
+    public String getPeoplePresence() { return peoplePresence; }
+    public void setPeoplePresence(String value) { this.peoplePresence = value; }
+    public String[] getSemanticTopics() { return semanticTopics; }
+    public void setSemanticTopics(String[] value) { this.semanticTopics = value; }
+    public String getDetectedTitle() { return detectedTitle; }
+    public void setDetectedTitle(String value) { this.detectedTitle = value; }
+    public String[] getTextLanguages() { return textLanguages; }
+    public void setTextLanguages(String[] value) { this.textLanguages = value; }
+    public String getTextDensity() { return textDensity; }
+    public void setTextDensity(String value) { this.textDensity = value; }
+    public java.math.BigDecimal getOcrConfidence() { return ocrConfidence; }
+    public void setOcrConfidence(java.math.BigDecimal value) { this.ocrConfidence = value; }
+    public String getMetadataSchemaVersion() { return metadataSchemaVersion; }
+    public void setMetadataSchemaVersion(String value) { this.metadataSchemaVersion = value; }
+    public String getMetadataPromptVersion() { return metadataPromptVersion; }
+    public void setMetadataPromptVersion(String value) { this.metadataPromptVersion = value; }
 
     public String[] getVisibleObjects() {
         return visibleObjects;

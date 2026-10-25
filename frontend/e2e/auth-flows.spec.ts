@@ -195,6 +195,14 @@ test.describe("auth flows", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test("a signed-in visit to an auth page redirects to the dashboard", async ({ page }) => {
+    await installSession(page, "contributor");
+    await installFragmentableSse(page);
+    await mockApi(page, "contributor");
+    await page.goto("/login");
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
   test("signing out from the session modal on the composer lands on the landing page", async ({ page }) => {
     await installSession(page, "contributor");
     await installFragmentableSse(page);

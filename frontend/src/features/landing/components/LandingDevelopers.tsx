@@ -5,72 +5,52 @@ import AccordionGallery, { type AccordionGalleryMember } from '../../../componen
 const DEVELOPERS: AccordionGalleryMember[] = [
   {
     name: 'Mark Anton L. Camoro',
-    role: 'Frontend & UI/UX Engineer',
+    email: 'markantoncamoro@gmail.com',
+    role: 'Frontend Developer',
     initials: 'MC',
-    image: '/landing-gallery/team-mark.png',
-    tagline: 'Crafting responsive user interfaces, fluid micro-interactions, and accessibility standards.',
+    image: '/landing-gallery/team-mark.jpg',
+    tagline: 'Crafting responsive user interfaces, fluid micro-interactions, and accessible web experiences.',
     institution: 'CIT-U Computer Studies',
-    stats: [
-      { label: 'Focus', value: 'Frontend' },
-      { label: 'Rating', value: '5.0', isStar: true },
-      { label: 'Cohort', value: '2526-S2' },
-    ],
     contactLabel: 'Get in Touch',
   },
   {
     name: 'Chris Daniel P. Cabatana',
-    role: 'Backend & Systems Architect',
+    email: 'chrisdanielcabatana@gmail.com',
+    role: 'Full Stack Developer',
     initials: 'CC',
-    image: '/landing-gallery/team-chris.png',
-    tagline: 'Architecting secure multi-tenant infrastructure, Facebook Graph API v21.0, and queue systems.',
+    image: '/landing-gallery/team-chris.jpg',
+    tagline: 'Developing scalable full-stack features, multi-tenant backend architecture, and AI-driven services.',
     institution: 'CIT-U Computer Studies',
-    stats: [
-      { label: 'Focus', value: 'Backend' },
-      { label: 'Rating', value: '5.0', isStar: true },
-      { label: 'Cohort', value: '2526-S2' },
-    ],
     contactLabel: 'Get in Touch',
   },
   {
     name: 'Jay Lord C. Bayonas',
-    role: 'Full-Stack Developer',
+    email: 'jeerold1122@gmail.com',
+    role: 'Frontend Developer',
     initials: 'JB',
     image: '/landing-gallery/team-jay.png',
-    tagline: 'Specializing in end-to-end full-stack features, API integration, and database workflows.',
+    tagline: 'Building intuitive user interfaces, engaging interactive workflows, and responsive component systems.',
     institution: 'CIT-U Computer Studies',
-    stats: [
-      { label: 'Stack', value: 'Full-Stack' },
-      { label: 'Rating', value: '4.9', isStar: true },
-      { label: 'Cohort', value: '2526-S2' },
-    ],
     contactLabel: 'Get in Touch',
   },
   {
     name: 'Lerah A. Caones',
-    role: 'QA & Documentation',
+    email: 'lerahcaones18@gmail.com',
+    role: 'Full Stack Developer',
     initials: 'LC',
-    image: '/landing-gallery/team-lerah.png',
-    tagline: 'Ensuring end-to-end software quality, comprehensive test validation, and technical documentation.',
+    image: '/landing-gallery/team-lerah.jpg',
+    tagline: 'Implementing robust full-stack capabilities, seamless API workflows, and end-to-end feature reliability.',
     institution: 'CIT-U Computer Studies',
-    stats: [
-      { label: 'Focus', value: 'QA / Docs' },
-      { label: 'Rating', value: '4.9', isStar: true },
-      { label: 'Cohort', value: '2526-S2' },
-    ],
     contactLabel: 'Get in Touch',
   },
   {
     name: 'Richemmae V. Bigno',
-    role: 'Project Lead',
+    email: 'richemmaeb@gmail.com',
+    role: 'Project Lead / Full Stack Developer',
     initials: 'RB',
-    image: '/landing-gallery/team-chim.png',
-    tagline: 'Leading team coordination, consortium stakeholder alignment, and product vision.',
+    image: '/landing-gallery/team-chim.jpg',
+    tagline: 'Directing project architecture, full-stack platform development, and consortium stakeholder alignment.',
     institution: 'CIT-U Computer Studies',
-    stats: [
-      { label: 'Role', value: 'Lead' },
-      { label: 'Rating', value: '5.0', isStar: true },
-      { label: 'Cohort', value: '2526-S2' },
-    ],
     contactLabel: 'Get in Touch',
   },
 ];
@@ -115,7 +95,7 @@ export default function LandingDevelopers() {
 
           <p className="sparse-lead" style={{ margin: '0 auto 28px', textAlign: 'center' }}>
             Built with pride for the DOST Acad&ecirc;me&ndash;Science and Innovation Group
-            by students of the College of Computer Studies (IT332 &bull; Team 2526-sem2-it332-38).
+            by students of the CIT-U College of Computer Studies.
           </p>
         </div>
 

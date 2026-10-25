@@ -74,11 +74,14 @@ public class AIRecommendationService {
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
     private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
     private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
+    private static final double MIN_RELEVANCE_SCORE = 0.40;
     private static final String LEGACY_RANKING_VERSION = "legacy-v1";
     private static final String HYBRID_RANKING_VERSION = "hybrid-v2";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final long QUERY_EMBEDDING_TTL_MILLIS = Duration.ofMinutes(2).toMillis();
     private static final int QUERY_EMBEDDING_CACHE_LIMIT = 200;
+    private static final Set<String> GENERIC_METADATA_TERMS = Set.of(
+            "asset", "content", "event", "image", "media", "people", "photo", "post");
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
@@ -95,11 +98,18 @@ public class AIRecommendationService {
     private final ConcurrentHashMap<String, QueryEmbeddingCacheEntry> queryEmbeddingCache =
             new ConcurrentHashMap<>();
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaProcessingJobRepository mediaProcessingJobRepository;
+    private MediaAiTelemetryService mediaAiTelemetry;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private MediaAiTelemetryService mediaAiTelemetry;
+    void setMediaProcessingJobRepository(MediaProcessingJobRepository mediaProcessingJobRepository) {
+        this.mediaProcessingJobRepository = mediaProcessingJobRepository;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -444,10 +454,15 @@ public class AIRecommendationService {
             SubmissionMediaContext mediaContext,
             boolean hybrid) {
         List<RankedAsset> ranked = candidateIds.stream()
+                .distinct()
                 .filter(assetMap::containsKey)
                 .filter(id -> !attachedIds.contains(id))
+                .filter(id -> !duplicatesSelectedAsset(assetMap.get(id), attachedAssets))
                 .filter(id -> isTemporallyEligible(assetMap.get(id), Instant.now()))
                 .filter(id -> hasCompatibleMediaFormat(assetMap.get(id), attachedAssets))
+                .filter(id -> hasRelevantRetrievalSignal(
+                        semanticScores.getOrDefault(id, 0.0),
+                        visualScores.getOrDefault(id, 0.0)))
                 .map(id -> hybrid
                         ? rankAssetHybrid(
                                 assetMap.get(id),
@@ -466,7 +481,7 @@ public class AIRecommendationService {
                                 dto,
                                 tagMap.getOrDefault(id, List.of())))
                 .map(result -> applyMediaFormatBoost(result, attachedAssets))
-                .filter(result -> result.score() >= 0.40)
+                .filter(result -> result.score() >= MIN_RELEVANCE_SCORE)
                 .sorted(rankedAssetComparator())
                 .toList();
         return hybrid ? diversify(ranked, 8) : ranked;
@@ -476,13 +491,13 @@ public class AIRecommendationService {
             MediaAsset candidate,
             List<MediaAsset> selectedAssets) {
         Set<String> selectedTypes = selectedAssets.stream()
-                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::assetFormatType)
                 .map(AIRecommendationService::normalize)
-                .filter(type -> !type.isBlank() && !"other".equals(type))
+                .filter(AIRecommendationService::isKnownFormatType)
                 .collect(Collectors.toSet());
         if (selectedTypes.isEmpty()) return true;
 
-        String candidateType = normalize(candidate.getAssetType());
+        String candidateType = normalize(assetFormatType(candidate));
         if (candidateType.isBlank() || "other".equals(candidateType)) return false;
         if (selectedTypes.contains(candidateType)) return true;
 
@@ -496,23 +511,23 @@ public class AIRecommendationService {
         }
 
         Set<MediaFormatFamily> selectedFamilies = selectedAssets.stream()
-                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::assetFormatType)
                 .map(AIRecommendationService::mediaFormatFamily)
                 .filter(family -> family != MediaFormatFamily.UNKNOWN)
                 .collect(Collectors.toSet());
-        MediaFormatFamily candidateFamily = mediaFormatFamily(candidate.getAssetType());
+        MediaFormatFamily candidateFamily = mediaFormatFamily(assetFormatType(candidate));
         return candidateFamily != MediaFormatFamily.UNKNOWN && selectedFamilies.contains(candidateFamily);
     }
 
     private static RankedAsset applyMediaFormatBoost(
             RankedAsset result,
             List<MediaAsset> selectedAssets) {
-        String candidateType = normalize(result.asset().getAssetType());
+        String candidateType = normalize(assetFormatType(result.asset()));
         if (candidateType.isBlank()) return result;
         Set<String> selectedTypes = selectedAssets.stream()
-                .map(MediaAsset::getAssetType)
+                .map(AIRecommendationService::assetFormatType)
                 .map(AIRecommendationService::normalize)
-                .filter(type -> !type.isBlank())
+                .filter(AIRecommendationService::isKnownFormatType)
                 .collect(Collectors.toSet());
         if (selectedTypes.isEmpty()) return result;
 
@@ -521,7 +536,7 @@ public class AIRecommendationService {
         if (selectedTypes.contains(candidateType)) {
             boost = 0.10;
             reasons.add(0, "Gemini detected the same format: "
-                    + displayAssetType(result.asset().getAssetType()) + ".");
+                    + displayAssetType(assetFormatType(result.asset())) + ".");
         } else {
             MediaFormatFamily candidateFamily = mediaFormatFamily(candidateType);
             boolean sameFamily = selectedTypes.stream()
@@ -530,7 +545,7 @@ public class AIRecommendationService {
             if (!sameFamily) return result;
             boost = 0.04;
             reasons.add(0, "Gemini detected a related photo format: "
-                    + displayAssetType(result.asset().getAssetType()) + ".");
+                    + displayAssetType(assetFormatType(result.asset())) + ".");
         }
         sharedGeminiDetails(result.asset(), selectedAssets).ifPresent(reason -> reasons.add(1, reason));
         Map<String, Double> signalScores = new LinkedHashMap<>(result.signalScores());
@@ -541,7 +556,7 @@ public class AIRecommendationService {
 
     private static String displayAssetType(String assetType) {
         String value = assetType == null ? "" : assetType.strip();
-        return value.isBlank() ? "Media" : value;
+        return value.isBlank() ? "Media" : value.replace('_', ' ');
     }
 
     private static Optional<String> sharedGeminiDetails(
@@ -565,6 +580,10 @@ public class AIRecommendationService {
 
     private static List<String> geminiDetailValues(MediaAsset asset) {
         List<String> values = new ArrayList<>();
+        addValue(values, asset.getPrimarySubject());
+        addValue(values, asset.getVisualSetting());
+        addValue(values, asset.getCommunicationPurpose());
+        addValues(values, asset.getSemanticTopics());
         addValues(values, asset.getVisibleObjects());
         addValues(values, asset.getSpecificSubjects());
         addValues(values, asset.getVisualStyle());
@@ -576,6 +595,10 @@ public class AIRecommendationService {
         return values;
     }
 
+    private static void addValue(List<String> target, String value) {
+        if (value != null && !value.isBlank()) target.add(value.strip());
+    }
+
     private static void addValues(List<String> target, String[] values) {
         if (values == null) return;
         for (String value : values) {
@@ -585,13 +608,48 @@ public class AIRecommendationService {
 
     private static MediaFormatFamily mediaFormatFamily(String assetType) {
         return switch (normalize(assetType)) {
-            case "infographic", "poster", "document", "screenshot",
-                    "project presentation" -> MediaFormatFamily.GRAPHIC;
+            case "graphic_design", "infographic", "informational_infographic", "poster", "event_poster",
+                    "document", "certificate_or_document", "screenshot", "application_screenshot",
+                    "online_meeting_screenshot", "presentation_slide", "project presentation",
+                    "program_announcement", "birthday_greeting" -> MediaFormatFamily.GRAPHIC;
+            case "photograph", "group_photo", "speaker_photo", "workshop_activity_photo", "event_photo",
+                    "product_photo", "food_photo", "lab_activity_photo", "portrait", "landscape_photo",
+                    "building_photo" -> MediaFormatFamily.PHOTO;
             case "product photo", "food photo", "event photo", "lab photo",
-                    "portrait", "group photo", "landscape", "building photo" -> MediaFormatFamily.PHOTO;
-            case "artwork photo" -> MediaFormatFamily.ARTWORK;
+                    "group photo", "landscape", "building photo" -> MediaFormatFamily.PHOTO;
+            case "artwork_photo", "artwork photo" -> MediaFormatFamily.ARTWORK;
             default -> MediaFormatFamily.UNKNOWN;
         };
+    }
+
+    private static String assetFormatType(MediaAsset asset) {
+        if (asset == null) return "";
+        if (isKnownFormatType(normalize(asset.getAssetSubtype()))) {
+            return asset.getAssetSubtype();
+        }
+        if (isKnownFormatType(normalize(asset.getAssetType()))) {
+            return asset.getAssetType();
+        }
+        return asset.getMetadataAssetType();
+    }
+
+    private static boolean isKnownFormatType(String value) {
+        return value != null && !value.isBlank()
+                && !"unknown".equals(value) && !"other".equals(value);
+    }
+
+    private static boolean hasRelevantRetrievalSignal(double semanticScore, double visualScore) {
+        return Math.max(semanticScore, visualScore) >= MIN_RELEVANCE_SCORE;
+    }
+
+    private static boolean duplicatesSelectedAsset(MediaAsset candidate, List<MediaAsset> selectedAssets) {
+        if (candidate == null || candidate.getContentHash() == null || candidate.getContentHash().isBlank()) {
+            return false;
+        }
+        return selectedAssets.stream()
+                .map(MediaAsset::getContentHash)
+                .filter(hash -> hash != null && !hash.isBlank())
+                .anyMatch(candidate.getContentHash()::equalsIgnoreCase);
     }
 
     private static Comparator<RankedAsset> rankedAssetComparator() {
@@ -1363,7 +1421,10 @@ public class AIRecommendationService {
 
     private static Set<String> structuredAssetTerms(MediaAsset asset, Collection<TagSignal> tags) {
         Set<String> terms = normalizedAssetTerms(asset);
-        tags.stream().map(TagSignal::label).forEach(value -> addLooseWords(terms, value));
+        tags.stream().map(TagSignal::label).forEach(value -> {
+            addTerm(terms, value);
+            addLooseWords(terms, value);
+        });
         terms.addAll(visualTerms(asset));
         addEventHypothesisTerms(terms, asset.getEventHypotheses());
         return terms;
@@ -1371,6 +1432,11 @@ public class AIRecommendationService {
 
     private static Set<String> visualTerms(MediaAsset asset) {
         Set<String> terms = new LinkedHashSet<>();
+        addLooseWords(terms, asset.getPrimarySubject());
+        addLooseWords(terms, asset.getVisualSetting());
+        addLooseWords(terms, asset.getAssetSubtype());
+        addLooseWords(terms, asset.getCommunicationPurpose());
+        addArrayTerms(terms, asset.getSemanticTopics());
         addArrayTerms(terms, asset.getVisibleObjects());
         addArrayTerms(terms, asset.getSpecificSubjects());
         addArrayTerms(terms, asset.getObservedScenes());
@@ -1528,14 +1594,10 @@ public class AIRecommendationService {
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
 
         return candidates.stream()
-                .map(asset -> rankAsset(
-                asset,
-                0.35,
-                dto,
-                tagMap.getOrDefault(asset.getId(), List.of())
-        ))
+                .map(asset -> rankMetadataFallbackAsset(
+                        asset, dto, tagMap.getOrDefault(asset.getId(), List.of())))
+                .filter(result -> result.score() >= MIN_RELEVANCE_SCORE)
                 .map(result -> applyMediaFormatBoost(result, selectedAssets))
-                .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(
@@ -1562,10 +1624,46 @@ public class AIRecommendationService {
     private static String selectedMediaContext(MediaAsset asset, Collection<TagSignal> tags) {
         StringBuilder sb = new StringBuilder();
         append(sb, "filename", normalizeFileName(asset.getFileName()));
-        append(sb, "category", asset.getAiCategory());
-        append(sb, "description", asset.getAiDescription());
+        append(sb, "caption", asset.getAiDescription());
+        append(sb, "primary_subject", asset.getPrimarySubject());
+        append(sb, "asset_type", asset.getMetadataAssetType());
+        append(sb, "asset_subtype", asset.getAssetSubtype());
+        append(sb, "communication_purpose", asset.getCommunicationPurpose());
+        append(sb, "setting", asset.getVisualSetting());
+        appendAll(sb, "topics", arrayValues(asset.getSemanticTopics(), 12));
+        appendAll(sb, "activities", arrayValues(asset.getObservedActivities(), 12));
+        appendAll(sb, "objects", arrayValues(asset.getVisibleObjects(), 12));
+        append(sb, "detected_title", asset.getDetectedTitle());
+        appendAll(sb, "ocr", arrayValues(asset.getOcrText(), 5));
         appendAll(sb, "tags", tags.stream().map(TagSignal::label).toList());
         return sb.toString().trim();
+    }
+
+    private static RankedAsset rankMetadataFallbackAsset(
+            MediaAsset asset,
+            MediaSuggestRequestDto dto,
+            Collection<TagSignal> assetTags) {
+        Set<String> queryTerms = new LinkedHashSet<>(normalizedTerms(dto));
+        queryTerms.removeAll(GENERIC_METADATA_TERMS);
+        Set<String> candidateTerms = structuredAssetTerms(asset, assetTags);
+        candidateTerms.removeAll(GENERIC_METADATA_TERMS);
+        if (queryTerms.isEmpty() || candidateTerms.isEmpty()) {
+            return new RankedAsset(asset, 0.0, List.of(), Map.of());
+        }
+
+        long matches = queryTerms.stream().filter(candidateTerms::contains).count();
+        if (matches == 0) {
+            return new RankedAsset(asset, 0.0, List.of(), Map.of());
+        }
+        double queryCoverage = (double) matches / queryTerms.size();
+        double cosineOverlap = overlapScore(queryTerms, candidateTerms);
+        double score = clamp((0.80 * queryCoverage) + (0.20 * cosineOverlap));
+        List<String> matching = matchingTerms(queryTerms, candidateTerms, 3);
+        return new RankedAsset(
+                asset,
+                score,
+                List.of("Metadata matches: " + String.join(", ", matching) + "."),
+                Map.of("metadata", score));
     }
 
     private static Set<String> normalizedTerms(MediaSuggestRequestDto dto) {
@@ -1626,10 +1724,31 @@ public class AIRecommendationService {
     private static Set<String> normalizedAssetTerms(MediaAsset asset) {
         Set<String> terms = new LinkedHashSet<>();
         addLooseWords(terms, asset.getFileName());
+        addLooseWords(terms, asset.getDisplayTitle());
         addLooseWords(terms, asset.getAssetCode());
         addLooseWords(terms, asset.getAiCategory());
         addLooseWords(terms, asset.getAiDescription());
+        addLooseWords(terms, asset.getMetadataAssetType());
+        addLooseWords(terms, asset.getAssetSubtype());
+        addLooseWords(terms, asset.getCommunicationPurpose());
+        addLooseWords(terms, asset.getPrimarySubject());
+        addLooseWords(terms, asset.getVisualSetting());
+        addLooseWords(terms, asset.getDetectedTitle());
+        addArrayTerms(terms, asset.getSemanticTopics());
+        addArrayTerms(terms, asset.getObservedActivities());
+        addArrayTerms(terms, asset.getVisibleObjects());
+        addArrayTerms(terms, asset.getOcrText());
         return terms;
+    }
+
+    private static List<String> arrayValues(String[] values, int limit) {
+        if (values == null || values.length == 0) return List.of();
+        return Arrays.stream(values)
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::strip)
+                .distinct()
+                .limit(limit)
+                .toList();
     }
 
     private static String normalizeFileName(String fileName) {

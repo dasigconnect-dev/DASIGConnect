@@ -70,12 +70,13 @@ class SubscriptionBillingControllerTest {
         SubscriptionPaymentLinkDto link = new SubscriptionPaymentLinkDto(
                 UUID.randomUUID(), "DC-1", 749_900, "PHP", "https://paymongo.test/link_1",
                 "REF-1", "ACTIVE", false, Instant.parse("2026-10-25T00:00:00Z"));
-        when(billingService.createOrReusePaymentLink("payer@dasig.test", owner)).thenReturn(link);
+        UUID planId = UUID.randomUUID();
+        when(billingService.createOrReusePaymentLink(planId, "payer@dasig.test", owner)).thenReturn(link);
 
         mockMvc.perform(post("/api/v1/subscription/billing/payment-link")
                         .with(authentication(ownerAuthentication(owner)))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"payerEmail\":\"payer@dasig.test\"}"))
+                        .content("{\"planId\":\"" + planId + "\",\"payerEmail\":\"payer@dasig.test\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.invoiceNumber").value("DC-1"))
                 .andExpect(jsonPath("$.data.liveMode").value(false));
@@ -83,10 +84,20 @@ class SubscriptionBillingControllerTest {
 
     @Test
     void createPaymentLink_withInvalidEmail_returnsBadRequest() throws Exception {
+        UUID planId = UUID.randomUUID();
         mockMvc.perform(post("/api/v1/subscription/billing/payment-link")
                         .with(authentication(ownerAuthentication(owner())))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"payerEmail\":\"invalid\"}"))
+                        .content("{\"planId\":\"" + planId + "\",\"payerEmail\":\"invalid\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createPaymentLink_withoutPlanId_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/v1/subscription/billing/payment-link")
+                        .with(authentication(ownerAuthentication(owner())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"payerEmail\":\"payer@dasig.test\"}"))
                 .andExpect(status().isBadRequest());
     }
 

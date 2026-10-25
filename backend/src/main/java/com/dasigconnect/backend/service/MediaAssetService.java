@@ -71,14 +71,24 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class MediaAssetService {
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private StorageQuotaService storageQuotaService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private StorageQuotaService storageQuotaService;
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setEventPublisher(org.springframework.context.ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageQuotaService(StorageQuotaService storageQuotaService) {
+        this.storageQuotaService = storageQuotaService;
+    }
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
@@ -1498,14 +1508,6 @@ public class MediaAssetService {
             return true;
         }
         return !submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(singleAssetId).isEmpty();
-    }
-
-    private boolean isPublishedToRepository(
-            UUID assetId, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
-        if (!attachedAssetIds.contains(assetId)) {
-            return true;
-        }
-        return assetIdsUsedBeyondDraft.contains(assetId);
     }
 
     private boolean isContributor(JwtUserDetails user) {

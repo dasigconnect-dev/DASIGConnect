@@ -8,7 +8,6 @@ import com.dasigconnect.backend.model.entity.PaymongoWebhookReceiptStatus;
 import com.dasigconnect.backend.repository.PaymongoWebhookReceiptRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -86,13 +85,14 @@ public class PaymongoWebhookService {
     }
 
     private void processPaidLink(JsonNode link) {
-        String externalLinkId = required(link, "id");
-        JsonNode linkAttributes = link.path("attributes");
-        JsonNode payment = latestPayment(linkAttributes.path("payments"));
+        JsonNode linkAttributes = link.path("attributes").isObject() ? link.path("attributes") : link;
+        String externalLinkId = firstText(link, linkAttributes, "id", "link_id", "payment_link_id");
+        JsonNode payment = linkAttributes.path("payments").isArray()
+                ? latestPayment(linkAttributes.path("payments")) : linkAttributes;
         JsonNode paymentAttributes = payment.path("attributes").isMissingNode()
                 ? payment : payment.path("attributes");
         PaymongoClient.Payment providerPayment = new PaymongoClient.Payment(
-                required(payment, "id"),
+                firstText(payment, paymentAttributes, "id", "payment_id"),
                 paymentAttributes.path("amount").asLong(),
                 paymentAttributes.path("currency").asText("PHP"),
                 paymentAttributes.path("status").asText("paid"),
@@ -158,6 +158,15 @@ public class PaymongoWebhookService {
         String value = node.path(field).asText("");
         if (value.isBlank()) throw new IllegalArgumentException("Webhook is missing " + field + ".");
         return value;
+    }
+    private static String firstText(JsonNode primary, JsonNode fallback, String... fields) {
+        for (String field : fields) {
+            String value = primary.path(field).asText("");
+            if (!value.isBlank()) return value;
+            value = fallback.path(field).asText("");
+            if (!value.isBlank()) return value;
+        }
+        throw new IllegalArgumentException("Webhook is missing " + fields[0] + ".");
     }
     private static String sha256(byte[] payload) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload));

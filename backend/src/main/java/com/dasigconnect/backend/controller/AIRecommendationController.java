@@ -38,8 +38,12 @@ public class AIRecommendationController {
     private final AiAdoptionTrackingService adoptionTracking;
     private final SubscriptionEntitlementService subscriptionEntitlementService;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(com.dasigconnect.backend.service.MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public AIRecommendationController(AIRecommendationService aiRecommendationService,
                                       AiAdoptionTrackingService adoptionTracking,

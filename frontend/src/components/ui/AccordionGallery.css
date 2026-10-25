@@ -278,7 +278,8 @@
   margin-top: 2px;
 }
 
-.ag-btn-contact {
+.ag-btn-contact,
+.ag-btn-contact:visited {
   flex: 1;
   display: inline-flex;
   align-items: center;
@@ -299,6 +300,7 @@
 
 .ag-btn-contact:hover {
   background: var(--lp-blue, #1877f2);
+  color: #ffffff;
   transform: translateY(-1px);
 }
 

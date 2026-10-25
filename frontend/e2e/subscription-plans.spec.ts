@@ -71,10 +71,13 @@ const subscriptionStatus = {
   enforcementEnabled: true,
 };
 
-async function installSubscriptionSession(page: import("@playwright/test").Page) {
+async function installSubscriptionSession(
+  page: import("@playwright/test").Page,
+  currentPlan = freePlan,
+) {
   await installSession(page, "admin");
   await mockApi(page, "admin", {
-    "GET /api/v1/subscription": subscriptionStatus,
+    "GET /api/v1/subscription": { ...subscriptionStatus, plan: currentPlan },
     "GET /api/v1/subscription/plans": [freePlan, plusPlan, premiumPlan],
     "POST /api/v1/subscription/admin/change-plan": { ...subscriptionStatus, plan: plusPlan },
     "POST /api/v1/subscription/billing/payment-link": {
@@ -90,6 +93,18 @@ async function installSubscriptionSession(page: import("@playwright/test").Page)
     },
   });
 }
+
+test("paid subscribers can compare Free without selecting it and can upgrade", async ({ page }) => {
+  await installSubscriptionSession(page, plusPlan);
+  await page.goto("/upgrade-plan");
+
+  await expect(page.getByRole("heading", { name: "Free", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plus", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Premium", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Free plan" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Upgrade plan" })).toBeVisible();
+});
 
 test("admin profile menu exposes upgrade, settings, and sign out actions", async ({ page }) => {
   await installSubscriptionSession(page);
@@ -115,20 +130,22 @@ test("plan page displays backend prices, inclusions, and current plan", async ({
   await expect(page.getByText("5,000 AI media suggestions per month", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Current plan" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Choose Plus" }).click();
+  const plusCard = page.locator(".subscription-plan-card").filter({
+    has: page.getByRole("heading", { name: "Plus", exact: true }),
+  });
+  await plusCard.getByRole("button", { name: "Upgrade plan" }).click();
   await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
   await expect(page.getByText("Secure QRPh checkout", { exact: true })).toBeVisible();
   await page.getByLabel("Payer email Optional").fill("payer@example.org");
-  const changeRequest = page.waitForRequest((request) =>
-    request.method() === "POST" && request.url().endsWith("/api/v1/subscription/admin/change-plan"),
-  );
   const paymentRequest = page.waitForRequest((request) =>
     request.method() === "POST" && request.url().endsWith("/api/v1/subscription/billing/payment-link"),
   );
   await page.route("https://paymongo.test/**", (route) => route.fulfill({ status: 200, body: "Payment portal" }));
   await page.getByRole("button", { name: "Continue to QRPh" }).click();
-  expect((await changeRequest).postDataJSON()).toEqual({ planId: plusPlan.id });
-  expect((await paymentRequest).postDataJSON()).toEqual({ payerEmail: "payer@example.org" });
+  expect((await paymentRequest).postDataJSON()).toEqual({
+    planId: plusPlan.id,
+    payerEmail: "payer@example.org",
+  });
   await expect(page).toHaveURL("https://paymongo.test/checkout/plus");
 });
 

@@ -1041,6 +1041,7 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
   justify-content: center;
   padding: 24px;
   animation: privacy-fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overscroll-behavior: contain;
 }
 
 @keyframes privacy-fade-in {
@@ -1135,6 +1136,7 @@ body:has(.landing-root)::-webkit-scrollbar-thumb:hover {
 .privacy-modal-body {
   padding: 24px 28px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 16px;

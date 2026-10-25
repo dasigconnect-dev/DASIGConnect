@@ -30,8 +30,12 @@ public class MediaSemanticEmbeddingService {
     private final VoyageAIClient voyageAIClient;
     private final MediaSearchCacheService mediaSearchCache;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
 
     public MediaSemanticEmbeddingService(
             MediaAssetRepository assetRepository,
@@ -132,23 +136,17 @@ public class MediaSemanticEmbeddingService {
         append(text, "filename", cleanFileName(asset.getFileName()));
         if (asset.getMediaAlbum() != null) append(text, "album", asset.getMediaAlbum().getName());
         appendAll(text, "tags", manualTags);
-        append(text, "category", asset.getAiCategory());
-        append(text, "description", asset.getAiDescription());
-        append(text, "asset type", asset.getAssetType());
+        append(text, "caption", asset.getAiDescription());
+        append(text, "primary subject", asset.getPrimarySubject());
+        append(text, "asset type", asset.getMetadataAssetType());
+        append(text, "asset subtype", asset.getAssetSubtype());
+        append(text, "communication purpose", asset.getCommunicationPurpose());
+        appendAll(text, "topics", asset.getSemanticTopics());
         appendAll(text, "visible objects", asset.getVisibleObjects());
-        appendAll(text, "specific subjects", asset.getSpecificSubjects());
-        appendAll(text, "scenes", asset.getObservedScenes());
         appendAll(text, "activities", asset.getObservedActivities());
-        append(text, "people", asset.getPeopleCountRange());
-        appendAll(text, "equipment", asset.getEquipmentSignals());
-        appendAll(text, "recognition signals", asset.getRecognitionSignals());
         appendAll(text, "visible text", asset.getOcrText());
-        appendAll(text, "visible dates", asset.getVisibleDates());
-        appendAll(text, "visual style", asset.getVisualStyle());
-        appendAll(text, "dominant colors", asset.getDominantColors());
-        appendAll(text, "use cases", asset.getPossibleUseCases());
-        appendAll(text, "ai tags", asset.getAiTags());
-        append(text, "temporal", asset.getTemporalClassification());
+        append(text, "detected title", asset.getDetectedTitle());
+        append(text, "setting", asset.getVisualSetting());
         return text.toString().trim();
     }
 

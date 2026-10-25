@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -53,13 +52,11 @@ import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
-import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.SubscriptionUsageEventType;
 import com.dasigconnect.backend.model.entity.User;
-import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
@@ -86,14 +83,24 @@ import jakarta.persistence.PersistenceContext;
 @Transactional
 public class SubmissionService {
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private MediaAiTelemetryService mediaAiTelemetry;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private StorageQuotaService storageQuotaService;
+    private SubscriptionEntitlementService subscriptionEntitlementService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private SubscriptionEntitlementService subscriptionEntitlementService;
+    void setMediaAiTelemetry(MediaAiTelemetryService mediaAiTelemetry) {
+        this.mediaAiTelemetry = mediaAiTelemetry;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStorageQuotaService(StorageQuotaService storageQuotaService) {
+        this.storageQuotaService = storageQuotaService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSubscriptionEntitlementService(SubscriptionEntitlementService subscriptionEntitlementService) {
+        this.subscriptionEntitlementService = subscriptionEntitlementService;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
@@ -118,8 +125,6 @@ public class SubmissionService {
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
     private final MediaStorageService mediaStorage;
-    private final NotificationService notificationService;
-    private final EmailDeliveryService emailDeliveryService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final MediaProcessingQueueService mediaProcessingQueueService;
@@ -142,8 +147,6 @@ public class SubmissionService {
             GuardRailService guardRailService,
             AuditLogService auditLogService,
             MediaStorageService mediaStorage,
-            NotificationService notificationService,
-            EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
             AssetTagRepository assetTagRepository,
             MediaAlbumRepository mediaAlbumRepository,
@@ -159,8 +162,6 @@ public class SubmissionService {
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
         this.mediaStorage = mediaStorage;
-        this.notificationService = notificationService;
-        this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
         this.assetTagRepository = assetTagRepository;
         this.mediaAlbumRepository = mediaAlbumRepository;
@@ -1544,8 +1545,4 @@ public class SubmissionService {
         return joined.isBlank() ? null : joined;
     }
 
-    private static String formatInstant(Instant instant) {
-        return java.time.ZonedDateTime.ofInstant(instant, java.time.ZoneOffset.UTC)
-                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'"));
-    }
 }

@@ -62,7 +62,7 @@ class PaymongoClientTest {
                 "amount":749900,"currency":"PHP","status":"active","livemode":false}}
                 """));
         server.createContext("/payment_links/link_1/payments", exchange -> respond(exchange, 200, """
-                {"data":[{"id":"pay_1","amount":749900,"currency":"PHP","status":"paid",
+                {"data":[{"payment_id":"pay_1","amount":749900,"currency":"PHP","status":"paid",
                 "paid_at":"2026-10-18T12:00:00Z"}]}
                 """));
 

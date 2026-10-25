@@ -169,8 +169,9 @@ export function getSubscriptionBilling(signal?: AbortSignal) {
   return api.get<SubscriptionBilling>("/subscription/billing", { signal });
 }
 
-export function createSubscriptionPaymentLink(payerEmail?: string) {
+export function createSubscriptionPaymentLink(planId: string, payerEmail?: string) {
   return api.post<CreatedSubscriptionPaymentLink>("/subscription/billing/payment-link", {
+    planId,
     payerEmail: payerEmail || null,
   });
 }

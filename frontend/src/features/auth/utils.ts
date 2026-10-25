@@ -50,6 +50,8 @@ function buildUserFromProfile(profile: UserProfileResponse, fallbackEmail: strin
     institutionId: profile.institutionId,
     initials: getUserInitials(profile),
     adminOwner: profile.adminOwner,
+    superAdminTransferRequestedBy: profile.superAdminTransferRequestedBy,
+    superAdminTransferExpiresAt: profile.superAdminTransferExpiresAt,
   };
 }
 
