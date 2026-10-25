@@ -204,6 +204,7 @@ export const queryRoots = {
 
 export const mutationCacheDependencies = {
   identityManagement: [
+    queryRoots.principal,
     queryRoots.users,
     queryRoots.administrators,
     queryRoots.institutions,
