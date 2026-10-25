@@ -88,7 +88,7 @@ function App() {
             {/* ── Public ─────────────────────────────────────────────── */}
             <Route path="/" element={<LandingPage user={currentUser} />} />
             {/* ── Public Auth (Shared static left panel) ─────────────── */}
-            <Route element={<AuthLayout />}>
+            <Route element={currentUser ? <Navigate to="/dashboard" replace /> : <AuthLayout />}>
               <Route
                 path="/login"
                 element={

@@ -11,6 +11,8 @@ export interface AccordionGalleryMember {
   institution?: string;
   stats?: Array<{ label: string; value: string; isStar?: boolean }>;
   contactLabel?: string;
+  email?: string;
+  contactUrl?: string;
   githubUrl?: string;
   linkedinUrl?: string;
 }
@@ -259,13 +261,15 @@ export const AccordionGallery: React.FC<AccordionGalleryProps> = ({
                 )}
 
                 <div className="ag-member-actions">
-                  <span className="ag-btn-contact">
+                  <a
+                    href={item.contactUrl || (item.email ? `mailto:${item.email}` : undefined)}
+                    className="ag-btn-contact"
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Get in touch with ${item.name}`}
+                  >
                     <i className="ti ti-mail" />
-                    {item.contactLabel || 'Connect'}
-                  </span>
-                  <span className="ag-btn-icon" title={item.institution || 'CIT-U'}>
-                    <i className="ti ti-school" />
-                  </span>
+                    {item.contactLabel || 'Get in Touch'}
+                  </a>
                 </div>
               </div>
             </div>
@@ -389,13 +393,15 @@ export const AccordionGallery: React.FC<AccordionGalleryProps> = ({
                 )}
 
                 <div className="ag-member-actions">
-                  <span className="ag-btn-contact">
+                  <a
+                    href={item.contactUrl || (item.email ? `mailto:${item.email}` : undefined)}
+                    className="ag-btn-contact"
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Get in touch with ${item.name}`}
+                  >
                     <i className="ti ti-mail" />
-                    {item.contactLabel || 'Connect'}
-                  </span>
-                  <span className="ag-btn-icon" title="Institution">
-                    <i className="ti ti-school" />
-                  </span>
+                    {item.contactLabel || 'Get in Touch'}
+                  </a>
                 </div>
               </div>
             </div>
