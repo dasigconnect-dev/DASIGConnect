@@ -272,7 +272,7 @@ const statusLabel: Record<string, string> = {
   in_review: "Being Reviewed by Moderator",
   needs_revision: "Needs Revision (Waiting on Contributor)",
   missed_review: "Publishing Slot Passed (Needs New Schedule)",
-  scheduled: "Approved & Scheduled",
+  scheduled: "Scheduled",
   publishing: "Publishing Now",
   published: "Published on Facebook",
   published_manual: "Published Manually",
@@ -289,7 +289,7 @@ const statusGuidanceText: Record<string, string> = {
   in_review: "A Moderator is actively reviewing this submission.",
   needs_revision: "Needs revision — the Moderator asked for changes. The Contributor must edit and resubmit.",
   missed_review: "The scheduled publish time passed before review completed — assign a new schedule to return it to the approval queue.",
-  scheduled: "Approved — scheduled to publish automatically on the DASIG Facebook Page.",
+  scheduled: "Scheduled to publish automatically on the DASIG Facebook Page.",
   publishing: "Currently publishing to the DASIG Facebook Page.",
   published: "Published on the DASIG Facebook Page — no further action needed.",
   published_manual: "Published manually on the DASIG Facebook Page — no further action needed.",
@@ -579,6 +579,7 @@ export default function ValidationQueueScreen({
   };
   const hasActiveSelection = Boolean(selectedId);
   const isQueueExpanded = isDesktop && !hasActiveSelection;
+  const isPanelCollapsedEffective = isPanelCollapsed && hasActiveSelection;
 
   const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
     ? lockVerification.status
@@ -717,6 +718,8 @@ export default function ValidationQueueScreen({
     setSelected(null);
     setSelectedLoading(false);
     setLockVerification(null);
+    setEditMode(false);
+    setIsPanelCollapsed(false);
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
@@ -850,6 +853,8 @@ export default function ValidationQueueScreen({
       setSelected(null);
       setSelectedLoading(false);
       setLockVerification(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
     });
   }
 
@@ -1046,6 +1051,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1548,6 +1555,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1585,6 +1594,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1604,7 +1615,7 @@ export default function ValidationQueueScreen({
 
   return (
     <div
-      className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""} ${isQueueExpanded ? "is-queue-expanded" : ""} val-mobile-view--${mobileView}`}
+      className={`val-page ${isPanelCollapsedEffective ? "is-queue-collapsed" : ""} ${isQueueExpanded ? "is-queue-expanded" : ""} val-mobile-view--${mobileView}`}
     >
       <aside className="val-queue-panel">
         <div className="val-queue-header">
@@ -1977,10 +1988,10 @@ export default function ValidationQueueScreen({
         {/* Desktop only: on phones the slim mobile header replaces it. Starting an
             edit collapses the queue panel, which used to render this as an
             empty band under that header. */}
-        {isDesktop && (isPanelCollapsed || selected) && (
+        {isDesktop && (isPanelCollapsedEffective || selected) && (
           <div className="val-review-toolbar">
             <div>
-              {isPanelCollapsed && (
+              {isPanelCollapsedEffective && (
                 <button
                   type="button"
                   className="val-expand-btn"

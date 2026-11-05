@@ -28,6 +28,7 @@ import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionSta
 import { saveWatermarkConfiguration } from "../../api/watermarkApi";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { isSubscriptionEnabled } from "../../config/features";
 import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
@@ -285,7 +286,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   };
 
   function switchTab(tab: SettingsTab) {
-    if ((tab === "page" || tab === "subscription") && !canManagePage) return;
+    if (tab === "page" && !canManagePage) return;
+    if (tab === "subscription" && (!canManagePage || !isSubscriptionEnabled())) return;
     navigate(`/settings#${tab}`, { replace: true });
   }
 
@@ -608,61 +610,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   if (isStudioOpen && canManagePage) {
     return (
-      <div className="dash-body settings-page settings-studio-fullscreen-page">
-        <div className="settings-studio-topbar">
-          <button
-            type="button"
-            className="settings-studio-back-btn"
-            onClick={closeStudio}
-            title="Return to Page Settings"
-          >
-            <i className="ti ti-arrow-left" aria-hidden="true" />
-            Back to Page Settings
-          </button>
-        </div>
-
-        <section className="settings-studio-card" id="watermark-studio">
-          <header className="settings-studio-header">
-            <div className="settings-studio-header-left">
-              <div className="settings-studio-title-group">
-                <h2>Automated Watermark Studio</h2>
-                <p>Design and position elements across square (1:1), portrait (4:5), and landscape (16:9) aspect ratios.</p>
-              </div>
-            </div>
-
-            <div className="settings-studio-header-right">
-              <button
-                type="button"
-                className="settings-save-button"
+      <div className="settings-studio-fullscreen-page">
+        {watermarkLoading ? (
+          <WatermarkStudioLoader />
+        ) : (
+          <WatermarkStudioBoundary onRetry={() => window.location.reload()}>
+            <Suspense fallback={<WatermarkStudioLoader />}>
+              <WatermarkCanvasEditor
+                elements={watermarkElements}
+                onChange={setWatermarkElements}
                 disabled={saving === "watermark" || watermarkLoading}
-                aria-busy={saving === "watermark"}
-                onClick={() => void saveWatermark()}
-              >
-                <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
-                {saving === "watermark" ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </header>
-
-          <div className="settings-studio-body">
-            {watermarkLoading ? (
-              <WatermarkStudioLoader />
-            ) : (
-              <WatermarkStudioBoundary
-                onRetry={() => window.location.reload()}
-              >
-                <Suspense fallback={<WatermarkStudioLoader />}>
-                  <WatermarkCanvasEditor
-                    elements={watermarkElements}
-                    onChange={setWatermarkElements}
-                    disabled={false}
-                    institutionName="DASIG Central Visayas"
-                  />
-                </Suspense>
-              </WatermarkStudioBoundary>
-            )}
-          </div>
-        </section>
+                institutionName="DASIG Central Visayas"
+                onBack={closeStudio}
+                onSave={() => void saveWatermark()}
+                isSaving={saving === "watermark"}
+              />
+            </Suspense>
+          </WatermarkStudioBoundary>
+        )}
       </div>
     );
   }
@@ -720,7 +685,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             </div>
           )}
 
-          {canManagePage && (
+          {canManagePage && isSubscriptionEnabled() && (
             <div className="sidebar-nav-group">
               <div className="sidebar-nav-label">Organization</div>
               <button
@@ -1304,7 +1269,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             </div>
           )}
 
-          {activeTab === "subscription" && canManagePage && (
+          {activeTab === "subscription" && canManagePage && isSubscriptionEnabled() && (
             <Suspense fallback={<SubscriptionPanelLoader />}>
               <SubscriptionSettingsPanel userId={user.id} isOwner={user.adminOwner === true} />
             </Suspense>
@@ -1371,6 +1336,6 @@ function getActiveTabFromHash(hashValue: string, canManagePage: boolean): Settin
   const hash = hashValue.replace("#", "");
   if (hash === "password") return "password";
   if ((hash === "page" || hash === "watermark-studio") && canManagePage) return "page";
-  if (hash === "subscription" && canManagePage) return "subscription";
+  if (hash === "subscription" && canManagePage && isSubscriptionEnabled()) return "subscription";
   return "account";
 }
