@@ -12,6 +12,7 @@ import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -113,8 +114,21 @@ public class WatermarkApplicationService {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                for (WatermarkElementDto element : elements) {
-                    drawElement(g, output, element, submission);
+                WatermarkLayout.Format format = WatermarkLayout.nearestFormat(output.getWidth(), output.getHeight());
+                record ElementWithConfig(WatermarkElementDto element, WatermarkLayout.ResolvedConfig config) {}
+                java.util.List<ElementWithConfig> resolvedList = new java.util.ArrayList<>();
+                for (int i = 0; i < elements.size(); i++) {
+                    WatermarkElementDto el = elements.get(i);
+                    if (el == null) continue;
+                    WatermarkLayout.ResolvedConfig cfg = WatermarkLayout.resolveConfig(el, format, i);
+                    if (!cfg.hidden()) {
+                        resolvedList.add(new ElementWithConfig(el, cfg));
+                    }
+                }
+                resolvedList.sort(java.util.Comparator.comparingInt(item -> item.config().order()));
+
+                for (ElementWithConfig item : resolvedList) {
+                    drawElement(g, output, format, item.element(), item.config(), submission);
                 }
             } finally {
                 g.dispose();
@@ -185,21 +199,25 @@ public class WatermarkApplicationService {
         return response.body();
     }
 
-    private void drawElement(Graphics2D g, BufferedImage canvas, WatermarkElementDto element, Submission submission) {
-        if (element == null || element.getType() == null) return;
-        int x = percent(canvas.getWidth(), element.getXPercent());
-        int y = percent(canvas.getHeight(), element.getYPercent());
-        int width = Math.max(1, percent(canvas.getWidth(), element.getWidthPercent()));
-        int height = Math.max(1, percent(canvas.getHeight(), element.getHeightPercent()));
-        float opacity = (float) Math.max(0.05, Math.min(1.0, element.getOpacity()));
+        private void drawElement(
+            Graphics2D g,
+            BufferedImage canvas,
+            WatermarkLayout.Format format,
+            WatermarkElementDto element,
+            WatermarkLayout.ResolvedConfig config,
+            Submission submission) {
+        if (element == null || element.getType() == null || config.hidden()) return;
+
+        WatermarkLayout.Box box = WatermarkLayout.resolveBox(config, canvas.getWidth(), canvas.getHeight());
+        float opacity = (float) WatermarkLayout.clamp(config.opacity(), 0.05, 1.0);
 
         var originalComposite = g.getComposite();
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
         try {
             switch (element.getType().toLowerCase()) {
-                case "text" -> drawText(g, canvas, element, x, y, width, height);
-                case "shape" -> drawShape(g, element, x, y, width, height);
-                case "image" -> drawImage(g, element, x, y, width, height, submission);
+                case "text" -> drawText(g, canvas, element, config, box);
+                case "shape" -> drawShape(g, element, config, box);
+                case "image" -> drawImage(g, element, box, submission);
                 default -> { }
             }
         } finally {
@@ -207,58 +225,73 @@ public class WatermarkApplicationService {
         }
     }
 
-    private void drawText(Graphics2D g, BufferedImage canvas, WatermarkElementDto element, int x, int y, int width, int height) {
+        private void drawText(Graphics2D g, BufferedImage canvas, WatermarkElementDto element, WatermarkLayout.ResolvedConfig config, WatermarkLayout.Box box) {
         String text = element.getText();
         if (text == null || text.isBlank()) return;
 
-        // Container height percentage (matching frontend calc(${fontSizePercent} * 1cqh))
-        double fontPct = element.getFontSizePercent() != null ? element.getFontSizePercent() : 3.2;
+        // Font size is a percent of the canvas height (frontend: calc(<n> * 1cqh)).
+        double fontPct = config.fontSizePercent() != null ? config.fontSizePercent() : 3.2;
         int fontSize = Math.max(12, percent(canvas.getHeight(), fontPct));
 
         int style = Font.PLAIN;
-        if ("700".equals(element.getFontWeight()) || "bold".equalsIgnoreCase(element.getFontWeight())) {
+        String weight = config.fontWeight();
+        if (weight == null || !("400".equals(weight) || "normal".equalsIgnoreCase(weight))) {
             style |= Font.BOLD;
         }
-        if ("italic".equalsIgnoreCase(element.getFontStyle())) {
+        if ("italic".equalsIgnoreCase(config.fontStyle())) {
             style |= Font.ITALIC;
         }
 
-        String family = element.getFontFamily();
-        if (family == null || family.isBlank() || family.contains("inherit") || family.contains("sans-serif")) {
-            family = Font.SANS_SERIF;
-        }
-        Font font = new Font(family, style, fontSize);
+        Font font = new Font(resolveFontFamily(config.fontFamily()), style, fontSize);
         g.setFont(font);
-
         FontMetrics fm = g.getFontMetrics(font);
-        int textY = y + ((height - fm.getHeight()) / 2) + fm.getAscent();
-        int textX = x;
 
-        // Draw soft drop shadow for contrast on light backgrounds
-        Color mainColor = colorOrDefault(element.getTextColor(), Color.WHITE);
+        Color mainColor = colorOrDefault(config.textColor(), Color.WHITE);
         Color shadowColor = new Color(0, 0, 0, 160);
-        g.setColor(shadowColor);
         int shadowOffset = Math.max(1, fontSize / 18);
-        g.drawString(text, textX + shadowOffset, textY + shadowOffset);
 
-        // Draw main text
-        g.setColor(mainColor);
-        g.drawString(text, textX, textY);
+        // Same as the preview: every line centred horizontally, block centred vertically, line-height 1.25.
+        String[] lines = text.split("\n", -1);
+        int lineHeight = (int) Math.round(fontSize * 1.25);
+        int blockTop = box.y() + (box.height() - lineHeight * lines.length) / 2;
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            int lineX = box.x() + (box.width() - fm.stringWidth(line)) / 2;
+            int baseline = blockTop + i * lineHeight + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
+            g.setColor(shadowColor);
+            g.drawString(line, lineX + shadowOffset, baseline + shadowOffset);
+            g.setColor(mainColor);
+            g.drawString(line, lineX, baseline);
+        }
     }
 
-    private void drawShape(Graphics2D g, WatermarkElementDto element, int x, int y, int width, int height) {
+    private String resolveFontFamily(String cssFontFamily) {
+        if (cssFontFamily == null || cssFontFamily.isBlank()) return Font.SANS_SERIF;
+        String lower = cssFontFamily.toLowerCase();
+        if (lower.contains("monospace")) return Font.MONOSPACED;
+        if (lower.contains("serif") && !lower.contains("sans-serif")) return Font.SERIF;
+        return Font.SANS_SERIF;
+    }
+
+        private void drawShape(Graphics2D g, WatermarkElementDto element, WatermarkLayout.ResolvedConfig config, WatermarkLayout.Box box) {
+        int x = box.x();
+        int y = box.y();
+        int width = box.width();
+        int height = box.height();
+
         if ("line".equalsIgnoreCase(element.getShapeType())) {
-            g.setColor(colorOrDefault(element.getStrokeColor(), Color.WHITE));
-            g.fillRect(x, y, width, Math.max(2, height));
+            g.setColor(colorOrDefault(config.strokeColor(), Color.WHITE));
+            g.fillRect(x, y, width, height);
             return;
         }
 
         int arc = Math.min(16, Math.min(width, height) / 2);
 
         if ("gradient".equalsIgnoreCase(element.getShapeType()) || "scrim".equalsIgnoreCase(element.getShapeType())) {
-            Color baseColor = colorOrDefault(element.getFillColor(), new Color(7, 17, 42));
+            Color baseColor = colorOrDefault(config.fillColor(), new Color(7, 17, 42));
             Color startColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 0);
-            Color endColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 255);
+            Color endColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), baseColor.getAlpha());
             GradientPaint gp = new GradientPaint(x, y, startColor, x, y + height, endColor);
             Paint oldPaint = g.getPaint();
             g.setPaint(gp);
@@ -267,98 +300,74 @@ public class WatermarkApplicationService {
             return;
         }
 
-        Color fillColor = colorOrDefault(element.getFillColor(), new Color(15, 23, 42, 190));
-        g.setColor(fillColor);
+        g.setColor(colorOrDefault(config.fillColor(), new Color(15, 23, 42, 190)));
         g.fillRoundRect(x, y, width, height, arc, arc);
 
-        // Do not draw white or default outline on shapes
-        String stroke = element.getStrokeColor();
-        if (stroke != null && !stroke.isBlank() && !"transparent".equalsIgnoreCase(stroke.trim()) && !"#ffffff".equalsIgnoreCase(stroke.trim())) {
+        // Preview draws a 2px outline unless the stroke is transparent or the default white.
+        String stroke = config.strokeColor();
+        if (stroke != null && !stroke.isBlank()
+                && !"transparent".equalsIgnoreCase(stroke.trim())
+                && !"#ffffff".equalsIgnoreCase(stroke.trim())) {
             Color strokeColor = colorOrDefault(stroke, null);
             if (strokeColor != null) {
+                var oldStroke = g.getStroke();
+                g.setStroke(new BasicStroke(2f));
                 g.setColor(strokeColor);
-                g.drawRoundRect(x, y, width, height, arc, arc);
+                g.drawRoundRect(x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2), arc, arc);
+                g.setStroke(oldStroke);
             }
         }
     }
 
-    private void drawImage(Graphics2D g, WatermarkElementDto element, int x, int y, int width, int height, Submission submission) {
+    private void drawImage(Graphics2D g, WatermarkElementDto element, WatermarkLayout.Box box, Submission submission) {
         String imageUrl = element.getImageUrl();
         try {
-            BufferedImage watermark = null;
+            BufferedImage watermark = loadWatermarkImage(imageUrl, submission);
+            if (watermark == null) return;
 
-            if (imageUrl != null && imageUrl.startsWith("data:image/")) {
-                // Base64 Data URI from upload in studio
-                int commaIdx = imageUrl.indexOf(',');
-                if (commaIdx != -1) {
-                    byte[] decoded = Base64.getDecoder().decode(imageUrl.substring(commaIdx + 1));
-                    watermark = ImageIO.read(new ByteArrayInputStream(decoded));
-                }
-            } else if (imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
-                // Absolute URL
-                watermark = ImageIO.read(new ByteArrayInputStream(download(imageUrl)));
-            } else if ("/dasig-logo.png".equals(imageUrl)) {
-                // Built-in fallback logo
-                try (var is = getClass().getResourceAsStream("/dasig-logo.png")) {
-                    if (is != null) watermark = ImageIO.read(is);
-                }
-            } else if (imageUrl != null && INSTITUTION_LOGO_PATTERN.matcher(imageUrl).find()) {
-                // Institution logo endpoint
-                Matcher matcher = INSTITUTION_LOGO_PATTERN.matcher(imageUrl);
-                if (matcher.find()) {
-                    UUID instId = UUID.fromString(matcher.group(1));
-                    watermark = loadInstitutionLogo(instId);
-                }
-            } else if (submission != null && submission.getInstitution() != null) {
-                // Fallback to submission institution logo
-                watermark = loadInstitutionLogo(submission.getInstitution().getId());
-            }
+            int origW = watermark.getWidth();
+            int origH = watermark.getHeight();
+            if (origW <= 0 || origH <= 0) return;
 
-            if (watermark != null) {
-                int origW = watermark.getWidth();
-                int origH = watermark.getHeight();
-                if (origW <= 0 || origH <= 0) return;
+            // object-fit: contain, centred in the element box (same as the preview).
+            double scale = Math.min((double) box.width() / origW, (double) box.height() / origH);
+            int drawW = Math.max(1, (int) Math.round(origW * scale));
+            int drawH = Math.max(1, (int) Math.round(origH * scale));
+            int drawX = box.x() + (box.width() - drawW) / 2;
+            int drawY = box.y() + (box.height() - drawH) / 2;
 
-                // Adapt to image aspect ratio without stretching (object-fit: contain)
-                double logoAspect = (double) origW / (double) origH;
-                double boxAspect = (double) width / (double) height;
-
-                int drawW;
-                int drawH;
-                if (logoAspect > boxAspect) {
-                    drawW = width;
-                    drawH = (int) Math.round(width / logoAspect);
-                } else {
-                    drawH = height;
-                    drawW = (int) Math.round(height * logoAspect);
-                }
-
-                drawW = Math.max(1, drawW);
-                drawH = Math.max(1, drawH);
-
-                // Position within bounding box according to horizontal & vertical anchor
-                int drawX = x;
-                int drawY = y;
-
-                double xPct = element.getXPercent();
-                if (xPct > 65.0) {
-                    drawX = x + (width - drawW); // right-aligned
-                } else if (xPct > 25.0) {
-                    drawX = x + (width - drawW) / 2; // centered
-                }
-
-                double yPct = element.getYPercent();
-                if (yPct > 65.0) {
-                    drawY = y + (height - drawH); // bottom-aligned
-                } else if (yPct > 25.0) {
-                    drawY = y + (height - drawH) / 2; // centered
-                }
-
-                g.drawImage(watermark, drawX, drawY, drawW, drawH, null);
-            }
+            g.drawImage(watermark, drawX, drawY, drawW, drawH, null);
         } catch (Exception ex) {
             log.warn("Skipping watermark image {}: {}", imageUrl, ex.getMessage());
         }
+    }
+
+    private BufferedImage loadWatermarkImage(String imageUrl, Submission submission) throws Exception {
+        if (imageUrl != null && imageUrl.startsWith("data:image/")) {
+            // Base64 data URI uploaded in the studio
+            int commaIdx = imageUrl.indexOf(',');
+            if (commaIdx == -1) return null;
+            byte[] decoded = Base64.getDecoder().decode(imageUrl.substring(commaIdx + 1));
+            return ImageIO.read(new ByteArrayInputStream(decoded));
+        }
+        if (imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+            return ImageIO.read(new ByteArrayInputStream(download(imageUrl)));
+        }
+        if ("/dasig-logo.png".equals(imageUrl)) {
+            try (var is = getClass().getResourceAsStream("/dasig-logo.png")) {
+                return is != null ? ImageIO.read(is) : null;
+            }
+        }
+        if (imageUrl != null) {
+            Matcher matcher = INSTITUTION_LOGO_PATTERN.matcher(imageUrl);
+            if (matcher.find()) {
+                return loadInstitutionLogo(UUID.fromString(matcher.group(1)));
+            }
+        }
+        if (submission != null && submission.getInstitution() != null) {
+            return loadInstitutionLogo(submission.getInstitution().getId());
+        }
+        return null;
     }
 
     private BufferedImage loadInstitutionLogo(UUID institutionId) {
