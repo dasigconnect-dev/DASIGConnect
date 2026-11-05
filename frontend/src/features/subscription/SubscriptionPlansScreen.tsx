@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +15,7 @@ import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys, queryRoots } from "../../lib/queryKeys";
 import ConfirmDialog from "../user-management/components/ConfirmDialog";
+import { isSubscriptionEnabled } from "../../config/features";
 import "../../styles/settings.css";
 import "../../styles/subscription-plans.css";
 
@@ -26,6 +27,12 @@ const PLAN_STALE_TIME_MS = 60_000;
 
 export default function SubscriptionPlansScreen({ user }: Props) {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isSubscriptionEnabled()) {
+      navigate("/settings", { replace: true });
+    }
+  }, [navigate]);
   const toast = useToast();
   const queryClient = useQueryClient();
   const [pendingPlan, setPendingPlan] = useState<SubscriptionPlan | null>(null);

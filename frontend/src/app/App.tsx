@@ -11,6 +11,7 @@ import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
 import { RequireAdmin, RequireReviewer, RequireSignedIn } from "../components/common/RouteGates";
 import { useAuthSession } from "../features/auth/hooks/useAuthSession";
+import { isSubscriptionEnabled } from "../config/features";
 
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
@@ -223,7 +224,7 @@ function App() {
 
             {/* ── Signed in: full-screen admin screens (no sidebar) ──── */}
             <Route element={<RequireAdmin user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
-              <Route path="/upgrade-plan" element={<SubscriptionPlansScreen user={currentUser!} />} />
+              <Route path="/upgrade-plan" element={isSubscriptionEnabled() ? <SubscriptionPlansScreen user={currentUser!} /> : <Navigate to="/settings" replace />} />
             </Route>
 
             <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />

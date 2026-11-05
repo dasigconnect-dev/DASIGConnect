@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,6 +40,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 @WebMvcTest(SubscriptionController.class)
 @Import(SecurityConfig.class)
+@TestPropertySource(properties = "app.subscription.enabled=true")
 class SubscriptionControllerTest {
 
     @Autowired
