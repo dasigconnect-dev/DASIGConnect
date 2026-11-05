@@ -28,6 +28,7 @@ import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionSta
 import { saveWatermarkConfiguration } from "../../api/watermarkApi";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { isSubscriptionEnabled } from "../../config/features";
 import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
@@ -285,7 +286,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   };
 
   function switchTab(tab: SettingsTab) {
-    if ((tab === "page" || tab === "subscription") && !canManagePage) return;
+    if (tab === "page" && !canManagePage) return;
+    if (tab === "subscription" && (!canManagePage || !isSubscriptionEnabled())) return;
     navigate(`/settings#${tab}`, { replace: true });
   }
 
@@ -683,7 +685,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             </div>
           )}
 
-          {canManagePage && (
+          {canManagePage && isSubscriptionEnabled() && (
             <div className="sidebar-nav-group">
               <div className="sidebar-nav-label">Organization</div>
               <button
@@ -1267,7 +1269,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             </div>
           )}
 
-          {activeTab === "subscription" && canManagePage && (
+          {activeTab === "subscription" && canManagePage && isSubscriptionEnabled() && (
             <Suspense fallback={<SubscriptionPanelLoader />}>
               <SubscriptionSettingsPanel userId={user.id} isOwner={user.adminOwner === true} />
             </Suspense>
@@ -1334,6 +1336,6 @@ function getActiveTabFromHash(hashValue: string, canManagePage: boolean): Settin
   const hash = hashValue.replace("#", "");
   if (hash === "password") return "password";
   if ((hash === "page" || hash === "watermark-studio") && canManagePage) return "page";
-  if (hash === "subscription" && canManagePage) return "subscription";
+  if (hash === "subscription" && canManagePage && isSubscriptionEnabled()) return "subscription";
   return "account";
 }

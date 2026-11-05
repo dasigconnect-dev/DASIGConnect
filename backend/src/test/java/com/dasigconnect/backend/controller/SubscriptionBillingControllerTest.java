@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -30,6 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(SubscriptionBillingController.class)
 @Import(SecurityConfig.class)
+@TestPropertySource(properties = "app.subscription.enabled=true")
 class SubscriptionBillingControllerTest {
 
     @Autowired MockMvc mockMvc;
