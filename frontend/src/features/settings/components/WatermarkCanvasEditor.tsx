@@ -42,6 +42,9 @@ interface WatermarkCanvasEditorProps {
   disabled?: boolean;
   institutionName?: string;
   institutionLogoUrl?: string | null;
+  onBack?: () => void;
+  onSave?: () => void;
+  isSaving?: boolean;
 }
 
 type SideTab = "shapes" | "text" | "uploads" | "layers" | null;
@@ -52,6 +55,9 @@ export default function WatermarkCanvasEditor({
   disabled = false,
   institutionName,
   institutionLogoUrl,
+  onBack,
+  onSave,
+  isSaving = false,
 }: WatermarkCanvasEditorProps) {
   const [aspectRatio, setAspectRatio] = useState<AspectRatioType>("1:1");
   const [background, setBackground] = useState<CanvasBackground>("checkerboard");
@@ -64,8 +70,36 @@ export default function WatermarkCanvasEditor({
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<number>(100);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  function handleZoomIn() {
+    setZoom((prev) => Math.min(200, prev + 10));
+  }
+
+  function handleZoomOut() {
+    setZoom((prev) => Math.max(50, prev - 10));
+  }
+
+  function handleResetZoom() {
+    setZoom(100);
+  }
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    function handleWheel(e: WheelEvent) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 10 : -10;
+        setZoom((prev) => Math.max(50, Math.min(200, prev + delta)));
+      }
+    }
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", handleWheel);
+  }, []);
 
   const interaction = useCanvasInteraction({
     frameRef: canvasRef,
@@ -279,8 +313,51 @@ export default function WatermarkCanvasEditor({
 
   return (
     <div className="canva-studio-app">
-      {/* 1. Left Vertical Navigation Rail (Blue & White) */}
-      <nav className="canva-rail" aria-label="Canva Design Tools">
+      {/* 0. Canva Studio Main Header Bar */}
+      <header className="canva-studio-header">
+        <div className="canva-header-left">
+          {onBack && (
+            <button
+              type="button"
+              className="sub-back-btn"
+              onClick={onBack}
+              title="Return to Page Settings"
+            >
+              <i className="ti ti-arrow-left" aria-hidden="true" />
+              <span>Back to Page Settings</span>
+            </button>
+          )}
+        </div>
+
+        <div className="canva-header-center">
+          <h1 className="canva-header-title">Watermark Studio</h1>
+        </div>
+
+        <div className="canva-header-right">
+          <div className="canva-header-ratio-badge" title={`Active canvas format is ${aspectRatio}`}>
+            <i className="ti ti-aspect-ratio" aria-hidden="true" />
+            <span>Format: <strong>{aspectRatio}</strong></span>
+          </div>
+          {onSave && (
+            <button
+              type="button"
+              className="canva-header-save-btn"
+              disabled={disabled || isSaving}
+              aria-busy={isSaving}
+              onClick={onSave}
+              title="Save watermark changes across all ratios"
+            >
+              <i className={isSaving ? "ti ti-loader-2 canva-spinner" : "ti ti-device-floppy"} aria-hidden="true" />
+              <span>{isSaving ? "Saving..." : "Save"}</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* 1. Main Studio Layout (Left Rail + Drawer + Center Workspace) */}
+      <div className="canva-studio-main">
+        {/* Left Vertical Navigation Rail (Blue & White) */}
+        <nav className="canva-rail" aria-label="Canva Design Tools">
         <div className="canva-rail-top">
           <button
             type="button"
@@ -1452,6 +1529,7 @@ export default function WatermarkCanvasEditor({
         {/* 4. Canvas Stage Area */}
         <div
           className="canva-stage-wrap"
+          ref={stageRef}
           onClick={(e) => {
             if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("canva-stage-wrap")) {
               setSelectedId(null);
@@ -1461,6 +1539,11 @@ export default function WatermarkCanvasEditor({
           <div
             className={`canva-frame wm-aspect-${aspectRatio.replace(":", "-")} wm-bg-${background}`}
             ref={canvasRef}
+            style={{
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: "center center",
+              transition: "transform 0.12s ease-out",
+            }}
             onClick={(e) => {
               if (
                 e.target === canvasRef.current ||
@@ -1723,8 +1806,52 @@ export default function WatermarkCanvasEditor({
               <i className="ti ti-moon" /> Dark Photo
             </button>
           </div>
+
+          {/* Zoom In / Zoom Out Controls */}
+          <div className="canva-pill-segment canva-zoom-segment">
+            <span className="canva-segment-label">Zoom:</span>
+            <button
+              type="button"
+              className="canva-zoom-btn"
+              onClick={handleZoomOut}
+              disabled={zoom <= 50}
+              title="Zoom Out (Ctrl -)"
+              aria-label="Zoom out"
+            >
+              <i className="ti ti-minus" />
+            </button>
+            <button
+              type="button"
+              className="canva-zoom-val-btn"
+              onClick={handleResetZoom}
+              title="Click to Reset Zoom to 100%"
+            >
+              {zoom}%
+            </button>
+            <button
+              type="button"
+              className="canva-zoom-btn"
+              onClick={handleZoomIn}
+              disabled={zoom >= 200}
+              title="Zoom In (Ctrl +)"
+              aria-label="Zoom in"
+            >
+              <i className="ti ti-plus" />
+            </button>
+            {zoom !== 100 && (
+              <button
+                type="button"
+                className="canva-zoom-fit-btn"
+                onClick={handleResetZoom}
+                title="Reset Zoom to 100%"
+              >
+                Fit
+              </button>
+            )}
+          </div>
         </footer>
       </main>
+      </div>
     </div>
   );
 }

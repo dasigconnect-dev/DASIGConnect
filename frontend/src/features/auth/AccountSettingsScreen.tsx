@@ -608,61 +608,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   if (isStudioOpen && canManagePage) {
     return (
-      <div className="dash-body settings-page settings-studio-fullscreen-page">
-        <div className="settings-studio-topbar">
-          <button
-            type="button"
-            className="settings-studio-back-btn"
-            onClick={closeStudio}
-            title="Return to Page Settings"
-          >
-            <i className="ti ti-arrow-left" aria-hidden="true" />
-            Back to Page Settings
-          </button>
-        </div>
-
-        <section className="settings-studio-card" id="watermark-studio">
-          <header className="settings-studio-header">
-            <div className="settings-studio-header-left">
-              <div className="settings-studio-title-group">
-                <h2>Automated Watermark Studio</h2>
-                <p>Add up to 3 shapes, text or images. Sizes are shared; positions are saved separately for 1:1, 4:3 and 16:9.</p>
-              </div>
-            </div>
-
-            <div className="settings-studio-header-right">
-              <button
-                type="button"
-                className="settings-save-button"
+      <div className="settings-studio-fullscreen-page">
+        {watermarkLoading ? (
+          <WatermarkStudioLoader />
+        ) : (
+          <WatermarkStudioBoundary onRetry={() => window.location.reload()}>
+            <Suspense fallback={<WatermarkStudioLoader />}>
+              <WatermarkCanvasEditor
+                elements={watermarkElements}
+                onChange={setWatermarkElements}
                 disabled={saving === "watermark" || watermarkLoading}
-                aria-busy={saving === "watermark"}
-                onClick={() => void saveWatermark()}
-              >
-                <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
-                {saving === "watermark" ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </header>
-
-          <div className="settings-studio-body">
-            {watermarkLoading ? (
-              <WatermarkStudioLoader />
-            ) : (
-              <WatermarkStudioBoundary
-                onRetry={() => window.location.reload()}
-              >
-                <Suspense fallback={<WatermarkStudioLoader />}>
-                  <WatermarkCanvasEditor
-                    elements={watermarkElements}
-                    onChange={setWatermarkElements}
-                    disabled={false}
-                    institutionName="DASIG Central Visayas"
-                  />
-                </Suspense>
-              </WatermarkStudioBoundary>
-            )}
-          </div>
-        </section>
+                institutionName="DASIG Central Visayas"
+                onBack={closeStudio}
+                onSave={() => void saveWatermark()}
+                isSaving={saving === "watermark"}
+              />
+            </Suspense>
+          </WatermarkStudioBoundary>
+        )}
       </div>
     );
   }
