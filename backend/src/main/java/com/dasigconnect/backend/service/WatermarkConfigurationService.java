@@ -12,6 +12,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -147,13 +148,57 @@ public class WatermarkConfigurationService {
             }
             el.setXPercent(clamp(el.getXPercent(), 0.0, 100.0));
             el.setYPercent(clamp(el.getYPercent(), 0.0, 100.0));
-            el.setWidthPercent(clamp(el.getWidthPercent(), 1.0, 100.0));
-            el.setHeightPercent(clamp(el.getHeightPercent(), 1.0, 100.0));
+            // Size is a percent of the canvas height, so an element can be as wide as the widest format.
+            el.setWidthPercent(clamp(el.getWidthPercent(), 1.0, WatermarkLayout.FULL_WIDTH_PERCENT));
+            el.setHeightPercent(clamp(el.getHeightPercent(), 0.2, 100.0));
             el.setOpacity(clamp(el.getOpacity(), 0.05, 1.0));
+            el.setLayouts(sanitizeLayouts(el.getLayouts()));
+            el.setRatios(sanitizeRatios(el.getRatios()));
             sanitized.add(el);
             if (sanitized.size() >= 3) break;
         }
         return sanitized;
+    }
+
+    /** Keeps only the per-format positions the studio can produce, clamped to the canvas. */
+    private Map<String, WatermarkElementDto.Position> sanitizeLayouts(Map<String, WatermarkElementDto.Position> raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        Map<String, WatermarkElementDto.Position> sanitized = new LinkedHashMap<>();
+        for (String key : WatermarkLayout.OVERRIDE_KEYS) {
+            WatermarkElementDto.Position position = raw.get(key);
+            if (position == null) continue;
+            sanitized.put(key, new WatermarkElementDto.Position(
+                    clamp(position.xPercent(), 0.0, 100.0),
+                    clamp(position.yPercent(), 0.0, 100.0)));
+        }
+        return sanitized.isEmpty() ? null : sanitized;
+    }
+
+    /** Keeps only valid ratio configs ("1:1", "4:3", "16:9"), with numbers clamped safely. */
+    private Map<String, WatermarkElementDto.RatioConfig> sanitizeRatios(Map<String, WatermarkElementDto.RatioConfig> raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        Map<String, WatermarkElementDto.RatioConfig> sanitized = new LinkedHashMap<>();
+        for (String key : List.of("1:1", "4:3", "16:9")) {
+            WatermarkElementDto.RatioConfig cfg = raw.get(key);
+            if (cfg == null) continue;
+            sanitized.put(key, new WatermarkElementDto.RatioConfig(
+                    cfg.xPercent() != null ? clamp(cfg.xPercent(), 0.0, 100.0) : null,
+                    cfg.yPercent() != null ? clamp(cfg.yPercent(), 0.0, 100.0) : null,
+                    cfg.widthPercent() != null ? clamp(cfg.widthPercent(), 1.0, WatermarkLayout.FULL_WIDTH_PERCENT) : null,
+                    cfg.heightPercent() != null ? clamp(cfg.heightPercent(), 0.2, 100.0) : null,
+                    cfg.opacity() != null ? clamp(cfg.opacity(), 0.05, 1.0) : null,
+                    cfg.order(),
+                    cfg.hidden(),
+                    cfg.textColor(),
+                    cfg.fillColor(),
+                    cfg.strokeColor(),
+                    cfg.fontSizePercent() != null ? clamp(cfg.fontSizePercent(), 0.5, 20.0) : null,
+                    cfg.fontWeight(),
+                    cfg.fontStyle(),
+                    cfg.fontFamily()
+            ));
+        }
+        return sanitized.isEmpty() ? null : sanitized;
     }
 
     private double clamp(double value, double min, double max) {

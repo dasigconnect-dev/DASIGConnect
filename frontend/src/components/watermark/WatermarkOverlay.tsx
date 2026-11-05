@@ -1,146 +1,68 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WatermarkElement } from "../../types/watermark.types";
+import WatermarkElementContent from "./WatermarkElementContent";
+import { computeBox, getSortedElementsByRatio, nearestAspectRatio, resolveRatioConfig } from "./watermarkLayout";
+import "../../styles/watermark-content.css";
 
 interface WatermarkOverlayProps {
   elements?: WatermarkElement[];
   className?: string;
 }
 
-function WatermarkImageItem({ el }: { el: WatermarkElement }) {
-  const [hasError, setHasError] = useState(false);
-
-  if (hasError) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(135deg, rgba(24, 119, 242, 0.9), rgba(12, 29, 61, 0.95))",
-          borderRadius: "8px",
-          color: "#ffffff",
-          fontSize: "11px",
-          fontWeight: 800,
-          letterSpacing: "0.05em",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-        }}
-      >
-        DASIG
-      </div>
-    );
-  }
-
-  const src = el.imageUrl && el.imageUrl.trim() !== "" 
-    ? el.imageUrl
-    : "/dasig-logo.png";
-
-  return (
-    <img
-      src={src}
-      alt=""
-      draggable={false}
-      onError={() => setHasError(true)}
-      style={{
-        width: "100%",
-        height: "100%",
-        objectFit: "contain",
-        display: "block",
-      }}
-    />
-  );
-}
-
+/**
+ * Draws the watermark on top of an image preview. It measures the surface it
+ * covers, picks the saved layout whose format is closest to the image
+ * (1:1, 4:3 or 16:9), and renders every element using that format's specific
+ * layering, position, size, opacity, and colors.
+ */
 export default function WatermarkOverlay({ elements, className = "" }: WatermarkOverlayProps) {
   if (!elements || elements.length === 0) return null;
+  return <MeasuredOverlay elements={elements} className={className} />;
+}
+
+function MeasuredOverlay({ elements, className }: { elements: WatermarkElement[]; className: string }) {
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const [aspect, setAspect] = useState(1);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const measure = () => {
+      const { width, height } = surface.getBoundingClientRect();
+      if (width > 0 && height > 0) setAspect(width / height);
+    };
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
+
+  const ratio = nearestAspectRatio(aspect);
+  const sorted = getSortedElementsByRatio(elements, ratio);
 
   return (
-    <div
-      className={`wm-overlay-container ${className}`}
-      style={{
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        overflow: "hidden",
-        zIndex: 5,
-        containerType: "size",
-      }}
-      aria-hidden="true"
-    >
-      {elements.map((el, index) => {
-        const isBold = el.fontWeight === "700" || el.fontWeight === "800" || el.fontWeight === "600";
-        const isItalic = el.fontStyle === "italic";
+    <div ref={surfaceRef} className={`wm-overlay-surface ${className}`} aria-hidden="true">
+      {sorted.map((el, index) => {
+        const cfg = resolveRatioConfig(el, ratio, index);
+        if (cfg.hidden) return null;
 
+        const box = computeBox(el, ratio, aspect);
         return (
           <div
             key={el.id || index}
-            className={`wm-overlay-el wm-type-${el.type}`}
+            className={`wm-layer wm-type-${el.type}`}
             style={{
-              position: "absolute",
-              left: `${el.xPercent}%`,
-              top: `${el.yPercent}%`,
-              width: `${el.widthPercent}%`,
-              height: `${el.heightPercent}%`,
-              opacity: el.opacity ?? 1,
-              zIndex: 10 + index * 5,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxSizing: "border-box",
+              left: `${box.left}%`,
+              top: `${box.top}%`,
+              width: `${box.width}%`,
+              height: `${box.height}%`,
+              opacity: cfg.opacity ?? 1,
+              zIndex: index + 1,
             }}
           >
-            {el.type === "image" && <WatermarkImageItem el={el} />}
-
-            {el.type === "text" && (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  color: el.textColor || "#ffffff",
-                  fontSize: `calc(${el.fontSizePercent || 3.2} * 1cqh)`,
-                  fontFamily: el.fontFamily || "Inter, -apple-system, sans-serif",
-                  fontWeight: isBold ? 700 : 500,
-                  fontStyle: isItalic ? "italic" : "normal",
-                  display: "flex",
-                  alignItems: "center",
-                  whiteSpace: "pre-line",
-                  wordBreak: "break-word",
-                  lineHeight: 1.25,
-                  textShadow: "0 1px 3px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35)",
-                }}
-              >
-                {el.text}
-              </div>
-            )}
-
-            {el.type === "shape" && (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  background:
-                    el.shapeType === "line"
-                      ? "transparent"
-                      : el.shapeType === "gradient"
-                        ? `linear-gradient(to bottom, transparent 0%, ${el.fillColor || "#07112a"} 100%)`
-                        : el.fillColor || "transparent",
-                  borderWidth:
-                    el.shapeType === "line"
-                      ? "2px 0 0 0"
-                      : el.strokeColor &&
-                          el.strokeColor !== "transparent" &&
-                          el.strokeColor.toLowerCase() !== "#ffffff"
-                        ? "2px"
-                        : "0px",
-                  borderStyle: "solid",
-                  borderColor: el.strokeColor || "transparent",
-                  borderRadius: el.shapeType === "line" ? "0px" : "8px",
-                }}
-              />
-            )}
+            <WatermarkElementContent el={el} ratio={ratio} />
           </div>
         );
       })}

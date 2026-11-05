@@ -818,9 +818,54 @@
   color: #64748b;
 }
 
-/* Dedicated Watermark Studio Card */
+/* ==========================================================================
+   Full Screen Studio Mode (Zero-Scroll, Hidden App Topbar and Sidebar)
+   ========================================================================== */
+.dash-shell:has(.settings-studio-fullscreen-page) {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+.dash-shell:has(.settings-studio-fullscreen-page) .dash-nav {
+  display: none !important;
+}
+
+.dash-shell:has(.settings-studio-fullscreen-page) .dash-sidebar {
+  display: none !important;
+}
+
+.dash-shell:has(.settings-studio-fullscreen-page) .dash-content-container {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.dash-shell:has(.settings-studio-fullscreen-page) .dash-content {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
 .settings-studio-fullscreen-page {
-  max-width: 100%;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  z-index: 999 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #f8fafc !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 .settings-studio-topbar {

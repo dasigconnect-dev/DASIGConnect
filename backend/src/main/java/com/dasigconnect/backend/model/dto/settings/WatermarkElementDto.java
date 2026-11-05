@@ -1,18 +1,55 @@
 package com.dasigconnect.backend.model.dto.settings;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class WatermarkElementDto {
+
+    /** Position of an element on one format's canvas, in percent of its width / height. */
+    public record Position(double xPercent, double yPercent) {}
+
+    /**
+     * Per-format configuration for an element (1:1, 4:3, or 16:9).
+     * Layering (order), positioning, size, opacity, and styles are stored independently.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record RatioConfig(
+            @JsonProperty("xPercent") Double xPercent,
+            @JsonProperty("yPercent") Double yPercent,
+            @JsonProperty("widthPercent") Double widthPercent,
+            @JsonProperty("heightPercent") Double heightPercent,
+            @JsonProperty("opacity") Double opacity,
+            @JsonProperty("order") Integer order,
+            @JsonProperty("hidden") Boolean hidden,
+            @JsonProperty("textColor") String textColor,
+            @JsonProperty("fillColor") String fillColor,
+            @JsonProperty("strokeColor") String strokeColor,
+            @JsonProperty("fontSizePercent") Double fontSizePercent,
+            @JsonProperty("fontWeight") String fontWeight,
+            @JsonProperty("fontStyle") String fontStyle,
+            @JsonProperty("fontFamily") String fontFamily
+    ) {}
+
     private String id;
     private String type; // "image" | "text" | "shape"
-    private double xPercent; // 0 - 100
-    private double yPercent; // 0 - 100
-    private double widthPercent; // 0 - 100
-    private double heightPercent; // 0 - 100
+    private double xPercent; // 1:1 position, % of canvas width
+    private double yPercent; // 1:1 position, % of canvas height
+    private double widthPercent; // % of canvas HEIGHT, shared by every format
+    private double heightPercent; // % of canvas HEIGHT, shared by every format
     private double opacity = 1.0; // 0.0 - 1.0
+    private Boolean hidden;
+
+    /** Position overrides keyed by "4:3" / "16:9". Legacy fallback. */
+    private Map<String, Position> layouts;
+
+    /** Ratio-specific configurations keyed by "1:1", "4:3", "16:9". */
+    private Map<String, RatioConfig> ratios;
 
     // Text specific
     private String text;
@@ -48,18 +85,23 @@ public class WatermarkElementDto {
         this.type = type;
     }
 
+    // Explicit names: Jackson's default mangling would turn "getXPercent" into "xpercent".
+    @JsonProperty("xPercent")
     public double getXPercent() {
         return xPercent;
     }
 
+    @JsonProperty("xPercent")
     public void setXPercent(double xPercent) {
         this.xPercent = xPercent;
     }
 
+    @JsonProperty("yPercent")
     public double getYPercent() {
         return yPercent;
     }
 
+    @JsonProperty("yPercent")
     public void setYPercent(double yPercent) {
         this.yPercent = yPercent;
     }
@@ -86,6 +128,37 @@ public class WatermarkElementDto {
 
     public void setOpacity(double opacity) {
         this.opacity = opacity;
+    }
+
+    public Boolean getHidden() {
+        return hidden;
+    }
+
+    public void setHidden(Boolean hidden) {
+        this.hidden = hidden;
+    }
+
+    @JsonIgnore
+    public boolean isHiddenElement() {
+        return Boolean.TRUE.equals(hidden);
+    }
+
+    public Map<String, Position> getLayouts() {
+        return layouts;
+    }
+
+    public void setLayouts(Map<String, Position> layouts) {
+        this.layouts = layouts;
+    }
+
+    @JsonProperty("ratios")
+    public Map<String, RatioConfig> getRatios() {
+        return ratios;
+    }
+
+    @JsonProperty("ratios")
+    public void setRatios(Map<String, RatioConfig> ratios) {
+        this.ratios = ratios;
     }
 
     public String getText() {

@@ -11,7 +11,7 @@ For configuration: the actor is an authenticated Administrator.
 For application: a submission containing at least one photo is being published. 
 **Main Flow:**
 Watermark Configuration
-An Administrator navigates to Page Settings and opens the Watermark configuration panel: a transparent canvas editor with 1:1, 4:5, and 16:9 aspect-ratio preview toggles.
+An Administrator navigates to Page Settings and opens the Watermark configuration panel: a transparent canvas editor with 1:1, 4:3, and 16:9 format toggles. Elements keep their size across formats; each format remembers its own element positions.
 The Administrator adds up to 3 elements — image, text, or shape (rectangle or line). Each element is positioned and sized as percentage-based coordinates and can be dragged or resized.
 The Administrator previews the design across the available aspect ratios.
 The Administrator saves; the system stores each element's position and size as percentage values, along with its type-specific properties (image reference, text content and font, or shape type and color).
@@ -35,7 +35,7 @@ Approved photo submissions carry the network-wide watermark design, rendered pro
 
 ## Implementation Status
 * ✅ **Implemented:**
-  * **Configuration Panel:** 1:1, 4:5, 16:9 previews, drag/drop sizing.
+  * **Configuration Panel:** 1:1, 4:3, 16:9 previews with per-format positions, drag/drop sizing.
   * **Element Types:** Image, text, and shape configuration up to a max of 3 elements. 
   * **Application Timing:** Configurations are read and applied live at the actual publish time, not approval time.
   * **A1 Default Watermark:** A built-in text watermark (`@DASIGCentralVisayas`) correctly kicks in if no DB config exists.
