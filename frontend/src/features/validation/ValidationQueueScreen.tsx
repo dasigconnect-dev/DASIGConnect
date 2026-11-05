@@ -579,6 +579,7 @@ export default function ValidationQueueScreen({
   };
   const hasActiveSelection = Boolean(selectedId);
   const isQueueExpanded = isDesktop && !hasActiveSelection;
+  const isPanelCollapsedEffective = isPanelCollapsed && hasActiveSelection;
 
   const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
     ? lockVerification.status
@@ -717,6 +718,8 @@ export default function ValidationQueueScreen({
     setSelected(null);
     setSelectedLoading(false);
     setLockVerification(null);
+    setEditMode(false);
+    setIsPanelCollapsed(false);
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
@@ -850,6 +853,8 @@ export default function ValidationQueueScreen({
       setSelected(null);
       setSelectedLoading(false);
       setLockVerification(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
     });
   }
 
@@ -1046,6 +1051,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1548,6 +1555,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1585,6 +1594,8 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setEditMode(false);
+      setIsPanelCollapsed(false);
       setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -1604,7 +1615,7 @@ export default function ValidationQueueScreen({
 
   return (
     <div
-      className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""} ${isQueueExpanded ? "is-queue-expanded" : ""} val-mobile-view--${mobileView}`}
+      className={`val-page ${isPanelCollapsedEffective ? "is-queue-collapsed" : ""} ${isQueueExpanded ? "is-queue-expanded" : ""} val-mobile-view--${mobileView}`}
     >
       <aside className="val-queue-panel">
         <div className="val-queue-header">
@@ -1977,10 +1988,10 @@ export default function ValidationQueueScreen({
         {/* Desktop only: on phones the slim mobile header replaces it. Starting an
             edit collapses the queue panel, which used to render this as an
             empty band under that header. */}
-        {isDesktop && (isPanelCollapsed || selected) && (
+        {isDesktop && (isPanelCollapsedEffective || selected) && (
           <div className="val-review-toolbar">
             <div>
-              {isPanelCollapsed && (
+              {isPanelCollapsedEffective && (
                 <button
                   type="button"
                   className="val-expand-btn"
