@@ -823,6 +823,14 @@
   max-width: 100%;
 }
 
+/* The Watermark Studio takes the full width: the dashboard sidebar is hidden
+   while it is open (on tablet/mobile it is already an off-canvas drawer). */
+@media (min-width: 1025px) {
+  .dash-shell:has(.settings-studio-fullscreen-page) .dash-sidebar {
+    display: none;
+  }
+}
+
 .settings-studio-topbar {
   margin-bottom: 12px;
   display: flex;

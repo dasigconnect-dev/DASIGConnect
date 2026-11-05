@@ -1074,36 +1074,36 @@
 
 .canva-frame {
   position: relative;
-  width: 100%;
-  max-width: 440px;
-  max-height: 440px;
+  flex: none;
+  height: 410px;
+  max-height: 410px;
+  width: calc(410px * var(--canva-aspect-num, 1));
+  max-width: 100%;
+  aspect-ratio: var(--canva-aspect, 1 / 1);
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid #cbd5e1;
   box-shadow: none;
-  transition: aspect-ratio 0.28s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.28s ease, max-height 0.28s ease;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1), aspect-ratio 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
-  container-type: inline-size;
+  container-type: size;
 }
 
 .canva-frame.wm-aspect-1-1 {
-  aspect-ratio: 1 / 1;
-  max-width: 410px;
-  max-height: 410px;
+  --canva-aspect: 1 / 1;
+  --canva-aspect-num: 1;
 }
 
-.canva-frame.wm-aspect-4-5 {
-  aspect-ratio: 4 / 5;
-  max-width: 340px;
-  max-height: 425px;
+.canva-frame.wm-aspect-4-3 {
+  --canva-aspect: 4 / 3;
+  --canva-aspect-num: 1.333333;
 }
 
 .canva-frame.wm-aspect-16-9 {
-  aspect-ratio: 16 / 9;
-  max-width: 460px;
-  max-height: 258px;
+  --canva-aspect: 16 / 9;
+  --canva-aspect-num: 1.777778;
 }
 
 /* Canvas Backdrops */

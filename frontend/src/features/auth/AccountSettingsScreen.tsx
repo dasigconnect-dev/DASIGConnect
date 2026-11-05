@@ -626,7 +626,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             <div className="settings-studio-header-left">
               <div className="settings-studio-title-group">
                 <h2>Automated Watermark Studio</h2>
-                <p>Design and position elements across square (1:1), portrait (4:5), and landscape (16:9) aspect ratios.</p>
+                <p>Add up to 3 shapes, text or images. Sizes are shared; positions are saved separately for 1:1, 4:3 and 16:9.</p>
               </div>
             </div>
 
