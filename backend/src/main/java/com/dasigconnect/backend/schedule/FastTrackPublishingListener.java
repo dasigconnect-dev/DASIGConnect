@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -29,12 +30,11 @@ import com.dasigconnect.backend.service.PublishingQueryService;
  * must never be called while holding an open DB transaction/connection. Each
  * PublishingQueryService call still gets its own short, separately-committed
  * transaction via the Spring proxy (a different bean, so no self-invocation
- * issue). Before this fix, both listener methods carried a
- * {@code @Transactional(REQUIRES_NEW)} spanning the claim AND the live Graph
- * API call (including up to 155s of cumulative retry backoff), holding a
- * connection out of the deliberately tiny 5-connection HikariCP pool for the
- * entire duration -- a real resource-exhaustion risk under concurrent
- * Fast-Track traffic that the scheduler path was specifically built to avoid.
+ * issue).
+ *
+ * Async execution: publishing is dispatched asynchronously to a background worker
+ * so neither approval nor retry blocks the HTTP request thread during Graph API
+ * calls and backoff retries.
  */
 @Component
 public class FastTrackPublishingListener {
@@ -51,11 +51,13 @@ public class FastTrackPublishingListener {
         this.facebookPublisherService = facebookPublisherService;
     }
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onSubmissionApproved(SubmissionApprovedEvent event) {
         publishIfFastTrack(event.submission());
     }
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onFastTrackRetry(SubmissionFastTrackRetryEvent event) {
         publishIfFastTrack(event.submission());
@@ -79,6 +81,7 @@ public class FastTrackPublishingListener {
         } catch (Exception ex) {
             log.error("Fast-Track publishing failed for submission {}: {}",
                     submission.getId(), ex.getMessage(), ex);
+            facebookPublisherService.markFailed(submission, "Fast-Track publishing failed: " + ex.getMessage());
         }
     }
 }
