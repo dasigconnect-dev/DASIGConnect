@@ -3571,13 +3571,16 @@
     height: calc(100vh - 56px);
     overflow: hidden;
   }
-  .val-page.is-queue-expanded .val-queue-panel {
+  .val-page.is-queue-expanded .val-queue-panel,
+  .val-page.is-queue-expanded.is-queue-collapsed .val-queue-panel {
     border-right: none;
     background: transparent;
     overflow: hidden;
     height: 100%;
     display: flex;
     flex-direction: column;
+    visibility: visible !important;
+    pointer-events: auto !important;
   }
   .val-page.is-queue-expanded .val-queue-header {
     background: transparent;
