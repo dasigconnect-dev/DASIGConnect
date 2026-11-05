@@ -6,6 +6,7 @@ import {
   getSystemHealthSummary,
   getSystemHealthTokens,
   initSystemHealthOAuth,
+  revealSystemHealthToken,
   runSystemHealthJob,
   setSystemHealthTokenManually,
   type BackgroundJobHealth,
@@ -51,6 +52,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [connectPageId, setConnectPageId] = useState("");
   const [connectAccessToken, setConnectAccessToken] = useState("");
   const [connectingPage, setConnectingPage] = useState(false);
+  const [showConnectToken, setShowConnectToken] = useState(false);
 
   // Active top-level tab (integrations | storage | jobs | performance)
   const [activeTab, setActiveTab] = useState<SystemHealthTab>(() => {
@@ -621,14 +623,25 @@ export default function SystemHealthScreen({ user }: Props) {
                         onChange={(e) => setConnectPageId(e.target.value)}
                         autoComplete="off"
                       />
-                      <input
-                        type="password"
-                        className="sys-input"
-                        placeholder="Page Access Token for that page"
-                        value={connectAccessToken}
-                        onChange={(e) => setConnectAccessToken(e.target.value)}
-                        autoComplete="off"
-                      />
+                      <div className="sys-input-group-relative">
+                        <input
+                          type={showConnectToken ? "text" : "password"}
+                          className="sys-input"
+                          placeholder="Page Access Token for that page"
+                          value={connectAccessToken}
+                          onChange={(e) => setConnectAccessToken(e.target.value)}
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          className="sys-token-icon-btn sys-input-eye-btn"
+                          onClick={() => setShowConnectToken((v) => !v)}
+                          title={showConnectToken ? "Hide token" : "Show token"}
+                          aria-label={showConnectToken ? "Hide token" : "Show token"}
+                        >
+                          <i className={showConnectToken ? "ti ti-eye-off" : "ti ti-eye"} aria-hidden="true" />
+                        </button>
+                      </div>
                       <button
                         type="button"
                         className="sys-btn sys-btn-primary sys-btn-sm"
@@ -1161,6 +1174,45 @@ function TokenTable({
   onManualTokenValueChange: (value: string) => void;
   onSetManualToken: (tokenId: string) => void;
 }) {
+  const toast = useToast();
+  const [revealedTokens, setRevealedTokens] = useState<Record<string, string>>({});
+  const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
+  const [revealingTokenId, setRevealingTokenId] = useState<string | null>(null);
+  const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
+  const [showManualPassword, setShowManualPassword] = useState(false);
+
+  async function handleToggleReveal(tokenId: string) {
+    if (showTokens[tokenId]) {
+      setShowTokens((prev) => ({ ...prev, [tokenId]: false }));
+      return;
+    }
+    if (revealedTokens[tokenId]) {
+      setShowTokens((prev) => ({ ...prev, [tokenId]: true }));
+      return;
+    }
+    setRevealingTokenId(tokenId);
+    try {
+      const res = await revealSystemHealthToken(tokenId);
+      setRevealedTokens((prev) => ({ ...prev, [tokenId]: res.data.accessToken }));
+      setShowTokens((prev) => ({ ...prev, [tokenId]: true }));
+    } catch {
+      toast.error("Unable to reveal token. Ensure you have Admin or Owner permissions.");
+    } finally {
+      setRevealingTokenId(null);
+    }
+  }
+
+  async function handleCopyToken(tokenStr: string, tokenId: string) {
+    try {
+      await navigator.clipboard.writeText(tokenStr);
+      setCopiedTokenId(tokenId);
+      toast.success("Page Access Token copied to clipboard.");
+      setTimeout(() => setCopiedTokenId(null), 2500);
+    } catch {
+      toast.error("Failed to copy token to clipboard.");
+    }
+  }
+
   if (tokens.length === 0) {
     return (
       <div className="um-data-card is-directory" style={{ marginTop: 0 }}>
@@ -1183,83 +1235,148 @@ function TokenTable({
         <table className="um-table sys-token-table">
           <thead>
             <tr>
-              <th style={{ width: "30%", paddingLeft: "24px" }}>CONNECTED PAGE</th>
-              <th style={{ width: "18%" }}>STATUS</th>
-              <th style={{ width: "20%" }}>EXPIRATION</th>
-              <th style={{ width: "16%" }}>LAST VALIDATED</th>
-              <th style={{ width: "16%", textAlign: "right", paddingRight: "24px" }}>ACTION</th>
+              <th style={{ width: "24%", paddingLeft: "24px" }}>CONNECTED PAGE</th>
+              <th style={{ width: "26%" }}>PAGE ACCESS TOKEN</th>
+              <th style={{ width: "14%" }}>STATUS</th>
+              <th style={{ width: "16%" }}>EXPIRATION</th>
+              <th style={{ width: "20%", textAlign: "right", paddingRight: "24px" }}>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
-            {tokens.map((token) => (
-              <Fragment key={token.id}>
-                <tr>
-                  <td style={{ paddingLeft: "24px" }}>
-                    <div className="sys-page-cell">
-                      <i className="ti ti-brand-facebook" />
-                      <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
-                    </div>
-                  </td>
-                  <td title={token.validationFailureReason ?? undefined}>
-                    <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
-                  </td>
-                  <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
-                  <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
-                  <td style={{ textAlign: "right", paddingRight: "24px", whiteSpace: "nowrap" }}>
-                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                      <button
-                        type="button"
-                        className="sys-btn sys-btn-ghost sys-btn-sm"
-                        disabled={!canReauthorize || busyTokenId === token.id}
-                        onClick={() => onReauthorize(token)}
-                        title="Renew Facebook Page Access Token via Facebook OAuth"
-                      >
-                        <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
-                        <span>Reauthorize</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="sys-btn sys-btn-ghost sys-btn-sm"
-                        disabled={!canReauthorize}
-                        onClick={() => onToggleManualEntry(token.id)}
-                        title="Paste a Page Access Token directly, without the OAuth flow"
-                      >
-                        <i className="ti ti-key" aria-hidden="true" />
-                        <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {manualEntryTokenId === token.id && (
+            {tokens.map((token) => {
+              const isRevealed = Boolean(showTokens[token.id] && revealedTokens[token.id]);
+              const tokenValue = revealedTokens[token.id] ?? "";
+              return (
+                <Fragment key={token.id}>
                   <tr>
-                    <td colSpan={5} style={{ paddingLeft: "24px", paddingRight: "24px" }}>
-                      <div className="sys-manual-token-row">
-                        <input
-                          type="password"
-                          className="sys-input"
-                          placeholder="Paste the Page Access Token"
-                          value={manualTokenValue}
-                          onChange={(e) => onManualTokenValueChange(e.target.value)}
-                          autoComplete="off"
-                        />
+                    <td style={{ paddingLeft: "24px" }}>
+                      <div className="sys-page-cell">
+                        <i className="ti ti-brand-facebook" aria-hidden="true" />
+                        <div>
+                          <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                          <span style={{ display: "block", fontSize: "11px", color: "var(--color-text-secondary, #64748b)", marginTop: "2px" }}>
+                            ID: {token.pageId}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="sys-token-secret-box">
+                        <span
+                          className="sys-token-secret-text"
+                          title={isRevealed ? tokenValue : "Click eye icon to reveal token"}
+                        >
+                          {isRevealed ? tokenValue : "••••••••••••••••••••••••••••••••"}
+                        </span>
                         <button
                           type="button"
-                          className="sys-btn sys-btn-primary sys-btn-sm"
-                          disabled={!manualTokenValue.trim() || busyTokenId === token.id}
-                          onClick={() => onSetManualToken(token.id)}
+                          className="sys-token-icon-btn"
+                          disabled={revealingTokenId === token.id}
+                          onClick={() => void handleToggleReveal(token.id)}
+                          title={showTokens[token.id] ? "Hide token" : "Reveal token"}
+                          aria-label={showTokens[token.id] ? "Hide token" : "Reveal token"}
                         >
-                          <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
-                          <span>Save</span>
+                          <i
+                            className={
+                              revealingTokenId === token.id
+                                ? "ti ti-loader-2 sys-spin"
+                                : showTokens[token.id]
+                                ? "ti ti-eye-off"
+                                : "ti ti-eye"
+                            }
+                            aria-hidden="true"
+                          />
                         </button>
-                        <span className="sys-manual-token-hint">
-                          Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
-                        </span>
+                        {isRevealed && (
+                          <button
+                            type="button"
+                            className="sys-token-icon-btn"
+                            onClick={() => void handleCopyToken(tokenValue, token.id)}
+                            title={copiedTokenId === token.id ? "Copied!" : "Copy token to clipboard"}
+                            aria-label="Copy token"
+                          >
+                            <i
+                              className={copiedTokenId === token.id ? "ti ti-check" : "ti ti-copy"}
+                              style={{ color: copiedTokenId === token.id ? "#16a34a" : undefined }}
+                              aria-hidden="true"
+                            />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td title={token.validationFailureReason ?? undefined}>
+                      <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
+                    </td>
+                    <td>
+                      <span className="sys-date-text">{formatDate(token.expiresAt)}</span>
+                    </td>
+                    <td style={{ textAlign: "right", paddingRight: "24px", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                        <button
+                          type="button"
+                          className="sys-btn sys-btn-ghost sys-btn-sm"
+                          disabled={!canReauthorize || busyTokenId === token.id}
+                          onClick={() => onReauthorize(token)}
+                          title="Renew Facebook Page Access Token via Facebook OAuth"
+                        >
+                          <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
+                          <span>Reauthorize</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="sys-btn sys-btn-ghost sys-btn-sm"
+                          disabled={!canReauthorize}
+                          onClick={() => onToggleManualEntry(token.id)}
+                          title="Paste a Page Access Token directly, without the OAuth flow"
+                        >
+                          <i className="ti ti-key" aria-hidden="true" />
+                          <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
+                  {manualEntryTokenId === token.id && (
+                    <tr>
+                      <td colSpan={5} style={{ paddingLeft: "24px", paddingRight: "24px", background: "#f8fafc" }}>
+                        <div className="sys-manual-token-row" style={{ padding: "12px 0" }}>
+                          <div className="sys-input-group-relative">
+                            <input
+                              type={showManualPassword ? "text" : "password"}
+                              className="sys-input"
+                              placeholder="Paste the Page Access Token"
+                              value={manualTokenValue}
+                              onChange={(e) => onManualTokenValueChange(e.target.value)}
+                              autoComplete="off"
+                            />
+                            <button
+                              type="button"
+                              className="sys-token-icon-btn sys-input-eye-btn"
+                              onClick={() => setShowManualPassword((v) => !v)}
+                              title={showManualPassword ? "Hide token" : "Show token"}
+                              aria-label={showManualPassword ? "Hide token" : "Show token"}
+                            >
+                              <i className={showManualPassword ? "ti ti-eye-off" : "ti ti-eye"} aria-hidden="true" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="sys-btn sys-btn-primary sys-btn-sm"
+                            disabled={!manualTokenValue.trim() || busyTokenId === token.id}
+                            onClick={() => onSetManualToken(token.id)}
+                          >
+                            <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
+                            <span>Save</span>
+                          </button>
+                          <span className="sys-manual-token-hint">
+                            Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

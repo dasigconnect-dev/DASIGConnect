@@ -86,6 +86,10 @@ export function initSystemHealthOAuth(tokenId: string) {
   return api.get<{ authorizationUrl: string }>(`/system-health/tokens/${tokenId}/oauth-init`);
 }
 
+export function revealSystemHealthToken(tokenId: string) {
+  return api.get<{ accessToken: string }>(`/system-health/tokens/${tokenId}/reveal`);
+}
+
 /**
  * Pastes a Page Access Token directly onto an existing token row — an
  * alternative to the OAuth flow above. Cannot create a new page; the target
