@@ -63,7 +63,7 @@ export const statusCopy: Record<
   },
   scheduled: {
     label: "Scheduled",
-    meaning: "Approved and scheduled.",
+    meaning: "Scheduled to publish automatically.",
     whoActsNext: "The system will publish this automatically at the scheduled time.",
     actionLabel: "View Schedule",
   },

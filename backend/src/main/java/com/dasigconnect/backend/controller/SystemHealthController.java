@@ -108,6 +108,14 @@ public class SystemHealthController {
         return ResponseEntity.ok(ApiResponse.success(tokenManagementService.initOAuth(tokenId, admin)));
     }
 
+    @GetMapping("/tokens/{tokenId}/reveal")
+    public ResponseEntity<ApiResponse<Map<String, String>>> revealToken(
+            @PathVariable java.util.UUID tokenId,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("accessToken", tokenManagementService.revealToken(tokenId, admin))));
+    }
+
     /**
      * Manually pastes a Page Access Token onto an existing token row —
      * an alternative to the OAuth re-authorization flow above. Cannot create a

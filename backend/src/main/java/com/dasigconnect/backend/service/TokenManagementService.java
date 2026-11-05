@@ -97,6 +97,14 @@ public class TokenManagementService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public String revealToken(UUID tokenId, JwtUserDetails admin) {
+        FacebookPageToken token = pageTokenRepository.findById(tokenId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Facebook page token not found."));
+        return tokenEncryptionService.decryptToken(token.getEncryptedToken());
+    }
+
     /**
      * Builds the Meta OAuth authorization URL for re-authentication.
      * The state parameter is self-verifying (HMAC-signed) — nothing is stored
