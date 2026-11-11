@@ -76,8 +76,9 @@ import {
   effectiveMediaTags,
   extractHashtags,
   formatTimeInput,
-  getDirtySignature,
+  getDraftFieldSignature,
   getErrorMessage,
+  getMediaSignature,
   getOrderedLocalFiles,
   getPreviewValidation,
   getReadinessChecklist,
@@ -142,7 +143,7 @@ const InPageFacebookPreview = lazy(() =>
   })),
 );
 
-const AUTO_SAVE_DELAY_MS = 1200;
+const AUTO_SAVE_DELAY_MS = 2000;
 const COMPOSER_INSTITUTIONS_STALE_TIME_MS = 5 * 60_000;
 
 interface SubmissionScreenProps {
@@ -233,7 +234,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const mediaTagsInputRef = useRef<HTMLInputElement | null>(null);
   const prefilledRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
-  const cleanSignatureRef = useRef(getDirtySignature(initialForm));
+  const cleanDraftFieldSignatureRef = useRef(getDraftFieldSignature(initialForm));
+  const cleanMediaSignatureRef = useRef(getMediaSignature(initialForm));
   const shouldPromptBeforeLeaveRef = useRef(false);
   const browserBackGuardRef = useRef(false);
   const uploadBatchControllerRef = useRef<AbortController | null>(null);
@@ -543,13 +545,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     canStart: !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
     onStepChange: handleComposerTourStep,
   });
-  const isDirty = useMemo(
-    () =>
-      !isReadOnlySubmission &&
-      isDirtyDraft(form) &&
-      getDirtySignature(form) !== cleanSignatureRef.current,
-    [form, isReadOnlySubmission],
-  );
+  const draftFieldSignature = useMemo(() => getDraftFieldSignature(form), [form]);
+  const mediaSignature = useMemo(() => getMediaSignature(form), [form]);
+  const hasDraftFieldChanges = draftFieldSignature !== cleanDraftFieldSignatureRef.current;
+  const hasMediaChanges = mediaSignature !== cleanMediaSignatureRef.current;
+  const isDirty =
+    !isReadOnlySubmission &&
+    isDirtyDraft(form) &&
+    (hasDraftFieldChanges || hasMediaChanges);
   const shouldPromptBeforeLeave = isDirty;
   const mediaAutosave = useSubmissionMediaAutosave({
     submissionId: form.id,
@@ -564,8 +567,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     onReconciled: handleMediaAutosaveReconciled,
     onError: handleMediaAutosaveError,
   });
+  const autosaveInProgress = saveState === "saving" || mediaAutosave.syncing;
   const busy =
-    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia || mediaAutosave.blocking;
+    autosaveInProgress || submitting || withdrawing || deleting || reorderingMedia || mediaAutosave.blocking;
   const canDeleteCurrentSubmission = Boolean(
     form.id && (form.status === "draft" || form.status === "rejected"),
   );
@@ -687,7 +691,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           ?? current.mediaSkipWatermark[nextKey]
           ?? Boolean(savedAsset?.skipWatermark);
       }
-      return {
+      const next = {
         ...current,
         status: summary.status,
         files: nextFiles,
@@ -698,10 +702,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         pendingAssetIds: nextPendingAssetIds,
         removedAssetIds: current.removedAssetIds.filter((assetId) => serverIds.has(assetId)),
       };
+      cleanMediaSignatureRef.current = getMediaSignature(next);
+      return next;
     });
     setPickerItems(items);
     syncSubmissionCaches(summary);
     clearAssetIdParam();
+    setSaveState("saved");
     setMediaUploadFailed(false);
   }
 
@@ -1529,7 +1536,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
-    cleanSignatureRef.current = getDirtySignature(initialForm);
+    cleanDraftFieldSignatureRef.current = getDraftFieldSignature(initialForm);
+    cleanMediaSignatureRef.current = getMediaSignature(initialForm);
     setFilter("drafts");
     setActiveStep("media");
     setMediaUploadFailed(false);
@@ -1560,7 +1568,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
-    cleanSignatureRef.current = getDirtySignature(initialForm);
+    cleanDraftFieldSignatureRef.current = getDraftFieldSignature(initialForm);
+    cleanMediaSignatureRef.current = getMediaSignature(initialForm);
     browserBackGuardRef.current = false;
     shownRevisionModalForIdRef.current = null;
     setRevisionModalOpen(false);
@@ -1664,7 +1673,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setCenterMode("edit");
       setSaveState("saved");
       setMediaUploadFailed(false);
-      cleanSignatureRef.current = getDirtySignature(nextForm);
+      cleanDraftFieldSignatureRef.current = getDraftFieldSignature(nextForm);
+      cleanMediaSignatureRef.current = getMediaSignature(nextForm);
 
       if (submission.status === "needs_revision") {
         const forceOpen = searchParams.get("openFeedback") === "true";
@@ -1701,7 +1711,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setIsEditingRejected(false);
   }
 
-  async function saveDraft(options: { silent?: boolean } = {}): Promise<string | false> {
+  async function saveDraft(options: { silent?: boolean; fieldsOnly?: boolean } = {}): Promise<string | false> {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
     if (isAdminComposer && !form.institutionId) {
@@ -1713,10 +1723,34 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
     setSaveState("saving");
     try {
+      const savedDraftFieldSignature = getDraftFieldSignature(form);
       const payload = toPayload(form, scheduledAt);
       const response = form.id
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
+
+      // Background autosave owns draft fields only. Media has a dedicated,
+      // serialized reconciliation queue, so do not rebuild picker state or
+      // duplicate uploads while quietly saving title/caption/schedule changes.
+      if (options.fieldsOnly) {
+        setForm((current) => ({
+          ...current,
+          id: response.data.id,
+          status: response.data.status,
+        }));
+        syncSubmissionCaches({
+          ...response.data,
+          mediaAssets: form.savedAssets,
+        });
+        cleanDraftFieldSignatureRef.current = savedDraftFieldSignature;
+        setSaveState("saved");
+        if (!routeSubmissionId || routeSubmissionId === "new") {
+          routedSubmissionRef.current = response.data.id;
+          navigate(`/submissions/${response.data.id}${location.search}`, { replace: true });
+        }
+        return response.data.id;
+      }
+
       let finalResponse = response;
       for (const assetId of form.removedAssetIds) {
         await detachAsset(response.data.id, assetId).catch(() => undefined);
@@ -1778,7 +1812,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       clearAssetIdParam();
       setSaveState("saved");
       setMediaUploadFailed(false);
-      cleanSignatureRef.current = getDirtySignature(nextForm);
+      cleanDraftFieldSignatureRef.current = getDraftFieldSignature(nextForm);
+      cleanMediaSignatureRef.current = getMediaSignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
       if (!routeSubmissionId || routeSubmissionId === "new") {
         routedSubmissionRef.current = finalResponse.data.id;
@@ -1795,12 +1830,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  const autosaveDraft = useEffectEvent(() => {
-    void saveDraft({ silent: true });
+  const autosaveDraft = useEffectEvent((fieldsOnly: boolean) => {
+    void saveDraft({ silent: true, fieldsOnly });
   });
 
   useEffect(() => {
-    if (!isDirty || busy || fancyTextPreviewActive) return;
+    const retryFailedMedia = mediaAutosave.failed && hasMediaChanges;
+    if ((!hasDraftFieldChanges && !retryFailedMedia) || busy || fancyTextPreviewActive) return;
     // Selecting media is enough to create the initial draft. The media picker
     // depends on persisted asset IDs for visual AI suggestions, so requiring an
     // explicit first save would leave a newly selected image unusable there.
@@ -1808,11 +1844,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
-      autosaveDraft();
+      autosaveDraft(!retryFailedMedia);
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [busy, fancyTextPreviewActive, form, hasMedia, isAdminComposer, isDirty, scheduledAt]);
+  }, [busy, draftFieldSignature, fancyTextPreviewActive, form.id, form.institutionId, hasDraftFieldChanges, hasMedia, hasMediaChanges, isAdminComposer, mediaAutosave.failed, scheduledAt]);
 
   async function handleSave() {
     await saveDraft();
@@ -2241,7 +2277,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
       syncSubmissionCaches(data);
       toast.success("Media order updated.");
-      cleanSignatureRef.current = getDirtySignature(nextForm);
+      cleanDraftFieldSignatureRef.current = getDraftFieldSignature(nextForm);
+      cleanMediaSignatureRef.current = getMediaSignature(nextForm);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Media order could not be saved."));
     } finally {
@@ -2526,24 +2563,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         </div>
         <div className="sub-nav-right">
           {/* Draft save status only means something while the post is still editable. */}
-          {!isReadOnlySubmission && (isDirty || saveState === "saving" || saveState === "saved") && (
+          {!isReadOnlySubmission && (isDirty || autosaveInProgress || saveState === "saved") && (
             <div
               className={`sub-nav-save-status ${
-                saveState === "saving"
+                autosaveInProgress
                   ? "saving"
                   : saveState === "saved" && !isDirty
                     ? "saved"
                     : ""
               }`}
               title={
-                saveState === "saving"
+                autosaveInProgress
                   ? "Saving draft changes..."
                   : saveState === "saved" && !isDirty
                     ? "All draft changes saved"
                     : "You have unsaved changes"
               }
               aria-label={
-                saveState === "saving"
+                autosaveInProgress
                   ? "Saving draft changes"
                   : saveState === "saved" && !isDirty
                     ? "All draft changes saved"
@@ -2552,7 +2589,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             >
               <i
                 className={
-                  saveState === "saving"
+                  autosaveInProgress
                     ? "ti ti-loader-2 sub-spin"
                     : saveState === "saved" && !isDirty
                       ? "ti ti-cloud-check"
@@ -2561,7 +2598,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 aria-hidden="true"
               ></i>
               <span className="sub-nav-save-text">
-                {saveState === "saving"
+                {autosaveInProgress
                   ? "Saving..."
                   : saveState === "saved" && !isDirty
                     ? "Draft saved"
@@ -2705,7 +2742,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   onClick={() => void handleSave()}
                   disabled={busy || Boolean(hydratingId)}
                 >
-                  {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                  {autosaveInProgress ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
                 </button>
               )}
               {/* <button
@@ -3502,7 +3539,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     onClick={() => void handleSave()}
                     disabled={busy || Boolean(hydratingId)}
                   >
-                    {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                    {autosaveInProgress ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
                   </button>
                 )}
               </>
