@@ -56,7 +56,11 @@ function baseDraft(overrides: Partial<Draft> = {}): Draft {
 
 /** Wires the composer endpoints to one in-memory draft; returns it and a request log. */
 async function mockComposerBackend(page: Page, initial: Draft | null) {
-  const state: { draft: Draft | null; log: Array<{ key: string; body: unknown }> } = { draft: initial, log: [] };
+  const state: {
+    draft: Draft | null;
+    log: Array<{ key: string; body: unknown }>;
+    patchDelayMs: number;
+  } = { draft: initial, log: [], patchDelayMs: 0 };
   const record = (request: ApiRequest) => {
     const body = request.route.request().postDataJSON() as unknown;
     state.log.push({ key: `${request.method} ${request.path}`, body });
@@ -98,6 +102,9 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       await json(request, state.draft);
     },
     [`PATCH /api/v1/submissions/${DRAFT_ID}`]: async (request: ApiRequest) => {
+      if (state.patchDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, state.patchDelayMs));
+      }
       state.draft = { ...(state.draft ?? baseDraft()), ...record(request) } as Draft;
       await json(request, state.draft);
     },
@@ -280,11 +287,18 @@ test.describe("submission composer", () => {
         mediaCount: 1,
       }),
     );
+    state.patchDelayMs = 800;
 
     const caption = page.getByPlaceholder("Write a compelling caption for the DASIG Facebook page...");
     await goToStep(page, /Step 2 Post Details/, caption);
     await expect(caption).toHaveValue("Original caption");
     await caption.fill("Edited caption, saved automatically");
+
+    await expect(page.locator(".sub-nav-save-status.saving")).toBeVisible({ timeout: 6_000 });
+    await expect(page.locator(".sub-nav-save-status.saved")).toBeVisible({ timeout: 6_000 });
+    await expect(caption).toBeVisible();
+    await expect(caption).toHaveValue("Edited caption, saved automatically");
+    await expect(page).toHaveURL(new RegExp(`/submissions/${DRAFT_ID}$`));
 
     await expect
       .poll(
@@ -297,6 +311,9 @@ test.describe("submission composer", () => {
         { timeout: 6_000 },
       )
       .toBe(true);
+    expect(
+      state.log.some((entry) => entry.key.includes(`/submissions/${DRAFT_ID}/media`)),
+    ).toBe(false);
   });
 
   test("a saved draft uploads newly selected media without a full draft save", async ({ page }) => {
@@ -327,6 +344,10 @@ test.describe("submission composer", () => {
       )
       .toBe(true);
     expect(state.draft?.mediaAssets).toHaveLength(2);
+    await page.waitForTimeout(2_500);
+    expect(
+      state.log.some((entry) => entry.key === `PATCH /api/v1/submissions/${DRAFT_ID}`),
+    ).toBe(false);
   });
 
   test("removing an upload in flight leaves no attachment behind", async ({ page }) => {

@@ -201,6 +201,7 @@ export function useSubmissionMediaAutosave({
     }
 
     if (!signal.aborted && mountedRef.current && desiredRef.current === latestItems) {
+      setFailedFingerprint(null);
       onReconciledRef.current({
         summary,
         items: reconciledItems,
@@ -290,6 +291,7 @@ export function useSubmissionMediaAutosave({
   return {
     syncing,
     blocking: enabled && failedFingerprint !== fingerprint,
+    failed: enabled && failedFingerprint === fingerprint,
     updateDesiredItems,
   };
 }
