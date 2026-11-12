@@ -5,6 +5,7 @@ import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailValidateRequest;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.GuardRailService;
+import com.dasigconnect.backend.service.GuardRailSettingsService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,9 +25,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class GuardRailController {
 
     private final GuardRailService guardRailService;
+    private final GuardRailSettingsService guardRailSettingsService;
 
-    public GuardRailController(GuardRailService guardRailService) {
+    public GuardRailController(GuardRailService guardRailService,
+            GuardRailSettingsService guardRailSettingsService) {
         this.guardRailService = guardRailService;
+        this.guardRailSettingsService = guardRailSettingsService;
     }
 
     @PostMapping("/validate")
@@ -36,6 +40,9 @@ public class GuardRailController {
             @AuthenticationPrincipal JwtUserDetails user) {
         java.util.UUID institutionId = user.institutionId() != null
                 ? user.institutionId() : dto.getInstitutionId();
+        if (!guardRailSettingsService.enforced()) {
+            return ResponseEntity.ok(ApiResponse.success(new GuardRailResult()));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 guardRailService.validate(institutionId, dto.getScheduledAt(), dto.getSubmissionId())));
     }

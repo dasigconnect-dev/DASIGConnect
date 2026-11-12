@@ -475,7 +475,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       toast.success(
         data.guardrailsEnforced
           ? "Scheduling guard rails are on."
-          : "Scheduling guard rails are off — contributors can submit without a slot.",
+          : "Scheduling guard rails are off — scheduled posts still require a preferred time, but spacing, lead-time, daily-cap, and posting-window rules will not block it.",
       );
     } catch {
       toast.error("Unable to update scheduling guard rails.");

@@ -919,7 +919,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      if (!scheduledAt) {
+      if (!lookups.guardrailsEnforced || form.fastTrack || !scheduledAt) {
         setGuardRails(null);
         setGuardRailError("");
         setGuardRailsLoading(false);
@@ -955,7 +955,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     };
     // form.id is included so validation re-runs once the first save assigns an
     // id — otherwise the check would flag the user's own new reservation.
-  }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
+  }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id, form.fastTrack, lookups.guardrailsEnforced]);
 
 
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
@@ -1274,6 +1274,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ...current,
       fastTrack: value,
       liveEventName: value ? current.liveEventName : "",
+      scheduledDate: value ? "" : current.scheduledDate,
+      scheduledTime: value ? "" : current.scheduledTime,
     }));
     setGuardRails(value ? null : guardRails);
     setGuardRailError(value ? "" : guardRailError);
@@ -3366,6 +3368,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 {guardRails.softWarnings[0].message}
               </div>
             )}
+            {lookups.guardrailsEnforced && !form.fastTrack && !guardRailsLoading
+              && guardRails?.hardBlocks[0] && (
+              <div className="sub-inline-error" role="alert">
+                {guardRails.hardBlocks[0].message}
+              </div>
+            )}
               </>
             )}
             {!form.fastTrack && guardRailError && (
@@ -3842,7 +3850,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <ConfirmModal
           icon="ti-bolt"
           title="Switch to Fast-Track?"
-          description="This will hide scheduling controls while Fast-Track is enabled, but your entered post details and preferred schedule will stay saved in the draft."
+          description="This will switch the post to Live Event mode and release its preferred schedule. Your media and post details will stay saved in the draft."
           cancelLabel="Cancel"
           confirmLabel="Switch Mode"
           onCancel={() => setModal(null)}

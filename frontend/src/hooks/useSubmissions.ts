@@ -113,6 +113,7 @@ export function useSubmissionLookups(user: User, enabled = true) {
     queryFn: ({ signal }) => getSubmissionLookups(signal).then((response) => response.data),
     enabled,
     staleTime: LOOKUPS_STALE_TIME_MS,
+    refetchOnMount: "always",
     meta: authenticatedQueryMeta,
   });
 
