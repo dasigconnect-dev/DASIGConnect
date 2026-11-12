@@ -2,6 +2,8 @@ package com.dasigconnect.backend.service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -69,6 +71,12 @@ public class GuardRailService {
      * @return GuardRailResult containing any hard blocks and/or soft warnings
      */
     public GuardRailResult validate(UUID institutionId, Instant requestedSlot, UUID excludeSubmissionId) {
+        // This is the central enforcement boundary. Every caller (composer,
+        // review/reschedule, retry, and engagement recommendations) receives a
+        // clean result while the network-wide switch is disabled.
+        if (!guardRailSettingsService.enforced()) {
+            return new GuardRailResult();
+        }
         Instant now = Instant.now();
         List<GuardRailViolation> hardBlocks = new ArrayList<>();
         List<GuardRailViolation> softWarnings = new ArrayList<>();
@@ -106,10 +114,13 @@ public class GuardRailService {
             ));
         }
         // GR-H4: Posting window
-        java.time.ZonedDateTime localTime = requestedSlot.atZone(PAGE_ZONE);
+        ZonedDateTime localDateTime = requestedSlot.atZone(PAGE_ZONE);
         int startHour = guardRailSettingsService.postingWindowStartHour();
         int endHour = guardRailSettingsService.postingWindowEndHour();
-        if (localTime.getHour() < startHour || localTime.getHour() >= endHour) {
+        LocalTime requestedLocalTime = localDateTime.toLocalTime().withSecond(0).withNano(0);
+        LocalTime windowStartTime = LocalTime.of(startHour, 0);
+        LocalTime windowEndTime = endHour == 24 ? LocalTime.MAX : LocalTime.of(endHour, 0);
+        if (requestedLocalTime.isBefore(windowStartTime) || requestedLocalTime.isAfter(windowEndTime)) {
             String startAmPm = startHour < 12 ? "AM" : "PM";
             String endAmPm = endHour < 12 ? "AM" : "PM";
             int displayStart = startHour % 12 == 0 ? 12 : startHour % 12;
@@ -134,8 +145,9 @@ public class GuardRailService {
         }
 
         // GR-S2: ≤Y posts per calendar day network-wide
-        Instant dayStart = requestedSlot.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
-        Instant dayEnd = dayStart.plus(Duration.ofDays(1));
+        java.time.LocalDate requestedLocalDate = localDateTime.toLocalDate();
+        Instant dayStart = requestedLocalDate.atStartOfDay(PAGE_ZONE).toInstant();
+        Instant dayEnd = requestedLocalDate.plusDays(1).atStartOfDay(PAGE_ZONE).toInstant();
         long dailyCount = slotReservationRepository.countActiveOnDay(dayStart, dayEnd, excludeSubmissionId);
         long maxPerDay = guardRailSettingsService.dailyVolumeCap();
         if (dailyCount >= maxPerDay) {

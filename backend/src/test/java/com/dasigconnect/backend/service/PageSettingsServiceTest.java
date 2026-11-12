@@ -64,6 +64,28 @@ class PageSettingsServiceTest {
     }
 
     @Test
+    void networkUpdate_rejectsPostingWindowWithStartAtOrAfterEnd() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(null,
+                new UpdatePageSettingsRequestDto(true, 20, 8, null, null, null, null, null), actor))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("start hour must be earlier");
+    }
+
+    @Test
+    void networkUpdate_rejectsOutOfRangePostingWindowHour() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(null,
+                new UpdatePageSettingsRequestDto(true, -1, 20, null, null, null, null, null), actor))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("between 0 and 23");
+    }
+
+    @Test
     void perInstitutionUpdate_ignoresGuardrailsToggle() {
         UUID institutionId = UUID.randomUUID();
         var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);

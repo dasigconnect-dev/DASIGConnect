@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,12 +13,14 @@ import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.GuardRailService;
+import com.dasigconnect.backend.service.GuardRailSettingsService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -34,8 +37,14 @@ class GuardRailControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private GuardRailService guardRailService;
+    @MockitoBean private GuardRailSettingsService guardRailSettingsService;
     @MockitoBean private JWTService jwtService;
     @MockitoBean private TenantScopeService tenantScopeService;
+
+    @BeforeEach
+    void guardRailsEnabledByDefault() {
+        when(guardRailSettingsService.enforced()).thenReturn(true);
+    }
 
     @Test
     void validate_withoutAuthentication_returns401() throws Exception {
@@ -96,6 +105,25 @@ class GuardRailControllerTest {
                 .andExpect(jsonPath("$.data.clean").value(true));
 
         verify(guardRailService).validate(requestedInstitution, scheduledAt, null);
+    }
+
+    @Test
+    void validate_whenGuardRailsDisabled_returnsCleanWithoutEvaluation() throws Exception {
+        UUID institutionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-12-20T08:00:00Z");
+        when(guardRailSettingsService.enforced()).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/guardrails/validate")
+                        .with(authentication(auth("contributor", institutionId)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"scheduledAt":"%s"}
+                                """.formatted(scheduledAt)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.clean").value(true))
+                .andExpect(jsonPath("$.data.blocked").value(false));
+
+        verifyNoInteractions(guardRailService);
     }
 
     @Test

@@ -66,6 +66,8 @@ public class SubmissionController {
         dto.setGuardrailsEnforced(guardRailSettings.enforced());
         dto.setPostingWindowStartHour(guardRailSettings.postingWindowStartHour());
         dto.setPostingWindowEndHour(guardRailSettings.postingWindowEndHour());
+        dto.setMinScheduleLeadTimeHours(guardRailSettings.minimumLeadTimeHours());
+        dto.setMaxScheduleDaysAhead(guardRailSettings.maximumLeadTimeDays());
         return ResponseEntity.ok(ApiResponse.success(dto));
     }
 

@@ -55,7 +55,11 @@ function baseDraft(overrides: Partial<Draft> = {}): Draft {
 }
 
 /** Wires the composer endpoints to one in-memory draft; returns it and a request log. */
-async function mockComposerBackend(page: Page, initial: Draft | null) {
+async function mockComposerBackend(
+  page: Page,
+  initial: Draft | null,
+  options: { guardrailsEnforced?: boolean } = {},
+) {
   const state: {
     draft: Draft | null;
     log: Array<{ key: string; body: unknown }>;
@@ -83,7 +87,15 @@ async function mockComposerBackend(page: Page, initial: Draft | null) {
       allowedVideoTypes: ["mp4", "mov", "webm"],
       maxFileSizeMb: 50, maxMediaAssetsPerSubmission: 10, maxTitleLength: 255,
       minScheduleLeadTimeHours: 2, maxScheduleDaysAhead: 30, categories: [], availableTags: [],
-      guardrailsEnforced: true,
+      guardrailsEnforced: options.guardrailsEnforced ?? true,
+      postingWindowStartHour: 8,
+      postingWindowEndHour: 20,
+    },
+    "POST /api/v1/guardrails/validate": {
+      blocked: false,
+      clean: true,
+      hardBlocks: [],
+      softWarnings: [],
     },
     "GET /api/v1/media-assets": {
       items: [{
@@ -221,10 +233,15 @@ async function goToStep(page: Page, name: RegExp, readyLocator: ReturnType<Page[
   }).toPass({ timeout: 10_000 });
 }
 
-async function openComposer(page: Page, path: string, draft: Draft | null) {
+async function openComposer(
+  page: Page,
+  path: string,
+  draft: Draft | null,
+  options: { guardrailsEnforced?: boolean } = {},
+) {
   await installSession(page, "contributor");
   await installFragmentableSse(page);
-  const backend = await mockComposerBackend(page, draft);
+  const backend = await mockComposerBackend(page, draft, options);
   await page.goto(path);
   await expect(page.locator("#composer-step-nav")).toBeVisible();
   return backend;
@@ -272,6 +289,70 @@ test.describe("submission composer", () => {
     expect(keys).toContain("PUT storage");
     expect(keys).toContain(`POST /api/v1/submissions/${DRAFT_ID}/submit`);
     expect(state.draft?.status).toBe("pending");
+  });
+
+  test("switching a scheduled draft to Live Event clears the stale schedule and does not block submission", async ({ page }) => {
+    const scheduledAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1_000);
+    scheduledAt.setHours(10, 0, 0, 0);
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Scheduled Event",
+        eventDate: new Date().toISOString().slice(0, 10),
+        caption: "Scheduled event caption",
+        albumName: "Event Album",
+        scheduledAt: scheduledAt.toISOString(),
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+    );
+
+    const album = page.getByPlaceholder("Search, select, or create a new album");
+    await goToStep(page, /Step 3 Organize & Schedule/, album);
+    await page.getByRole("button", { name: "Live Event" }).click();
+    await expect(page.getByText("Switch to Fast-Track?")).toBeVisible();
+    await page.getByRole("button", { name: "Switch Mode" }).click();
+
+    await page.locator(".sub-guard-submit-btn").click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
+
+    await expect(page.getByText("Submission sent!")).toBeVisible();
+    const liveEventUpdate = [...state.log].reverse().find(
+      (entry) => entry.key === `PATCH /api/v1/submissions/${DRAFT_ID}`
+        && (entry.body as Record<string, unknown>)?.fastTrack === true,
+    )?.body as Record<string, unknown> | undefined;
+    expect(liveEventUpdate).toBeDefined();
+    expect(liveEventUpdate).not.toHaveProperty("scheduledAt");
+  });
+
+  test("a scheduled post outside the posting window can submit when guardrails are disabled", async ({ page }) => {
+    const scheduledAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1_000);
+    scheduledAt.setHours(22, 0, 0, 0);
+    const { state } = await openComposer(
+      page,
+      `/submissions/${DRAFT_ID}`,
+      baseDraft({
+        eventTitle: "Late Scheduled Event",
+        eventDate: new Date().toISOString().slice(0, 10),
+        caption: "Late scheduled event caption",
+        albumName: "Event Album",
+        scheduledAt: scheduledAt.toISOString(),
+        mediaAssets: [savedAsset(1)],
+        mediaCount: 1,
+      }),
+      { guardrailsEnforced: false },
+    );
+
+    const album = page.getByPlaceholder("Search, select, or create a new album");
+    await goToStep(page, /Step 3 Organize & Schedule/, album);
+    await expect(page.getByText(/Publish time must be between/)).toHaveCount(0);
+    await page.locator(".sub-guard-submit-btn").click();
+    await page.getByRole("button", { name: /^(Confirm Submission|Submit for Approval|Submit Anyway)$/ }).last().click();
+
+    await expect(page.getByText("Submission sent!")).toBeVisible();
+    expect(state.draft?.status).toBe("pending");
+    expect(state.log.some((entry) => entry.key === "POST /api/v1/guardrails/validate")).toBe(false);
   });
 
   test("autosave persists an edit to a saved draft", async ({ page }) => {
