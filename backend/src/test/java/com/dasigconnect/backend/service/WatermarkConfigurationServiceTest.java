@@ -136,16 +136,24 @@ class WatermarkConfigurationServiceTest {
     }
 
     @Test
-    void rejectsMoreThan3Elements() {
+    void acceptsThreeElementsAndRejectsMore() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             WatermarkElementDto el = new WatermarkElementDto();
             el.setType("text");
             elements.add(el);
         }
 
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+        when(repository.save(any(WatermarkConfiguration.class))).thenAnswer(inv -> inv.getArgument(0));
+        WatermarkConfigurationDto saved = service.save(
+                new WatermarkConfigurationRequestDto(true, elements), actor);
+
+        assertThat(saved.elements()).hasSize(3);
+
+        elements.add(new WatermarkElementDto());
         WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(true, elements);
 
         assertThatThrownBy(() -> service.save(request, actor))

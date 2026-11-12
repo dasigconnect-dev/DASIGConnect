@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AspectRatioType, ElementRatioConfig, WatermarkElement } from "../../types/watermark.types";
-import { resolveRatioConfig } from "./watermarkLayout";
+import { normalizeWatermarkAnchor, resolveRatioConfig } from "./watermarkLayout";
 import { textElementStyle } from "./watermarkStyles";
 
 const FALLBACK_LOGO = "/dasig-logo.png";
@@ -29,6 +29,10 @@ export default function WatermarkElementContent({
 
 function ImageContent({ el }: { el: WatermarkElement }) {
   const [failed, setFailed] = useState(false);
+  const anchor = normalizeWatermarkAnchor(el).anchor;
+  const isRight = anchor === "top-right" || anchor === "bottom-right";
+  const isLeft = anchor === "top-left" || anchor === "bottom-left";
+  const objectPosition = isRight ? "right center" : isLeft ? "left center" : "center center";
 
   if (failed) {
     return (
@@ -45,6 +49,7 @@ function ImageContent({ el }: { el: WatermarkElement }) {
       draggable={false}
       onError={() => setFailed(true)}
       className="wm-content-fill wm-content-image"
+      style={{ objectPosition }}
     />
   );
 }
@@ -60,6 +65,7 @@ function TextContent({ el, cfg }: { el: WatermarkElement; cfg?: ElementRatioConf
 function ShapeContent({ el, cfg }: { el: WatermarkElement; cfg?: ElementRatioConfig | null }) {
   const isLine = el.shapeType === "line";
   const isGradient = el.shapeType === "gradient";
+  const anchor = normalizeWatermarkAnchor(el).anchor;
   const stroke = (cfg?.strokeColor ?? el.strokeColor)?.trim();
   const fill = cfg?.fillColor ?? el.fillColor;
   const hasStroke =
@@ -67,7 +73,11 @@ function ShapeContent({ el, cfg }: { el: WatermarkElement; cfg?: ElementRatioCon
 
   let background: string;
   if (isLine) background = stroke || "#ffffff";
-  else if (isGradient) background = `linear-gradient(to bottom, transparent 0%, ${fill || "#07112a"} 100%)`;
+  else if (isGradient) {
+    background = anchor === "top"
+      ? `linear-gradient(to bottom, ${fill || "#07112a"} 0%, transparent 100%)`
+      : `linear-gradient(to bottom, transparent 0%, ${fill || "#07112a"} 100%)`;
+  }
   else background = fill || "rgba(15, 23, 42, 0.75)";
 
   return (
@@ -75,7 +85,7 @@ function ShapeContent({ el, cfg }: { el: WatermarkElement; cfg?: ElementRatioCon
       className="wm-content-fill"
       style={{
         background,
-        borderRadius: isLine || !isGradient ? 0 : 8,
+        borderRadius: 0,
         border: hasStroke ? `2px solid ${stroke}` : "none",
         boxSizing: "border-box",
       }}

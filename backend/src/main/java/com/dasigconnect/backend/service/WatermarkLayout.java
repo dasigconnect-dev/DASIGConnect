@@ -1,42 +1,16 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
-import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto.Position;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto.RatioConfig;
-import java.util.List;
-import java.util.Map;
 
 /**
- * Layout maths for watermark elements. Mirrors
- * {@code frontend/src/components/watermark/watermarkLayout.ts} so the studio,
- * the post preview and the rendered image all place elements identically.
- *
- * <p>Coordinate model: size ({@code widthPercent}, {@code heightPercent}) is a
- * percent of the canvas HEIGHT and can be overridden per format. Position is a
- * percent of canvas width (x) / height (y); corner-anchored elements use these
- * values as insets from their selected edges.
+ * Resolves watermark elements against the actual image while keeping element
+ * dimensions and anchor insets relative to its shorter side.
  */
 final class WatermarkLayout {
 
-    /** Formats the studio can lay out. 1:1 is the reference format. */
-    enum Format {
-        SQUARE("1:1", 1.0),
-        STANDARD("4:3", 4.0 / 3.0),
-        LANDSCAPE("16:9", 16.0 / 9.0);
-
-        final String key;
-        final double aspect;
-
-        Format(String key, double aspect) {
-            this.key = key;
-            this.aspect = aspect;
-        }
-    }
-
-    /** On-canvas rectangle in pixels. */
     record Box(int x, int y, int width, int height) {}
 
-    /** Fully resolved configuration for an element in a specific format. */
     record ResolvedConfig(
             double xPercent,
             double yPercent,
@@ -52,127 +26,108 @@ final class WatermarkLayout {
             String fontWeight,
             String fontStyle,
             String fontFamily,
-            String anchor
+            String anchor,
+            String type
     ) {}
-
-    /** Widest element that still fits the widest format (16:9). */
-    static final double FULL_WIDTH_PERCENT = 178.0;
-
-    static final List<String> OVERRIDE_KEYS = List.of(Format.STANDARD.key, Format.LANDSCAPE.key);
 
     private WatermarkLayout() {}
 
-    /** Picks the format whose proportions are closest to the image's. */
-    static Format nearestFormat(int imageWidth, int imageHeight) {
-        if (imageWidth <= 0 || imageHeight <= 0) return Format.SQUARE;
-        double aspect = (double) imageWidth / imageHeight;
-        Format best = Format.SQUARE;
-        for (Format candidate : Format.values()) {
-            if (Math.abs(Math.log(aspect / candidate.aspect)) < Math.abs(Math.log(aspect / best.aspect))) {
-                best = candidate;
+    static ResolvedConfig resolveConfig(WatermarkElementDto element, int defaultOrder) {
+        String type = element.getType() == null ? "text" : element.getType().toLowerCase();
+        boolean shape = "shape".equals(type);
+        double x = element.getXPercent();
+        double y = element.getYPercent();
+        double width = clamp(element.getWidthPercent(), 1.0, 100.0);
+        double height = clamp(element.getHeightPercent(), 0.2, 100.0);
+        String anchor = element.getAnchor();
+        boolean legacyPosition = anchor == null || "freeform".equals(anchor);
+
+        if (shape) {
+            if (legacyPosition) {
+                boolean bottom = y + height / 2.0 >= 50.0;
+                anchor = bottom ? "bottom" : "top";
+            } else if (isCornerAnchor(anchor)) {
+                boolean bottom = anchor.startsWith("bottom");
+                anchor = bottom ? "bottom" : "top";
+            } else if (!isVerticalAnchor(anchor)) {
+                anchor = "bottom";
             }
-        }
-        return best;
-    }
-
-    /**
-     * Resolves the full configuration for an element in a given format.
-     * Mirrors {@code resolveRatioConfig} in {@code watermarkLayout.ts}.
-     */
-    static ResolvedConfig resolveConfig(WatermarkElementDto element, Format format, int defaultOrder) {
-        Map<String, RatioConfig> ratios = element.getRatios();
-        RatioConfig saved = ratios != null ? ratios.get(format.key) : null;
-        if (saved != null) {
-            return new ResolvedConfig(
-                    saved.xPercent() != null
-                            ? saved.xPercent()
-                            : (format == Format.SQUARE || isCornerAnchor(element.getAnchor())
-                                    ? element.getXPercent()
-                                    : element.getXPercent() / format.aspect),
-                    saved.yPercent() != null ? saved.yPercent() : element.getYPercent(),
-                    saved.widthPercent() != null ? saved.widthPercent() : element.getWidthPercent(),
-                    saved.heightPercent() != null ? saved.heightPercent() : element.getHeightPercent(),
-                    saved.opacity() != null ? saved.opacity() : (element.getOpacity() > 0 ? element.getOpacity() : 1.0),
-                    saved.order() != null ? saved.order() : defaultOrder,
-                    saved.hidden() != null ? saved.hidden() : Boolean.TRUE.equals(element.getHidden()),
-                    saved.textColor() != null ? saved.textColor() : element.getTextColor(),
-                    saved.fillColor() != null ? saved.fillColor() : element.getFillColor(),
-                    saved.strokeColor() != null ? saved.strokeColor() : element.getStrokeColor(),
-                    saved.fontSizePercent() != null ? saved.fontSizePercent() : element.getFontSizePercent(),
-                    saved.fontWeight() != null ? saved.fontWeight() : element.getFontWeight(),
-                    saved.fontStyle() != null ? saved.fontStyle() : element.getFontStyle(),
-                    saved.fontFamily() != null ? saved.fontFamily() : element.getFontFamily(),
-                    element.getAnchor()
-            );
+            x = 0.0;
+            y = 0.0;
+            width = 100.0;
+        } else if (legacyPosition) {
+            boolean right = x + width / 2.0 >= 50.0;
+            boolean bottom = y + height / 2.0 >= 50.0;
+            anchor = cornerAnchor(right, bottom);
+            x = right ? Math.max(0.0, 100.0 - x - width) : x;
+            y = bottom ? Math.max(0.0, 100.0 - y - height) : y;
+        } else if (isVerticalAnchor(anchor)) {
+            anchor = cornerAnchor(x + width / 2.0 >= 50.0, "bottom".equals(anchor));
+        } else if (!isCornerAnchor(anchor)) {
+            anchor = "bottom-right";
         }
 
-        // Untouched ratio: adapt initial 1:1 coordinates
-        double initialX;
-        double initialY;
-        if (format == Format.SQUARE) {
-            initialX = element.getXPercent();
-            initialY = element.getYPercent();
-        } else if (!isCornerAnchor(element.getAnchor())
-                && element.getLayouts() != null
-                && element.getLayouts().containsKey(format.key)) {
-            // Support legacy layouts map if present
-            initialX = element.getLayouts().get(format.key).xPercent();
-            initialY = element.getLayouts().get(format.key).yPercent();
-        } else {
-            // Default: width extends, element pixel position & size stay the same
-            initialX = isCornerAnchor(element.getAnchor())
-                    ? element.getXPercent()
-                    : element.getXPercent() / format.aspect;
-            initialY = element.getYPercent();
-        }
+        RatioConfig legacySquare = element.getRatios() == null ? null : element.getRatios().get("1:1");
+        int order = element.getOrder() != null
+                ? element.getOrder()
+                : legacySquare != null && legacySquare.order() != null ? legacySquare.order() : defaultOrder;
+        boolean hidden = Boolean.TRUE.equals(element.getHidden())
+                || element.getHidden() == null && legacySquare != null && Boolean.TRUE.equals(legacySquare.hidden());
 
         return new ResolvedConfig(
-                initialX,
-                initialY,
-                element.getWidthPercent(),
-                element.getHeightPercent(),
+                clamp(x, 0.0, 100.0),
+                clamp(y, 0.0, 100.0),
+                width,
+                height,
                 element.getOpacity() > 0 ? element.getOpacity() : 1.0,
-                defaultOrder,
-                Boolean.TRUE.equals(element.getHidden()),
-                element.getTextColor(),
-                element.getFillColor(),
-                element.getStrokeColor(),
-                element.getFontSizePercent(),
-                element.getFontWeight(),
-                element.getFontStyle(),
-                element.getFontFamily(),
-                element.getAnchor()
+                order,
+                hidden,
+                element.getTextColor() != null ? element.getTextColor()
+                        : legacySquare != null ? legacySquare.textColor() : null,
+                element.getFillColor() != null ? element.getFillColor()
+                        : legacySquare != null ? legacySquare.fillColor() : null,
+                element.getStrokeColor() != null ? element.getStrokeColor()
+                        : legacySquare != null ? legacySquare.strokeColor() : null,
+                element.getFontSizePercent() != null ? element.getFontSizePercent()
+                        : legacySquare != null ? legacySquare.fontSizePercent() : null,
+                element.getFontWeight() != null ? element.getFontWeight()
+                        : legacySquare != null ? legacySquare.fontWeight() : null,
+                element.getFontStyle() != null ? element.getFontStyle()
+                        : legacySquare != null ? legacySquare.fontStyle() : null,
+                element.getFontFamily() != null ? element.getFontFamily()
+                        : legacySquare != null ? legacySquare.fontFamily() : null,
+                anchor,
+                type
         );
     }
 
-    /**
-     * Position in a format. Formats the user never touched keep the element at
-     * the same pixel spot as in 1:1 (only the background grows).
-     */
-    static Position resolvePosition(WatermarkElementDto element, Format format) {
-        ResolvedConfig config = resolveConfig(element, format, 0);
-        return new Position(config.xPercent(), config.yPercent());
-    }
-
-    static Box resolveBox(WatermarkElementDto element, Format format, int canvasWidth, int canvasHeight) {
-        ResolvedConfig config = resolveConfig(element, format, 0);
-        return resolveBox(config, canvasWidth, canvasHeight);
+    static Box resolveBox(WatermarkElementDto element, int canvasWidth, int canvasHeight) {
+        return resolveBox(resolveConfig(element, 0), canvasWidth, canvasHeight);
     }
 
     static Box resolveBox(ResolvedConfig config, int canvasWidth, int canvasHeight) {
-        double canvasAspect = (double) canvasWidth / canvasHeight;
-        double widthPct = Math.min(config.widthPercent() / canvasAspect, 100.0);
-        double heightPct = Math.min(config.heightPercent(), 100.0);
-        double xOffset = clamp(config.xPercent(), 0.0, 100.0 - widthPct);
-        double yOffset = clamp(config.yPercent(), 0.0, 100.0 - heightPct);
-        double left = isRightAnchor(config.anchor()) ? 100.0 - xOffset - widthPct : xOffset;
-        double top = isBottomAnchor(config.anchor()) ? 100.0 - yOffset - heightPct : yOffset;
+        int referenceSide = Math.min(canvasWidth, canvasHeight);
+        int elementWidth = "shape".equals(config.type()) && isVerticalAnchor(config.anchor())
+                ? canvasWidth
+                : Math.max(1, (int) Math.round(referenceSide * config.widthPercent() / 100.0));
+        int elementHeight = Math.max(1, (int) Math.round(referenceSide * config.heightPercent() / 100.0));
+        elementWidth = Math.min(elementWidth, canvasWidth);
+        elementHeight = Math.min(elementHeight, canvasHeight);
+
+        int horizontalInset = (int) Math.round(referenceSide * config.xPercent() / 100.0);
+        int verticalInset = (int) Math.round(referenceSide * config.yPercent() / 100.0);
+        int x = isRightAnchor(config.anchor())
+                ? canvasWidth - horizontalInset - elementWidth
+                : isCenterAnchor(config.anchor()) ? (canvasWidth - elementWidth) / 2 : horizontalInset;
+        int y = isBottomAnchor(config.anchor())
+                ? canvasHeight - verticalInset - elementHeight
+                : isTopAnchor(config.anchor()) ? verticalInset : (canvasHeight - elementHeight) / 2;
 
         return new Box(
-                (int) Math.round(canvasWidth * left / 100.0),
-                (int) Math.round(canvasHeight * top / 100.0),
-                Math.max(1, (int) Math.round(canvasWidth * widthPct / 100.0)),
-                Math.max(1, (int) Math.round(canvasHeight * heightPct / 100.0)));
+                Math.max(0, Math.min(canvasWidth - elementWidth, x)),
+                Math.max(0, Math.min(canvasHeight - elementHeight, y)),
+                elementWidth,
+                elementHeight);
     }
 
     static double clamp(double value, double min, double max) {
@@ -180,15 +135,32 @@ final class WatermarkLayout {
     }
 
     private static boolean isCornerAnchor(String anchor) {
-        return isRightAnchor(anchor) || isBottomAnchor(anchor)
-                || "top-left".equals(anchor) || "bottom-left".equals(anchor);
+        return "top-left".equals(anchor) || "top-right".equals(anchor)
+                || "bottom-left".equals(anchor) || "bottom-right".equals(anchor);
+    }
+
+    private static boolean isVerticalAnchor(String anchor) {
+        return "top".equals(anchor) || "bottom".equals(anchor);
     }
 
     private static boolean isRightAnchor(String anchor) {
         return "top-right".equals(anchor) || "bottom-right".equals(anchor);
     }
 
+    private static boolean isCenterAnchor(String anchor) {
+        return "top".equals(anchor) || "bottom".equals(anchor);
+    }
+
+    private static boolean isTopAnchor(String anchor) {
+        return "top".equals(anchor) || "top-left".equals(anchor) || "top-right".equals(anchor);
+    }
+
     private static boolean isBottomAnchor(String anchor) {
-        return "bottom-left".equals(anchor) || "bottom-right".equals(anchor);
+        return "bottom".equals(anchor) || "bottom-left".equals(anchor) || "bottom-right".equals(anchor);
+    }
+
+    private static String cornerAnchor(boolean right, boolean bottom) {
+        if (bottom) return right ? "bottom-right" : "bottom-left";
+        return right ? "top-right" : "top-left";
     }
 }

@@ -120,13 +120,12 @@ public class WatermarkApplicationService {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                WatermarkLayout.Format format = WatermarkLayout.nearestFormat(output.getWidth(), output.getHeight());
                 record ElementWithConfig(WatermarkElementDto element, WatermarkLayout.ResolvedConfig config) {}
                 java.util.List<ElementWithConfig> resolvedList = new java.util.ArrayList<>();
                 for (int i = 0; i < elements.size(); i++) {
                     WatermarkElementDto el = elements.get(i);
                     if (el == null) continue;
-                    WatermarkLayout.ResolvedConfig cfg = WatermarkLayout.resolveConfig(el, format, i);
+                    WatermarkLayout.ResolvedConfig cfg = WatermarkLayout.resolveConfig(el, i);
                     if (!cfg.hidden()) {
                         resolvedList.add(new ElementWithConfig(el, cfg));
                     }
@@ -134,7 +133,7 @@ public class WatermarkApplicationService {
                 resolvedList.sort(java.util.Comparator.comparingInt(item -> item.config().order()));
 
                 for (ElementWithConfig item : resolvedList) {
-                    drawElement(g, output, format, item.element(), item.config(), submission);
+                    drawElement(g, output, item.element(), item.config(), submission);
                 }
             } finally {
                 g.dispose();
@@ -227,7 +226,6 @@ public class WatermarkApplicationService {
         private void drawElement(
             Graphics2D g,
             BufferedImage canvas,
-            WatermarkLayout.Format format,
             WatermarkElementDto element,
             WatermarkLayout.ResolvedConfig config,
             Submission submission) {
@@ -242,7 +240,7 @@ public class WatermarkApplicationService {
             switch (element.getType().toLowerCase()) {
                 case "text" -> drawText(g, canvas, element, config, box);
                 case "shape" -> drawShape(g, element, config, box);
-                case "image" -> drawImage(g, element, box, submission);
+                case "image" -> drawImage(g, element, config, box, submission);
                 default -> { }
             }
         } finally {
@@ -256,7 +254,7 @@ public class WatermarkApplicationService {
 
         // Font size is a percent of the canvas height (frontend: calc(<n> * 1cqh)).
         double fontPct = config.fontSizePercent() != null ? config.fontSizePercent() : 3.2;
-        int fontSize = Math.max(1, percent(canvas.getHeight(), fontPct));
+        int fontSize = Math.max(1, percent(Math.min(canvas.getWidth(), canvas.getHeight()), fontPct));
 
         int style = Font.PLAIN;
         String weight = config.fontWeight();
@@ -287,9 +285,16 @@ public class WatermarkApplicationService {
 
         java.awt.Shape originalClip = g.getClip();
         g.clipRect(box.x(), box.y(), box.width(), box.height());
+        boolean rightAligned = "top-right".equals(config.anchor()) || "bottom-right".equals(config.anchor());
+        boolean leftAligned = "top-left".equals(config.anchor()) || "bottom-left".equals(config.anchor());
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
-            int lineX = box.x() + (box.width() - fm.stringWidth(line)) / 2;
+            int lineWidth = fm.stringWidth(line);
+            int lineX = rightAligned
+                    ? Math.max(box.x(), box.x() + box.width() - lineWidth - shadowOffset)
+                    : leftAligned
+                            ? box.x()
+                            : box.x() + (box.width() - lineWidth) / 2;
             int baseline = blockTop + i * lineHeight + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
             g.setColor(shadowColor);
             g.drawString(line, lineX + shadowOffset, baseline + shadowOffset);
@@ -329,14 +334,16 @@ public class WatermarkApplicationService {
         }
 
         if ("gradient".equalsIgnoreCase(element.getShapeType()) || "scrim".equalsIgnoreCase(element.getShapeType())) {
-            int arc = Math.min(16, Math.min(width, height) / 2);
             Color baseColor = colorOrDefault(config.fillColor(), new Color(7, 17, 42));
             Color startColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 0);
             Color endColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), baseColor.getAlpha());
-            GradientPaint gp = new GradientPaint(x, y, startColor, x, y + height, endColor);
+            boolean topAnchored = "top".equals(config.anchor());
+            GradientPaint gp = topAnchored
+                    ? new GradientPaint(x, y, endColor, x, y + height, startColor)
+                    : new GradientPaint(x, y, startColor, x, y + height, endColor);
             Paint oldPaint = g.getPaint();
             g.setPaint(gp);
-            g.fillRoundRect(x, y, width, height, arc, arc);
+            g.fillRect(x, y, width, height);
             g.setPaint(oldPaint);
             return;
         }
@@ -360,7 +367,7 @@ public class WatermarkApplicationService {
         }
     }
 
-    private void drawImage(Graphics2D g, WatermarkElementDto element, WatermarkLayout.Box box, Submission submission) {
+    private void drawImage(Graphics2D g, WatermarkElementDto element, WatermarkLayout.ResolvedConfig config, WatermarkLayout.Box box, Submission submission) {
         String imageUrl = element.getImageUrl();
         try {
             BufferedImage watermark = loadWatermarkImage(imageUrl, submission);
@@ -370,11 +377,17 @@ public class WatermarkApplicationService {
             int origH = watermark.getHeight();
             if (origW <= 0 || origH <= 0) return;
 
-            // object-fit: contain, centred in the element box (same as the preview).
+            // object-fit: contain, aligned to the element's anchored corner (same as the preview).
             double scale = Math.min((double) box.width() / origW, (double) box.height() / origH);
             int drawW = Math.max(1, (int) Math.round(origW * scale));
             int drawH = Math.max(1, (int) Math.round(origH * scale));
-            int drawX = box.x() + (box.width() - drawW) / 2;
+            boolean rightAligned = "top-right".equals(config.anchor()) || "bottom-right".equals(config.anchor());
+            boolean leftAligned = "top-left".equals(config.anchor()) || "bottom-left".equals(config.anchor());
+            int drawX = rightAligned
+                    ? box.x() + box.width() - drawW
+                    : leftAligned
+                            ? box.x()
+                            : box.x() + (box.width() - drawW) / 2;
             int drawY = box.y() + (box.height() - drawH) / 2;
 
             g.drawImage(watermark, drawX, drawY, drawW, drawH, null);

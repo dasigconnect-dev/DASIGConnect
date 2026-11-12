@@ -1,9 +1,8 @@
-export type CanvasBackground = "checkerboard" | "sample-light" | "sample-dark";
+export type CanvasBackground = "checkerboard" | "sample-photo";
 
 export const BACKGROUND_OPTIONS: ReadonlyArray<{ id: CanvasBackground; label: string; icon: string }> = [
   { id: "checkerboard", label: "Transparent", icon: "ti-grid-dots" },
-  { id: "sample-light", label: "Light photo", icon: "ti-sun" },
-  { id: "sample-dark", label: "Dark photo", icon: "ti-moon" },
+  { id: "sample-photo", label: "Sample photo", icon: "ti-photo" },
 ];
 
 export const COLOR_PRESETS = [
