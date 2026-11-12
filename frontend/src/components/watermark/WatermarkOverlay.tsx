@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { WatermarkElement } from "../../types/watermark.types";
 import WatermarkElementContent from "./WatermarkElementContent";
-import { computeBox, getSortedElementsByRatio, nearestAspectRatio, resolveRatioConfig } from "./watermarkLayout";
+import {
+  DEFAULT_ASPECT_RATIO,
+  computeBox,
+  getSortedElementsByRatio,
+  resolveRatioConfig,
+} from "./watermarkLayout";
 import "../../styles/watermark-content.css";
 
 interface WatermarkOverlayProps {
@@ -11,9 +16,8 @@ interface WatermarkOverlayProps {
 
 /**
  * Draws the watermark on top of an image preview. It measures the surface it
- * covers, picks the saved layout whose format is closest to the image
- * (1:1, 4:3 or 16:9), and renders every element using that format's specific
- * layering, position, size, opacity, and colors.
+ * covers, measures the actual image surface, and renders square-reference
+ * element sizes against its true dimensions.
  */
 export default function WatermarkOverlay({ elements, className = "" }: WatermarkOverlayProps) {
   if (!elements || elements.length === 0) return null;
@@ -39,7 +43,7 @@ function MeasuredOverlay({ elements, className }: { elements: WatermarkElement[]
     return () => observer.disconnect();
   }, []);
 
-  const ratio = nearestAspectRatio(aspect);
+  const ratio = DEFAULT_ASPECT_RATIO;
   const sorted = getSortedElementsByRatio(elements, ratio);
 
   return (

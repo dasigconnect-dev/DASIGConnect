@@ -56,6 +56,9 @@ class WatermarkConfigurationServiceTest {
 
         assertThat(dto).isNotNull();
         assertThat(dto.elements()).isNotEmpty();
+        assertThat(dto.elements())
+                .extracting(WatermarkElementDto::getAnchor)
+                .containsExactly("bottom-left", "bottom-right");
     }
 
     @Test
@@ -112,8 +115,9 @@ class WatermarkConfigurationServiceTest {
         WatermarkElementDto el1 = new WatermarkElementDto();
         el1.setId("el1");
         el1.setType("image");
-        el1.setXPercent(80.0);
-        el1.setYPercent(80.0);
+        el1.setAnchor("top-left");
+        el1.setXPercent(3.0);
+        el1.setYPercent(3.0);
         el1.setWidthPercent(15.0);
         el1.setHeightPercent(15.0);
         elements.add(el1);
@@ -127,20 +131,29 @@ class WatermarkConfigurationServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.elements()).hasSize(1);
+        assertThat(result.elements().getFirst().getAnchor()).isEqualTo("top-left");
         verify(repository).save(any(WatermarkConfiguration.class));
     }
 
     @Test
-    void rejectsMoreThan3Elements() {
+    void acceptsThreeElementsAndRejectsMore() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             WatermarkElementDto el = new WatermarkElementDto();
             el.setType("text");
             elements.add(el);
         }
 
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+        when(repository.save(any(WatermarkConfiguration.class))).thenAnswer(inv -> inv.getArgument(0));
+        WatermarkConfigurationDto saved = service.save(
+                new WatermarkConfigurationRequestDto(true, elements), actor);
+
+        assertThat(saved.elements()).hasSize(3);
+
+        elements.add(new WatermarkElementDto());
         WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(true, elements);
 
         assertThatThrownBy(() -> service.save(request, actor))
