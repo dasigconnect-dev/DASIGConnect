@@ -64,12 +64,14 @@ export default function MediaAssetCard({
   const primaryReason = visibleReasons[0];
   const reasonId = `mac-match-${id}`;
 
+  const isSelectedOrAdded = selected || alreadyAdded;
+
   return (
     <button
       type="button"
       className={[
         "mac-card",
-        selected ? "mac-card--selected" : "",
+        isSelectedOrAdded ? "mac-card--selected" : "",
         alreadyAdded ? "mac-card--added" : "",
       ]
         .filter(Boolean)
@@ -80,10 +82,17 @@ export default function MediaAssetCard({
         assetType ? `Gemini format ${assetType}` : null,
         scoreLabel,
         primaryReason,
-        alreadyAdded ? "already in post" : null,
+        alreadyAdded ? "attached to post (click to deselect)" : selected ? "selected (click to deselect)" : null,
       ].filter(Boolean).join(", ")}
-      aria-pressed={selected}
+      aria-pressed={isSelectedOrAdded}
       aria-describedby={visibleReasons.length > 0 ? reasonId : undefined}
+      title={
+        alreadyAdded
+          ? "Attached to this post — click to deselect"
+          : selected
+            ? "Selected — click to deselect"
+            : "Click to select"
+      }
     >
       <div className="mac-thumb">
         {isVideo ? (
@@ -102,11 +111,25 @@ export default function MediaAssetCard({
             transform={canTransformImageType(fileType)}
           />
         )}
-        {(selected || alreadyAdded) && (
-          <div className="mac-check" aria-hidden>
-            <i className={`ti ${alreadyAdded ? "ti-check" : "ti-check"}`} />
-          </div>
-        )}
+        <span
+          className={`mac-check${selected || alreadyAdded ? " checked" : ""}`}
+          aria-hidden="true"
+        >
+          {(selected || alreadyAdded) && (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20,6 9,17 4,12" />
+            </svg>
+          )}
+        </span>
         {scorePct != null && scoreLabel && (
           <span className="mac-score">
             {scoreLabel}

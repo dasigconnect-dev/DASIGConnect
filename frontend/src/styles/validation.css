@@ -1797,6 +1797,165 @@
   overflow-x: auto;
 }
 
+/* ── Facebook Multi-Media Collage / Grid Layout ── */
+.val-fb-collage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 2px;
+  background: #000;
+  overflow: hidden;
+  position: relative;
+}
+
+.val-fb-collage-cell {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  background: #1c1e21;
+}
+
+.val-fb-collage-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.val-fb-collage-cell:hover img {
+  filter: brightness(0.92);
+  transform: scale(1.02);
+}
+
+.val-fb-collage-row {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+}
+
+.val-fb-collage-row .val-fb-collage-cell {
+  flex: 1;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+}
+
+/* 2 Photos: 2 columns side by side */
+.val-fb-collage--2 {
+  flex-direction: row;
+  aspect-ratio: 16 / 9;
+}
+.val-fb-collage--2 .val-fb-collage-cell {
+  flex: 1;
+  height: 100%;
+}
+
+/* 3 Photos: 1 big top (aspect-ratio 16/9), 2 side-by-side bottom */
+.val-fb-collage--3 .val-fb-collage-cell--featured {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+/* 4 Photos: 1 big top, 3 side-by-side bottom */
+.val-fb-collage--4 .val-fb-collage-cell--featured {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+/* 5+ Photos: 1 big top, 3 side-by-side bottom with +N */
+.val-fb-collage--5plus .val-fb-collage-cell--featured {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.val-fb-collage-more-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+.val-fb-collage-video-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Toggle buttons in header */
+.val-fb-view-toggle {
+  display: inline-flex;
+  background: #e4e6eb;
+  border-radius: 20px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.val-fb-view-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #65676b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.val-fb-view-btn:hover {
+  color: #050505;
+}
+
+.val-fb-view-btn.active {
+  background: #ffffff;
+  color: #1877f2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.val-fb-grid-pill {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  background: rgba(0, 0, 0, 0.72);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease;
+}
+
+.val-fb-grid-pill:hover {
+  background: rgba(0, 0, 0, 0.88);
+}
+
 .val-fb-thumb {
   width: 54px;
   height: 44px;
@@ -4444,6 +4603,10 @@
     width: 100%;
     min-width: 100%;
   }
+  .val-libpick-body .mlt-selection-bar {
+    position: relative;
+    top: auto;
+  }
   .val-libpick-body .mag-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 8px;
@@ -5073,12 +5236,16 @@
 .val-libpick-body .mlt-filters {
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 30;
   margin: 0 -14px 10px;
   padding: 12px 14px;
   background: var(--val-surface);
   border-bottom: 1px solid var(--val-border);
   align-items: center;
+}
+.val-libpick-body .mlt-filters:has(.is-open),
+.val-libpick-body .mlt-filters:focus-within {
+  z-index: 50;
 }
 .val-libpick-body .mlt-search-wrap { min-width: 200px; }
 .val-libpick-body .mlt-search {
@@ -5122,21 +5289,44 @@
   padding-bottom: 14px;
 }
 .val-libpick-body .mac-card {
-  border: 1px solid var(--val-border);
-  border-radius: 10px;
+  border: 2px solid var(--val-border, #dde3ee);
+  border-radius: 12px;
   background: var(--val-surface);
-  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .val-libpick-body .mac-card:hover:not(:disabled) {
   border-color: var(--val-blue-bdr, #bfdbfe);
-  box-shadow: 0 6px 16px -8px rgba(24, 119, 242, 0.35);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.15);
   transform: translateY(-1px);
 }
-.val-libpick-body .mac-card--selected {
-  border-color: var(--val-blue);
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.18);
+.val-libpick-body .mac-card--selected,
+.val-libpick-body .mac-card--added {
+  border-color: var(--val-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--val-blue, #1877f2);
+  opacity: 1 !important;
 }
-.val-libpick-body .mac-thumb { aspect-ratio: 1 / 1; }
+.val-libpick-body .mac-card--selected:hover:not(:disabled),
+.val-libpick-body .mac-card--added:hover:not(:disabled) {
+  border-color: var(--val-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--val-blue, #1877f2), 0 4px 12px rgba(24, 119, 242, 0.2);
+  transform: translateY(-1px);
+}
+.val-libpick-body .mac-card--selected .mac-thumb::after,
+.val-libpick-body .mac-card--added .mac-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 119, 242, 0.12);
+  pointer-events: none;
+}
+.val-libpick-body .mac-thumb {
+  aspect-ratio: 1 / 1;
+  position: relative;
+  overflow: hidden;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
 .val-libpick-body .mac-name {
   padding: 6px 8px 0;
   font-size: 11.5px;
@@ -5156,8 +5346,18 @@
   font-size: 10px;
 }
 .val-libpick-body .mac-check {
-  background: var(--val-blue);
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
   box-shadow: 0 2px 6px rgba(12, 29, 61, 0.25);
+}
+.val-libpick-body .mac-check.checked {
+  background: var(--val-blue, #1877f2);
+  border-color: var(--val-blue, #1877f2);
+  color: #fff;
 }
 
 /* States */
@@ -5184,12 +5384,12 @@
   border-color: var(--val-blue-bdr, #bfdbfe);
 }
 
-/* Selection toolbar: sticks to the top of the scrolling modal body so
+/* Selection toolbar: sticks below the sticky filters so
    Add Selected stays in view while browsing a long grid. */
 .val-libpick-body .mlt-selection-bar {
   position: sticky;
-  top: 0;
-  z-index: 5;
+  top: 63px;
+  z-index: 10;
   margin: 0 -14px 10px;
   padding: 8px 16px;
   background: var(--val-surface);

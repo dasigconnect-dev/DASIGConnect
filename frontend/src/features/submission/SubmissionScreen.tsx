@@ -2115,6 +2115,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
+    if (items.length === 0 && pickerItems.length > 0) {
+      toast.warning("At least 1 media must be selected.");
+      return;
+    }
     mediaAutosave.updateDesiredItems(items);
     setAddressedRevisionFields((prev) => new Set(prev).add("media"));
     setPickerItems(items);

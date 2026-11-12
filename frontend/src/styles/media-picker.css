@@ -341,8 +341,18 @@
   transform: translateY(0);
 }
 
-.sms-remove-btn:hover {
+.sms-remove-btn:hover:not(:disabled) {
   background: #dc2626;
+}
+
+.sms-remove-btn:disabled,
+.sms-remove-btn--disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+.sms-remove-btn--disabled:hover {
+  background: rgba(15, 23, 42, 0.72) !important;
 }
 
 .sms-remove-btn:focus-visible {
@@ -456,6 +466,13 @@
   gap: 8px;
   margin-bottom: 10px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 10;
+}
+
+.mlt-filters:has(.is-open),
+.mlt-filters:focus-within {
+  z-index: 40;
 }
 
 .mlt-search-wrap {
@@ -918,19 +935,21 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: 2px solid transparent;
-  border-radius: var(--mp-r-sm);
-  background: var(--mp-surface-2);
-  overflow: hidden;
+  border: 2px solid var(--mp-border, #e2e8f0);
+  border-radius: var(--mp-r-sm, 12px);
+  background: var(--mp-surface, #ffffff);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.12s, box-shadow 0.12s;
+  transition: border-color var(--mp-ease), box-shadow var(--mp-ease), transform var(--mp-ease);
+  position: relative;
+  overflow: hidden;
   padding: 0 0 6px;
 }
 
 .mac-card:hover:not(:disabled) {
   border-color: var(--mp-blue-bdr, #bfdbfe);
-  box-shadow: 0 1px 6px rgba(24,119,242,0.12);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.15);
+  transform: translateY(-1px);
 }
 
 .mac-card:focus-visible {
@@ -939,13 +958,32 @@
 }
 
 .mac-card--selected {
-  border-color: var(--mp-blue);
-  box-shadow: 0 0 0 3px rgba(24,119,242,0.14);
+  border-color: var(--mp-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--mp-blue, #1877f2);
+  opacity: 1 !important;
+}
+
+.mac-card--selected:hover:not(:disabled),
+.mac-card--added:hover:not(:disabled) {
+  border-color: var(--mp-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--mp-blue, #1877f2), 0 4px 12px rgba(24, 119, 242, 0.2);
+  transform: translateY(-1px);
+}
+
+.mac-card--selected .mac-thumb::after,
+.mac-card--added .mac-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 119, 242, 0.12);
+  pointer-events: none;
 }
 
 .mac-card--added {
-  opacity: 0.55;
-  cursor: default;
+  border-color: var(--mp-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--mp-blue, #1877f2);
+  opacity: 1 !important;
+  cursor: pointer;
 }
 
 .mac-card--skeleton {
@@ -958,6 +996,8 @@
   aspect-ratio: 4 / 3;
   background: var(--mp-border);
   overflow: hidden;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
 }
 
 .mac-img {
@@ -980,15 +1020,34 @@
 
 .mac-check {
   position: absolute;
-  inset: 0;
-  background: rgba(24,119,242,0.22);
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: rgba(24, 119, 242, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  color: #fff;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
-  z-index: 2;
+  color: #ffffff;
+  opacity: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.mac-card:hover .mac-check,
+.mac-card:focus-visible .mac-check,
+.mac-check.checked {
+  opacity: 1;
+}
+
+.mac-check.checked {
+  background: var(--mp-blue, #1877f2);
+  border-color: var(--mp-blue, #1877f2);
+  color: #ffffff;
 }
 
 .mac-score {
@@ -1022,6 +1081,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   z-index: 3;
+  transition: left 0.15s ease;
+}
+
+.mac-card:hover .mac-format,
+.mac-card--selected .mac-format,
+.mac-card--added .mac-format {
+  left: 36px;
 }
 
 .mac-match-tooltip {

@@ -16,6 +16,7 @@ interface InstitutionOption {
 interface MediaLibraryTabProps {
   alreadyAddedIds: Set<string>;
   onAddItems: (items: SubmissionMediaItem[]) => void;
+  onRemoveItem?: (assetId: string) => void;
   disabled?: boolean;
   /**
    * The institution this picker is opened "for" (e.g. the submission's own
@@ -44,6 +45,7 @@ const MEDIA_TYPE_OPTIONS = [
 export default function MediaLibraryTab({
   alreadyAddedIds,
   onAddItems,
+  onRemoveItem,
   disabled,
   institutionId,
   networkView,
@@ -122,6 +124,15 @@ export default function MediaLibraryTab({
   );
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
+
+  function handleToggleCard(id: string) {
+    if (disabled) return;
+    if (alreadyAddedIds.has(id)) {
+      onRemoveItem?.(id);
+      return;
+    }
+    toggleSelect(id);
+  }
 
   function handleAdd() {
     if (disabled || pendingSelected.length === 0) return;
@@ -255,7 +266,7 @@ export default function MediaLibraryTab({
             }))}
             selectedIds={new Set(selectedIds)}
             alreadyAddedIds={alreadyAddedIds}
-            onToggle={toggleSelect}
+            onToggle={handleToggleCard}
             loading={loading}
             skeletonCount={8}
           />
