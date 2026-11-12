@@ -8,6 +8,7 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto.RatioConf
 import com.dasigconnect.backend.service.WatermarkLayout.Box;
 import com.dasigconnect.backend.service.WatermarkLayout.Format;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -125,10 +126,35 @@ class WatermarkLayoutTest {
     }
 
     @Test
+    void cornerAnchorsKeepTheSameInsetOnPortraitAndPanoramaImages() {
+        WatermarkElementDto el = logo();
+        el.setXPercent(3.0);
+        el.setYPercent(4.0);
+
+        for (String anchor : List.of("top-left", "top-right", "bottom-left", "bottom-right")) {
+            el.setAnchor(anchor);
+            assertInset(WatermarkLayout.resolveBox(el, Format.SQUARE, 800, 1200), 800, 1200, anchor);
+            assertInset(WatermarkLayout.resolveBox(el, Format.LANDSCAPE, 2400, 600), 2400, 600, anchor);
+        }
+    }
+
+    private void assertInset(Box box, int imageWidth, int imageHeight, String anchor) {
+        double horizontalInset = anchor.endsWith("right")
+                ? (double) (imageWidth - box.x() - box.width()) / imageWidth
+                : (double) box.x() / imageWidth;
+        double verticalInset = anchor.startsWith("bottom")
+                ? (double) (imageHeight - box.y() - box.height()) / imageHeight
+                : (double) box.y() / imageHeight;
+        assertThat(horizontalInset).isCloseTo(0.03, org.assertj.core.data.Offset.offset(0.002));
+        assertThat(verticalInset).isCloseTo(0.04, org.assertj.core.data.Offset.offset(0.002));
+    }
+
+    @Test
     void elementJson_roundTripsPositionsLayoutsRatiosAndHidden() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         WatermarkElementDto el = logo();
         el.setHidden(true);
+        el.setAnchor("bottom-right");
         el.setLayouts(Map.of("4:3", new Position(12.5, 30.0)));
         el.setRatios(Map.of("16:9", new RatioConfig(
                 50.0, 20.0, 15.0, 15.0, 0.8, 1, false,
@@ -142,6 +168,7 @@ class WatermarkLayoutTest {
         assertThat(json).contains("\"ratios\"").contains("\"16:9\"");
         assertThat(parsed.getXPercent()).isEqualTo(70.0);
         assertThat(parsed.getYPercent()).isEqualTo(70.0);
+        assertThat(parsed.getAnchor()).isEqualTo("bottom-right");
         assertThat(parsed.isHiddenElement()).isTrue();
         assertThat(parsed.getLayouts()).containsEntry("4:3", new Position(12.5, 30.0));
         assertThat(parsed.getRatios()).containsKey("16:9");

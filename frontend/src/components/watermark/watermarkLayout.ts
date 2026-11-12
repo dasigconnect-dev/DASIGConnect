@@ -24,7 +24,8 @@ export const FULL_WIDTH_PERCENT = 177.8;
 
 const MIN_BOX_WIDTH = 3;
 const MIN_BOX_HEIGHT = 1;
-const SNAP_MARGIN = 3;
+export const DEFAULT_ANCHOR_INSET_PERCENT = 3;
+const SNAP_MARGIN = DEFAULT_ANCHOR_INSET_PERCENT;
 
 export interface ElementBox {
   left: number;
@@ -71,8 +72,12 @@ export function resolveRatioConfig(
   const saved = el.ratios?.[ratio];
   if (saved) {
     return {
-      xPercent: saved.xPercent,
-      yPercent: saved.yPercent,
+      xPercent:
+        saved.xPercent ??
+        (ratio === "1:1" || (el.anchor != null && el.anchor !== "freeform")
+          ? el.xPercent
+          : el.xPercent / aspectOf(ratio)),
+      yPercent: saved.yPercent ?? el.yPercent,
       widthPercent: saved.widthPercent ?? el.widthPercent,
       heightPercent: saved.heightPercent ?? el.heightPercent,
       opacity: saved.opacity ?? el.opacity ?? 1.0,
@@ -90,7 +95,8 @@ export function resolveRatioConfig(
 
   // Untouched ratio: adapt initial 1:1 coordinates
   const aspect = aspectOf(ratio);
-  const initialX = ratio === "1:1" ? el.xPercent : el.xPercent / aspect;
+  const isCornerAnchored = el.anchor != null && el.anchor !== "freeform";
+  const initialX = ratio === "1:1" || isCornerAnchored ? el.xPercent : el.xPercent / aspect;
 
   return {
     xPercent: round1(initialX),
@@ -254,9 +260,13 @@ export function computeBox(
   const cfg = resolveRatioConfig(el, ratio);
   const width = Math.min(cfg.widthPercent / canvasAspect, 100);
   const height = Math.min(cfg.heightPercent, 100);
+  const xOffset = clamp(cfg.xPercent, 0, 100 - width);
+  const yOffset = clamp(cfg.yPercent, 0, 100 - height);
+  const isRightAnchored = el.anchor === "top-right" || el.anchor === "bottom-right";
+  const isBottomAnchored = el.anchor === "bottom-left" || el.anchor === "bottom-right";
   return {
-    left: clamp(cfg.xPercent, 0, 100 - width),
-    top: clamp(cfg.yPercent, 0, 100 - height),
+    left: isRightAnchored ? 100 - xOffset - width : xOffset,
+    top: isBottomAnchored ? 100 - yOffset - height : yOffset,
     width,
     height,
   };
@@ -271,9 +281,11 @@ export function applyBox(
   box: ElementBox,
   canvasAspect: number = aspectOf(ratio),
 ): WatermarkElement {
+  const isRightAnchored = el.anchor === "top-right" || el.anchor === "bottom-right";
+  const isBottomAnchored = el.anchor === "bottom-left" || el.anchor === "bottom-right";
   return updateElementForRatio(el, ratio, {
-    xPercent: round1(box.left),
-    yPercent: round1(box.top),
+    xPercent: round1(isRightAnchored ? 100 - box.left - box.width : box.left),
+    yPercent: round1(isBottomAnchored ? 100 - box.top - box.height : box.top),
     widthPercent: round1(box.width * canvasAspect),
     heightPercent: round1(box.height),
   });

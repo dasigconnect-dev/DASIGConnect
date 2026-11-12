@@ -75,7 +75,7 @@ function ShapeContent({ el, cfg }: { el: WatermarkElement; cfg?: ElementRatioCon
       className="wm-content-fill"
       style={{
         background,
-        borderRadius: isLine ? 0 : 8,
+        borderRadius: isLine || !isGradient ? 0 : 8,
         border: hasStroke ? `2px solid ${stroke}` : "none",
         boxSizing: "border-box",
       }}

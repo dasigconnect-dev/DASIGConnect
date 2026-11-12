@@ -23,6 +23,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -35,7 +36,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,6 +52,7 @@ import com.dasigconnect.backend.event.WatermarkApplicationFailedEvent;
 public class WatermarkApplicationService {
 
     private static final Logger log = LoggerFactory.getLogger(WatermarkApplicationService.class);
+    private static final float JPEG_COMPRESSION_QUALITY = 0.95f;
 
     private static final Pattern RGBA_PATTERN = Pattern.compile(
             "rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})(?:\\s*,\\s*([0-9.]+))?\\s*\\)",
@@ -135,7 +141,7 @@ public class WatermarkApplicationService {
             }
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(output, "jpg", baos);
+            writeJpeg(output, baos);
             String path = storageService.generatedWatermarkPath(submission.getId(), asset.getId(), "jpg");
             return storageService.uploadPublicObject(path, baos.toByteArray(), "image/jpeg");
         } catch (Exception ex) {
@@ -144,6 +150,25 @@ public class WatermarkApplicationService {
             recordWatermarkFailure(submission, asset.getId(),
                     ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
             return asset.getStorageUrl();
+        }
+    }
+
+    private void writeJpeg(BufferedImage image, ByteArrayOutputStream output) throws IOException {
+        var writers = ImageIO.getImageWritersByFormatName("jpg");
+        if (!writers.hasNext()) {
+            throw new IllegalStateException("No JPEG image writer is available");
+        }
+
+        ImageWriter writer = writers.next();
+        try (ImageOutputStream imageOutput = ImageIO.createImageOutputStream(output)) {
+            writer.setOutput(imageOutput);
+            ImageWriteParam parameters = writer.getDefaultWriteParam();
+            parameters.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            parameters.setCompressionQuality(JPEG_COMPRESSION_QUALITY);
+            writer.write(null, new IIOImage(image, null, null), parameters);
+            imageOutput.flush();
+        } finally {
+            writer.dispose();
         }
     }
 
@@ -173,7 +198,7 @@ public class WatermarkApplicationService {
         WatermarkConfiguration config = new WatermarkConfiguration();
         config.setEnabled(true);
         config.setElementsJson("""
-                [{"id":"default-text","type":"text","xPercent":55.0,"yPercent":92.0,"widthPercent":40.0,"heightPercent":6.0,"opacity":0.9,"text":"@DASIGCentralVisayas","textColor":"#FFFFFF","fontSizePercent":2.8,"fontWeight":"700"}]
+                [{"id":"default-text","type":"text","anchor":"bottom-right","xPercent":3.0,"yPercent":3.0,"widthPercent":40.0,"heightPercent":6.0,"opacity":0.9,"text":"@DASIGCentralVisayas","textColor":"#FFFFFF","fontSizePercent":2.8,"fontWeight":"700"}]
                 """);
         return config;
     }
@@ -231,7 +256,7 @@ public class WatermarkApplicationService {
 
         // Font size is a percent of the canvas height (frontend: calc(<n> * 1cqh)).
         double fontPct = config.fontSizePercent() != null ? config.fontSizePercent() : 3.2;
-        int fontSize = Math.max(12, percent(canvas.getHeight(), fontPct));
+        int fontSize = Math.max(1, percent(canvas.getHeight(), fontPct));
 
         int style = Font.PLAIN;
         String weight = config.fontWeight();
@@ -242,19 +267,26 @@ public class WatermarkApplicationService {
             style |= Font.ITALIC;
         }
 
+        String[] lines = text.split("\n", -1);
         Font font = new Font(resolveFontFamily(config.fontFamily()), style, fontSize);
-        g.setFont(font);
         FontMetrics fm = g.getFontMetrics(font);
+        int lineHeight = Math.max(fm.getHeight(), (int) Math.round(fontSize * 1.25));
+        int shadowOffset = Math.max(1, fontSize / 18);
+        while (fontSize > 1 && !textFits(lines, fm, box, lineHeight, shadowOffset)) {
+            fontSize--;
+            font = new Font(resolveFontFamily(config.fontFamily()), style, fontSize);
+            fm = g.getFontMetrics(font);
+            lineHeight = Math.max(fm.getHeight(), (int) Math.round(fontSize * 1.25));
+            shadowOffset = Math.max(1, fontSize / 18);
+        }
 
+        g.setFont(font);
         Color mainColor = colorOrDefault(config.textColor(), Color.WHITE);
         Color shadowColor = new Color(0, 0, 0, 160);
-        int shadowOffset = Math.max(1, fontSize / 18);
-
-        // Same as the preview: every line centred horizontally, block centred vertically, line-height 1.25.
-        String[] lines = text.split("\n", -1);
-        int lineHeight = (int) Math.round(fontSize * 1.25);
         int blockTop = box.y() + (box.height() - lineHeight * lines.length) / 2;
 
+        java.awt.Shape originalClip = g.getClip();
+        g.clipRect(box.x(), box.y(), box.width(), box.height());
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             int lineX = box.x() + (box.width() - fm.stringWidth(line)) / 2;
@@ -264,6 +296,16 @@ public class WatermarkApplicationService {
             g.setColor(mainColor);
             g.drawString(line, lineX, baseline);
         }
+        g.setClip(originalClip);
+    }
+
+    private boolean textFits(String[] lines, FontMetrics metrics, WatermarkLayout.Box box, int lineHeight, int shadowOffset) {
+        if ((long) lineHeight * lines.length > box.height()) return false;
+        int maxLineWidth = 0;
+        for (String line : lines) {
+            maxLineWidth = Math.max(maxLineWidth, metrics.stringWidth(line));
+        }
+        return (long) maxLineWidth + shadowOffset * 2L <= box.width();
     }
 
     private String resolveFontFamily(String cssFontFamily) {
@@ -286,9 +328,8 @@ public class WatermarkApplicationService {
             return;
         }
 
-        int arc = Math.min(16, Math.min(width, height) / 2);
-
         if ("gradient".equalsIgnoreCase(element.getShapeType()) || "scrim".equalsIgnoreCase(element.getShapeType())) {
+            int arc = Math.min(16, Math.min(width, height) / 2);
             Color baseColor = colorOrDefault(config.fillColor(), new Color(7, 17, 42));
             Color startColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 0);
             Color endColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), baseColor.getAlpha());
@@ -301,7 +342,7 @@ public class WatermarkApplicationService {
         }
 
         g.setColor(colorOrDefault(config.fillColor(), new Color(15, 23, 42, 190)));
-        g.fillRoundRect(x, y, width, height, arc, arc);
+        g.fillRect(x, y, width, height);
 
         // Preview draws a 2px outline unless the stroke is transparent or the default white.
         String stroke = config.strokeColor();
@@ -313,7 +354,7 @@ public class WatermarkApplicationService {
                 var oldStroke = g.getStroke();
                 g.setStroke(new BasicStroke(2f));
                 g.setColor(strokeColor);
-                g.drawRoundRect(x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2), arc, arc);
+                g.drawRect(x + 1, y + 1, Math.max(1, width - 2), Math.max(1, height - 2));
                 g.setStroke(oldStroke);
             }
         }

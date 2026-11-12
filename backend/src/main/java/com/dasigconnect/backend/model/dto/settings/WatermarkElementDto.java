@@ -38,8 +38,9 @@ public class WatermarkElementDto {
 
     private String id;
     private String type; // "image" | "text" | "shape"
-    private double xPercent; // 1:1 position, % of canvas width
-    private double yPercent; // 1:1 position, % of canvas height
+    private String anchor;
+    private double xPercent; // 1:1 position or horizontal inset, % of canvas width
+    private double yPercent; // 1:1 position or vertical inset, % of canvas height
     private double widthPercent; // % of canvas HEIGHT, shared by every format
     private double heightPercent; // % of canvas HEIGHT, shared by every format
     private double opacity = 1.0; // 0.0 - 1.0
@@ -83,6 +84,14 @@ public class WatermarkElementDto {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getAnchor() {
+        return anchor;
+    }
+
+    public void setAnchor(String anchor) {
+        this.anchor = anchor;
     }
 
     // Explicit names: Jackson's default mangling would turn "getXPercent" into "xpercent".

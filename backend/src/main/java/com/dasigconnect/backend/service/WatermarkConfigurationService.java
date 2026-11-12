@@ -107,8 +107,9 @@ public class WatermarkConfigurationService {
         WatermarkElementDto logo = new WatermarkElementDto();
         logo.setId("default-logo");
         logo.setType("image");
-        logo.setXPercent(78.0);
-        logo.setYPercent(82.0);
+        logo.setAnchor("bottom-left");
+        logo.setXPercent(3.0);
+        logo.setYPercent(3.0);
         logo.setWidthPercent(18.0);
         logo.setHeightPercent(14.0);
         logo.setOpacity(0.9);
@@ -118,8 +119,9 @@ public class WatermarkConfigurationService {
         WatermarkElementDto text = new WatermarkElementDto();
         text.setId("default-text");
         text.setType("text");
-        text.setXPercent(55.0);
-        text.setYPercent(92.0);
+        text.setAnchor("bottom-right");
+        text.setXPercent(3.0);
+        text.setYPercent(3.0);
         text.setWidthPercent(40.0);
         text.setHeightPercent(6.0);
         text.setText("@DASIGCentralVisayas");
@@ -148,6 +150,12 @@ public class WatermarkConfigurationService {
             }
             el.setXPercent(clamp(el.getXPercent(), 0.0, 100.0));
             el.setYPercent(clamp(el.getYPercent(), 0.0, 100.0));
+            if (el.getAnchor() != null && !isValidAnchor(el.getAnchor())) {
+                el.setAnchor("freeform");
+            }
+            if (isCornerAnchor(el.getAnchor())) {
+                el.setLayouts(null);
+            }
             // Size is a percent of the canvas height, so an element can be as wide as the widest format.
             el.setWidthPercent(clamp(el.getWidthPercent(), 1.0, WatermarkLayout.FULL_WIDTH_PERCENT));
             el.setHeightPercent(clamp(el.getHeightPercent(), 0.2, 100.0));
@@ -203,6 +211,18 @@ public class WatermarkConfigurationService {
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private boolean isValidAnchor(String anchor) {
+        return List.of("freeform", "top-left", "top-right", "bottom-left", "bottom-right")
+                .contains(anchor);
+    }
+
+    private boolean isCornerAnchor(String anchor) {
+        return "top-left".equals(anchor)
+                || "top-right".equals(anchor)
+                || "bottom-left".equals(anchor)
+                || "bottom-right".equals(anchor);
     }
 
     private List<WatermarkElementDto> parseElements(String json) {

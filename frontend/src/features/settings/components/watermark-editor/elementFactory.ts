@@ -1,5 +1,9 @@
 import type { WatermarkElement } from "../../../../types/watermark.types";
-import { FULL_WIDTH_PERCENT, fitTextHeight } from "../../../../components/watermark/watermarkLayout";
+import {
+  DEFAULT_ANCHOR_INSET_PERCENT,
+  FULL_WIDTH_PERCENT,
+  fitTextHeight,
+} from "../../../../components/watermark/watermarkLayout";
 
 export type ShapeVariant = NonNullable<WatermarkElement["shapeType"]>;
 
@@ -9,8 +13,9 @@ export function createImageElement(imageUrl: string): WatermarkElement {
   return {
     id: newId(),
     type: "image",
-    xPercent: 78,
-    yPercent: 78,
+    anchor: "bottom-left",
+    xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+    yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
     widthPercent: 18,
     heightPercent: 18,
     opacity: 0.9,
@@ -23,8 +28,9 @@ export function createTextElement(text: string): WatermarkElement {
   return {
     id: newId(),
     type: "text",
-    xPercent: 27,
-    yPercent: 88,
+    anchor: "bottom-right",
+    xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+    yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
     widthPercent: 46,
     heightPercent: fitTextHeight(text, fontSizePercent),
     opacity: 0.95,
@@ -48,6 +54,7 @@ export function createShapeElement(shapeType: ShapeVariant): WatermarkElement {
   return {
     id: newId(),
     type: "shape",
+    anchor: "freeform",
     shapeType,
     xPercent: 0,
     widthPercent: FULL_WIDTH_PERCENT,

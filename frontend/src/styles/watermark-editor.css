@@ -561,7 +561,7 @@
   width: 32px;
   height: 12px;
   background: #1877f2;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .shape-gradient-preview .mini-gradient {
@@ -1198,6 +1198,74 @@
   gap: 4px;
 }
 
+.canva-anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.canva-align-dropdown .canva-anchor-option {
+  min-height: 38px;
+  justify-content: flex-start;
+  padding: 5px 7px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.canva-align-dropdown .canva-anchor-option.is-active {
+  border-color: #1877f2;
+  background: #eff6ff;
+  color: #1877f2;
+}
+
+.canva-anchor-preview {
+  position: relative;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 16px;
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.canva-anchor-preview::after {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.canva-anchor-preview-top-left::after {
+  top: 2px;
+  left: 2px;
+}
+
+.canva-anchor-preview-top-right::after {
+  top: 2px;
+  right: 2px;
+}
+
+.canva-anchor-preview-bottom-left::after {
+  bottom: 2px;
+  left: 2px;
+}
+
+.canva-anchor-preview-bottom-right::after {
+  right: 2px;
+  bottom: 2px;
+}
+
+.canva-anchor-hint {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .canva-align-dropdown button {
   display: flex;
   align-items: center;
@@ -1247,7 +1315,7 @@
   width: calc(410px * var(--canva-aspect-num, 1));
   max-width: 100%;
   aspect-ratio: var(--canva-aspect, 1 / 1);
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid #cbd5e1;
   box-shadow: none;
@@ -1775,10 +1843,22 @@
     min-height: auto;
   }
 
+  .canva-studio-main {
+    flex: 1 1 0;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .canva-workspace {
+    min-height: 0;
+  }
+
   /* Clean Horizontal Navigation Rail across the top */
   .canva-rail {
     width: 100%;
     flex: 0 0 auto;
+    height: auto;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
@@ -1788,6 +1868,7 @@
     box-sizing: border-box;
     gap: 8px;
     background: #ffffff;
+    z-index: 90;
   }
 
   .canva-rail-top {
@@ -1906,7 +1987,29 @@
 
   /* Canvas Stage on Mobile */
   .canva-stage-wrap {
+    flex: 1 1 0;
+    min-height: 0;
     padding: 16px 12px;
+    container-type: size;
+  }
+
+  .canva-frame {
+    box-sizing: border-box;
+    width: min(100%, 410px);
+    height: auto;
+    max-height: none;
+  }
+
+  .canva-frame.wm-aspect-1-1 {
+    width: min(100%, 410px, 100cqh);
+  }
+
+  .canva-frame.wm-aspect-4-3 {
+    width: min(100%, 410px, calc(100cqh * 1.333333));
+  }
+
+  .canva-frame.wm-aspect-16-9 {
+    width: min(100%, 410px, calc(100cqh * 1.777778));
   }
 
   /* Bottom Controls: Horizontal Swipeable Pills */
@@ -1949,6 +2052,39 @@
 }
 
 @media (max-width: 560px) {
+  .canva-studio-header {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .canva-studio-header .sub-back-btn {
+    gap: 0;
+  }
+
+  .canva-studio-header .sub-back-btn span,
+  .canva-header-ratio-badge {
+    display: none;
+  }
+
+  .canva-header-center {
+    min-width: 0;
+  }
+
+  .canva-header-center .canva-header-title {
+    font-size: 15px;
+  }
+
+  .canva-header-right {
+    gap: 0;
+  }
+
+  .canva-header-save-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
   .canva-rail {
     padding: 6px 10px;
     gap: 4px;
@@ -1979,17 +2115,18 @@
   .canva-bottom-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 6px;
+    padding: 8px;
   }
 
   .canva-pill-segment {
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
   }
 
   .canva-segment-item {
     padding: 4px 10px;
-    min-height: 28px;
+    min-height: 40px;
     font-size: 11px;
   }
 
@@ -2001,5 +2138,16 @@
 
   .canva-rail-btn i {
     font-size: 17px;
+  }
+
+  .canva-tool-btn,
+  .canva-stepper-btn,
+  .canva-zoom-btn,
+  .canva-layer-icon-btn {
+    min-height: 40px;
+  }
+
+  .canva-layer-icon-btn {
+    min-width: 40px;
   }
 }

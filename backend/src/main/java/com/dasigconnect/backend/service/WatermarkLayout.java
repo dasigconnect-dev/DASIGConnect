@@ -13,7 +13,8 @@ import java.util.Map;
  *
  * <p>Coordinate model: size ({@code widthPercent}, {@code heightPercent}) is a
  * percent of the canvas HEIGHT and can be overridden per format. Position is a
- * percent of canvas width (x) / height (y) and is stored per format.
+ * percent of canvas width (x) / height (y); corner-anchored elements use these
+ * values as insets from their selected edges.
  */
 final class WatermarkLayout {
 
@@ -50,7 +51,8 @@ final class WatermarkLayout {
             Double fontSizePercent,
             String fontWeight,
             String fontStyle,
-            String fontFamily
+            String fontFamily,
+            String anchor
     ) {}
 
     /** Widest element that still fits the widest format (16:9). */
@@ -82,7 +84,11 @@ final class WatermarkLayout {
         RatioConfig saved = ratios != null ? ratios.get(format.key) : null;
         if (saved != null) {
             return new ResolvedConfig(
-                    saved.xPercent() != null ? saved.xPercent() : (format == Format.SQUARE ? element.getXPercent() : element.getXPercent() / format.aspect),
+                    saved.xPercent() != null
+                            ? saved.xPercent()
+                            : (format == Format.SQUARE || isCornerAnchor(element.getAnchor())
+                                    ? element.getXPercent()
+                                    : element.getXPercent() / format.aspect),
                     saved.yPercent() != null ? saved.yPercent() : element.getYPercent(),
                     saved.widthPercent() != null ? saved.widthPercent() : element.getWidthPercent(),
                     saved.heightPercent() != null ? saved.heightPercent() : element.getHeightPercent(),
@@ -95,7 +101,8 @@ final class WatermarkLayout {
                     saved.fontSizePercent() != null ? saved.fontSizePercent() : element.getFontSizePercent(),
                     saved.fontWeight() != null ? saved.fontWeight() : element.getFontWeight(),
                     saved.fontStyle() != null ? saved.fontStyle() : element.getFontStyle(),
-                    saved.fontFamily() != null ? saved.fontFamily() : element.getFontFamily()
+                    saved.fontFamily() != null ? saved.fontFamily() : element.getFontFamily(),
+                    element.getAnchor()
             );
         }
 
@@ -105,13 +112,17 @@ final class WatermarkLayout {
         if (format == Format.SQUARE) {
             initialX = element.getXPercent();
             initialY = element.getYPercent();
-        } else if (element.getLayouts() != null && element.getLayouts().containsKey(format.key)) {
+        } else if (!isCornerAnchor(element.getAnchor())
+                && element.getLayouts() != null
+                && element.getLayouts().containsKey(format.key)) {
             // Support legacy layouts map if present
             initialX = element.getLayouts().get(format.key).xPercent();
             initialY = element.getLayouts().get(format.key).yPercent();
         } else {
             // Default: width extends, element pixel position & size stay the same
-            initialX = element.getXPercent() / format.aspect;
+            initialX = isCornerAnchor(element.getAnchor())
+                    ? element.getXPercent()
+                    : element.getXPercent() / format.aspect;
             initialY = element.getYPercent();
         }
 
@@ -129,7 +140,8 @@ final class WatermarkLayout {
                 element.getFontSizePercent(),
                 element.getFontWeight(),
                 element.getFontStyle(),
-                element.getFontFamily()
+                element.getFontFamily(),
+                element.getAnchor()
         );
     }
 
@@ -151,8 +163,10 @@ final class WatermarkLayout {
         double canvasAspect = (double) canvasWidth / canvasHeight;
         double widthPct = Math.min(config.widthPercent() / canvasAspect, 100.0);
         double heightPct = Math.min(config.heightPercent(), 100.0);
-        double left = clamp(config.xPercent(), 0.0, 100.0 - widthPct);
-        double top = clamp(config.yPercent(), 0.0, 100.0 - heightPct);
+        double xOffset = clamp(config.xPercent(), 0.0, 100.0 - widthPct);
+        double yOffset = clamp(config.yPercent(), 0.0, 100.0 - heightPct);
+        double left = isRightAnchor(config.anchor()) ? 100.0 - xOffset - widthPct : xOffset;
+        double top = isBottomAnchor(config.anchor()) ? 100.0 - yOffset - heightPct : yOffset;
 
         return new Box(
                 (int) Math.round(canvasWidth * left / 100.0),
@@ -163,5 +177,18 @@ final class WatermarkLayout {
 
     static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static boolean isCornerAnchor(String anchor) {
+        return isRightAnchor(anchor) || isBottomAnchor(anchor)
+                || "top-left".equals(anchor) || "bottom-left".equals(anchor);
+    }
+
+    private static boolean isRightAnchor(String anchor) {
+        return "top-right".equals(anchor) || "bottom-right".equals(anchor);
+    }
+
+    private static boolean isBottomAnchor(String anchor) {
+        return "bottom-left".equals(anchor) || "bottom-right".equals(anchor);
     }
 }

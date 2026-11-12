@@ -1,4 +1,5 @@
 export type WatermarkElementType = "image" | "text" | "shape";
+export type WatermarkAnchor = "freeform" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 /** Canvas formats the studio can lay out. 1:1 is the reference format. */
 export type AspectRatioType = "1:1" | "4:3" | "16:9";
@@ -9,8 +10,8 @@ export type AspectRatioType = "1:1" | "4:3" | "16:9";
  * can each be customized independently per format.
  */
 export interface ElementRatioConfig {
-  xPercent: number; // % of canvas width
-  yPercent: number; // % of canvas height
+  xPercent: number; // % from the left in freeform, or from the selected horizontal edge
+  yPercent: number; // % from the top in freeform, or from the selected vertical edge
   widthPercent: number; // % of canvas height (or width in square)
   heightPercent: number; // % of canvas height
   opacity?: number; // 0.05 - 1.0
@@ -30,6 +31,8 @@ export interface ElementRatioConfig {
 export interface WatermarkElement {
   id: string;
   type: WatermarkElementType;
+  /** Shared corner anchor; x/y percentages become insets from that corner. */
+  anchor?: WatermarkAnchor;
 
   // Base fallback properties (also represent default 1:1 configuration)
   xPercent: number;

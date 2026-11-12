@@ -56,6 +56,9 @@ class WatermarkConfigurationServiceTest {
 
         assertThat(dto).isNotNull();
         assertThat(dto.elements()).isNotEmpty();
+        assertThat(dto.elements())
+                .extracting(WatermarkElementDto::getAnchor)
+                .containsExactly("bottom-left", "bottom-right");
     }
 
     @Test
@@ -112,8 +115,9 @@ class WatermarkConfigurationServiceTest {
         WatermarkElementDto el1 = new WatermarkElementDto();
         el1.setId("el1");
         el1.setType("image");
-        el1.setXPercent(80.0);
-        el1.setYPercent(80.0);
+        el1.setAnchor("top-left");
+        el1.setXPercent(3.0);
+        el1.setYPercent(3.0);
         el1.setWidthPercent(15.0);
         el1.setHeightPercent(15.0);
         elements.add(el1);
@@ -127,6 +131,7 @@ class WatermarkConfigurationServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(result.elements()).hasSize(1);
+        assertThat(result.elements().getFirst().getAnchor()).isEqualTo("top-left");
         verify(repository).save(any(WatermarkConfiguration.class));
     }
 

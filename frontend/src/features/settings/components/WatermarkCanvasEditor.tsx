@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import type { AspectRatioType, WatermarkElement, WatermarkElementType, ElementRatioConfig } from "../../../types/watermark.types";
+import type {
+  AspectRatioType,
+  WatermarkAnchor,
+  WatermarkElement,
+  WatermarkElementType,
+  ElementRatioConfig,
+} from "../../../types/watermark.types";
 import {
+  DEFAULT_ANCHOR_INSET_PERCENT,
   computeBox,
   applyBox,
   snapBox,
@@ -169,6 +176,18 @@ export default function WatermarkCanvasEditor({
     onChange(updated);
   }
 
+  function updateSelectedShapeVariant(variant: "rectangle" | "line" | "gradient") {
+    if (!selectedElement || disabled) return;
+    const patch = switchShapeVariant(selectedElement, variant);
+    onChange(
+      elements.map((el) =>
+        el.id === selectedElement.id
+          ? updateElementForRatio({ ...el, ...patch }, aspectRatio, patch)
+          : el
+      )
+    );
+  }
+
   function removeSelected() {
     if (!selectedId || disabled) return;
     const updated = elements.filter((el) => el.id !== selectedId);
@@ -180,6 +199,59 @@ export default function WatermarkCanvasEditor({
     if (!selectedElement || disabled) return;
 
     const currentBox = computeBox(selectedElement, aspectRatio);
+    const cornerAnchor = (["top-left", "top-right", "bottom-left", "bottom-right"] as const)
+      .find((anchor) => anchor === alignment);
+    if (cornerAnchor) {
+      const anchor: WatermarkAnchor = cornerAnchor;
+      const updated = elements.map((el) => {
+        if (el.id !== selectedElement.id) return el;
+        const ratios = el.ratios ? { ...el.ratios } : undefined;
+        if (ratios) {
+          for (const ratio of ["1:1", "4:3", "16:9"] as const) {
+            const config = ratios[ratio];
+            if (config) {
+              ratios[ratio] = {
+                ...config,
+                xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+                yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+              };
+            }
+          }
+        }
+        return {
+          ...el,
+          anchor,
+          xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+          yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+          ratios,
+        };
+      });
+      onChange(updated);
+      setShowAlignMenu(false);
+      return;
+    }
+
+    const selectedIndex = elements.findIndex((el) => el.id === selectedElement.id);
+    const freeformRatios = { ...selectedElement.ratios };
+    const freeformElement: WatermarkElement = {
+      ...selectedElement,
+      anchor: "freeform",
+      ratios: freeformRatios,
+    };
+    for (const ratio of ["1:1", "4:3", "16:9"] as const) {
+      const box = computeBox(selectedElement, ratio);
+      const config = resolveRatioConfig(selectedElement, ratio, selectedIndex);
+      freeformRatios[ratio] = {
+        ...config,
+        xPercent: box.left,
+        yPercent: box.top,
+      };
+    }
+    const squareConfig = freeformRatios["1:1"];
+    if (squareConfig) {
+      freeformElement.xPercent = squareConfig.xPercent;
+      freeformElement.yPercent = squareConfig.yPercent;
+    }
 
     if (alignment === "bottom-bar") {
       const newBox: ElementBox = {
@@ -188,7 +260,9 @@ export default function WatermarkCanvasEditor({
         width: 100,
         height: currentBox.height,
       };
-      onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, newBox) : el)));
+      onChange(elements.map((el) =>
+        el.id === selectedElement.id ? applyBox(freeformElement, aspectRatio, newBox) : el
+      ));
       setShowAlignMenu(false);
       return;
     }
@@ -200,7 +274,9 @@ export default function WatermarkCanvasEditor({
         width: 100,
         height: currentBox.height,
       };
-      onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, newBox) : el)));
+      onChange(elements.map((el) =>
+        el.id === selectedElement.id ? applyBox(freeformElement, aspectRatio, newBox) : el
+      ));
       setShowAlignMenu(false);
       return;
     }
@@ -214,8 +290,41 @@ export default function WatermarkCanvasEditor({
     else if (alignment.includes("bottom")) v = "bottom";
 
     const snapped = snapBox(currentBox, h, v);
-    onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, snapped) : el)));
+    onChange(elements.map((el) =>
+      el.id === selectedElement.id ? applyBox(freeformElement, aspectRatio, snapped) : el
+    ));
     setShowAlignMenu(false);
+  }
+
+  function renderCornerAnchorOptions() {
+    const options: Array<{ anchor: Exclude<WatermarkAnchor, "freeform">; label: string }> = [
+      { anchor: "top-left", label: "Top Left" },
+      { anchor: "top-right", label: "Top Right" },
+      { anchor: "bottom-left", label: "Bottom Left" },
+      { anchor: "bottom-right", label: "Bottom Right" },
+    ];
+
+    return (
+      <>
+        <div className="canva-dropdown-title">Anchor to a corner (all photo sizes)</div>
+        <div className="canva-anchor-grid">
+          {options.map(({ anchor, label }) => (
+            <button
+              key={anchor}
+              type="button"
+              className={`canva-anchor-option ${selectedElement?.anchor === anchor ? "is-active" : ""}`}
+              onClick={() => alignElement(anchor)}
+              aria-pressed={selectedElement?.anchor === anchor}
+              title={`${label}, with a 3% inset`}
+            >
+              <span className={`canva-anchor-preview canva-anchor-preview-${anchor}`} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="canva-anchor-hint">Drag the element to fine-tune its inset.</p>
+      </>
+    );
   }
 
   function setElementSize(widthPercent: number, heightPercent?: number) {
@@ -955,24 +1064,13 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
-                    <button type="button" onClick={() => alignElement("bottom-right")}>
-                      <i className="ti ti-layout-align-right" /> Bottom-Right
-                    </button>
+                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Freeform placement ({aspectRatio})</div>
                     <button type="button" onClick={() => alignElement("bottom-center")}>
                       <i className="ti ti-layout-align-bottom" /> Bottom-Center
                     </button>
-                    <button type="button" onClick={() => alignElement("bottom-left")}>
-                      <i className="ti ti-layout-align-left" /> Bottom-Left
-                    </button>
-                    <button type="button" onClick={() => alignElement("top-right")}>
-                      <i className="ti ti-layout-align-top" /> Top-Right
-                    </button>
                     <button type="button" onClick={() => alignElement("top-center")}>
                       <i className="ti ti-layout-align-top" /> Top-Center
-                    </button>
-                    <button type="button" onClick={() => alignElement("top-left")}>
-                      <i className="ti ti-layout-align-top" /> Top-Left
                     </button>
                     <button type="button" onClick={() => alignElement("center")}>
                       <i className="ti ti-layout-align-middle" /> Center
@@ -1056,10 +1154,7 @@ export default function WatermarkCanvasEditor({
                 <button
                   type="button"
                   className={`canva-segment-item ${selectedElement.shapeType === "rectangle" || (!selectedElement.shapeType && selectedElement.shapeType !== "line" && selectedElement.shapeType !== "gradient") ? "is-active" : ""}`}
-                  onClick={() => {
-                    const patch = switchShapeVariant(selectedElement, "rectangle");
-                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
-                  }}
+                  onClick={() => updateSelectedShapeVariant("rectangle")}
                   disabled={disabled}
                 >
                   Ribbon
@@ -1067,10 +1162,7 @@ export default function WatermarkCanvasEditor({
                 <button
                   type="button"
                   className={`canva-segment-item ${selectedElement.shapeType === "gradient" ? "is-active" : ""}`}
-                  onClick={() => {
-                    const patch = switchShapeVariant(selectedElement, "gradient");
-                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
-                  }}
+                  onClick={() => updateSelectedShapeVariant("gradient")}
                   disabled={disabled}
                 >
                   Gradient Scrim
@@ -1078,10 +1170,7 @@ export default function WatermarkCanvasEditor({
                 <button
                   type="button"
                   className={`canva-segment-item ${selectedElement.shapeType === "line" ? "is-active" : ""}`}
-                  onClick={() => {
-                    const patch = switchShapeVariant(selectedElement, "line");
-                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
-                  }}
+                  onClick={() => updateSelectedShapeVariant("line")}
                   disabled={disabled}
                 >
                   Line
@@ -1223,7 +1312,8 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
+                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Freeform placement ({aspectRatio})</div>
                     <button type="button" onClick={() => alignElement("bottom-bar")}>
                       <i className="ti ti-layout-align-bottom" /> Full Bottom Bar
                     </button>
@@ -1409,24 +1499,13 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
-                    <button type="button" onClick={() => alignElement("bottom-right")}>
-                      <i className="ti ti-layout-align-right" /> Bottom-Right
-                    </button>
+                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Freeform placement ({aspectRatio})</div>
                     <button type="button" onClick={() => alignElement("bottom-center")}>
                       <i className="ti ti-layout-align-bottom" /> Bottom-Center
                     </button>
-                    <button type="button" onClick={() => alignElement("bottom-left")}>
-                      <i className="ti ti-layout-align-left" /> Bottom-Left
-                    </button>
-                    <button type="button" onClick={() => alignElement("top-right")}>
-                      <i className="ti ti-layout-align-top" /> Top-Right
-                    </button>
                     <button type="button" onClick={() => alignElement("top-center")}>
                       <i className="ti ti-layout-align-top" /> Top-Center
-                    </button>
-                    <button type="button" onClick={() => alignElement("top-left")}>
-                      <i className="ti ti-layout-align-top" /> Top-Left
                     </button>
                     <button type="button" onClick={() => alignElement("center")}>
                       <i className="ti ti-layout-align-middle" /> Center
