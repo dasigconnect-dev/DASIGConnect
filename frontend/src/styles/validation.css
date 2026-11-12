@@ -4444,6 +4444,10 @@
     width: 100%;
     min-width: 100%;
   }
+  .val-libpick-body .mlt-selection-bar {
+    position: relative;
+    top: auto;
+  }
   .val-libpick-body .mag-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 8px;
@@ -5073,12 +5077,16 @@
 .val-libpick-body .mlt-filters {
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 30;
   margin: 0 -14px 10px;
   padding: 12px 14px;
   background: var(--val-surface);
   border-bottom: 1px solid var(--val-border);
   align-items: center;
+}
+.val-libpick-body .mlt-filters:has(.is-open),
+.val-libpick-body .mlt-filters:focus-within {
+  z-index: 50;
 }
 .val-libpick-body .mlt-search-wrap { min-width: 200px; }
 .val-libpick-body .mlt-search {
@@ -5122,21 +5130,36 @@
   padding-bottom: 14px;
 }
 .val-libpick-body .mac-card {
-  border: 1px solid var(--val-border);
-  border-radius: 10px;
+  border: 2px solid var(--val-border, #dde3ee);
+  border-radius: 12px;
   background: var(--val-surface);
-  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .val-libpick-body .mac-card:hover:not(:disabled) {
   border-color: var(--val-blue-bdr, #bfdbfe);
-  box-shadow: 0 6px 16px -8px rgba(24, 119, 242, 0.35);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.15);
   transform: translateY(-1px);
 }
 .val-libpick-body .mac-card--selected {
-  border-color: var(--val-blue);
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.18);
+  border-color: var(--val-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--val-blue, #1877f2);
+  opacity: 1 !important;
 }
-.val-libpick-body .mac-thumb { aspect-ratio: 1 / 1; }
+.val-libpick-body .mac-card--selected .mac-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 119, 242, 0.12);
+  pointer-events: none;
+}
+.val-libpick-body .mac-thumb {
+  aspect-ratio: 1 / 1;
+  position: relative;
+  overflow: hidden;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
 .val-libpick-body .mac-name {
   padding: 6px 8px 0;
   font-size: 11.5px;
@@ -5156,8 +5179,18 @@
   font-size: 10px;
 }
 .val-libpick-body .mac-check {
-  background: var(--val-blue);
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
   box-shadow: 0 2px 6px rgba(12, 29, 61, 0.25);
+}
+.val-libpick-body .mac-check.checked {
+  background: var(--val-blue, #1877f2);
+  border-color: var(--val-blue, #1877f2);
+  color: #fff;
 }
 
 /* States */
@@ -5184,12 +5217,12 @@
   border-color: var(--val-blue-bdr, #bfdbfe);
 }
 
-/* Selection toolbar: sticks to the top of the scrolling modal body so
+/* Selection toolbar: sticks below the sticky filters so
    Add Selected stays in view while browsing a long grid. */
 .val-libpick-body .mlt-selection-bar {
   position: sticky;
-  top: 0;
-  z-index: 5;
+  top: 63px;
+  z-index: 10;
   margin: 0 -14px 10px;
   padding: 8px 16px;
   background: var(--val-surface);
