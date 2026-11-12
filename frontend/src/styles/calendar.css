@@ -70,17 +70,24 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1380px) {
   .cal-overview-grid-5 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 768px) {
-
+@media (max-width: 860px) {
   .cal-overview-grid-3,
   .cal-overview-grid-5 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+
+@media (max-width: 540px) {
+  .cal-overview-grid-3,
+  .cal-overview-grid-5 {
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 }
@@ -115,6 +122,8 @@
 .cal-metric-content {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .cal-metric-value {
@@ -130,6 +139,9 @@
   color: var(--d-muted, #64748b);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cal-metric-view {
@@ -140,6 +152,8 @@
   color: var(--d-blue, #1877f2);
   font-size: 11.5px;
   font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: transform 0.15s ease;
 }
 
@@ -187,6 +201,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   width: 100%;
   padding: 10px 16px;
   background: var(--d-surface, #ffffff);
@@ -201,6 +216,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex: 0 0 auto;
   z-index: 1;
 }
 
@@ -265,15 +281,13 @@
 }
 
 .cal-toolbar-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  pointer-events: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px;
   z-index: 0;
 }
 
@@ -297,7 +311,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  margin-left: auto;
+  flex: 0 0 auto;
   z-index: 1;
 }
 
@@ -3116,15 +3130,13 @@
   gap: 7px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1100px) {
   .cal-toolbar {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px 12px;
   }
 
   .cal-toolbar-center {
-    position: static;
-    transform: none;
     order: -1;
     width: 100%;
     margin-bottom: 4px;
