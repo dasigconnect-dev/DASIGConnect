@@ -10,8 +10,8 @@ public class SubmissionLookupsDto {
     private final int maxFileSizeMb = 50;
     private final int maxMediaAssetsPerSubmission = 10;
     private final int maxTitleLength = 255;
-    private final long minScheduleLeadTimeHours = 2;
-    private final long maxScheduleDaysAhead = 30;
+    private long minScheduleLeadTimeHours = 2;
+    private long maxScheduleDaysAhead = 30;
     private final List<String> categories = List.of(
             "Research and Development",
             "Innovation",
@@ -65,8 +65,16 @@ public class SubmissionLookupsDto {
         return minScheduleLeadTimeHours;
     }
 
+    public void setMinScheduleLeadTimeHours(long minScheduleLeadTimeHours) {
+        this.minScheduleLeadTimeHours = minScheduleLeadTimeHours;
+    }
+
     public long getMaxScheduleDaysAhead() {
         return maxScheduleDaysAhead;
+    }
+
+    public void setMaxScheduleDaysAhead(long maxScheduleDaysAhead) {
+        this.maxScheduleDaysAhead = maxScheduleDaysAhead;
     }
 
     public List<String> getCategories() {
