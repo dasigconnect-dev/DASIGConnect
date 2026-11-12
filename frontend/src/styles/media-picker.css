@@ -341,8 +341,18 @@
   transform: translateY(0);
 }
 
-.sms-remove-btn:hover {
+.sms-remove-btn:hover:not(:disabled) {
   background: #dc2626;
+}
+
+.sms-remove-btn:disabled,
+.sms-remove-btn--disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+.sms-remove-btn--disabled:hover {
+  background: rgba(15, 23, 42, 0.72) !important;
 }
 
 .sms-remove-btn:focus-visible {
@@ -953,7 +963,15 @@
   opacity: 1 !important;
 }
 
-.mac-card--selected .mac-thumb::after {
+.mac-card--selected:hover:not(:disabled),
+.mac-card--added:hover:not(:disabled) {
+  border-color: var(--mp-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--mp-blue, #1877f2), 0 4px 12px rgba(24, 119, 242, 0.2);
+  transform: translateY(-1px);
+}
+
+.mac-card--selected .mac-thumb::after,
+.mac-card--added .mac-thumb::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -962,8 +980,10 @@
 }
 
 .mac-card--added {
-  opacity: 0.55;
-  cursor: default;
+  border-color: var(--mp-blue, #1877f2);
+  box-shadow: 0 0 0 2px var(--mp-blue, #1877f2);
+  opacity: 1 !important;
+  cursor: pointer;
 }
 
 .mac-card--skeleton {

@@ -14,6 +14,7 @@ interface AiSuggestedMediaTabProps {
   selectedImageCount?: number;
   readyImageCount?: number;
   onAddItems: (items: SubmissionMediaItem[]) => void;
+  onRemoveItem?: (assetId: string) => void;
   disabled?: boolean;
 }
 
@@ -27,6 +28,7 @@ export default function AiSuggestedMediaTab({
   selectedImageCount = 0,
   readyImageCount = 0,
   onAddItems,
+  onRemoveItem,
   disabled,
 }: AiSuggestedMediaTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -65,6 +67,15 @@ export default function AiSuggestedMediaTab({
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  }
+
+  function handleToggleCard(id: string) {
+    if (disabled) return;
+    if (alreadyAddedIds.has(id)) {
+      onRemoveItem?.(id);
+      return;
+    }
+    toggleSelect(id);
   }
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
@@ -263,7 +274,7 @@ export default function AiSuggestedMediaTab({
             assets={gridAssets}
             selectedIds={selectedIds}
             alreadyAddedIds={alreadyAddedIds}
-            onToggle={toggleSelect}
+            onToggle={handleToggleCard}
           />
         </>
       )}

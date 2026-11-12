@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "../../styles/media-picker.css";
+import { useToast } from "../../context/ToastContext";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useAiMediaSuggestions } from "../../hooks/useAiMediaSuggestions";
 import SelectedMediaStrip from "./SelectedMediaStrip";
@@ -71,6 +72,8 @@ export default function MediaAssetsPicker({
     setVisitedTabs(new Set(visitedTabs).add(activeTab));
   }
 
+  const toast = useToast();
+
   const selectedImageCount = items.filter((item) => item.mediaType === "image").length;
   const attachedAssetIdSet = new Set(attachedAssetIds ?? []);
   const selectedImageAssetIds = items
@@ -107,7 +110,24 @@ export default function MediaAssetsPicker({
 
   function handleRemove(clientId: string) {
     if (disabled) return;
+    if (items.length <= 1) {
+      toast.warning("At least 1 media must be selected.");
+      return;
+    }
     onItemsChange(items.filter((i) => i.clientId !== clientId));
+  }
+
+  function handleRemoveByAssetId(assetId: string) {
+    if (disabled) return;
+    if (items.length <= 1) {
+      toast.warning("At least 1 media must be selected.");
+      return;
+    }
+    const next = items.filter((i) => i.assetId !== assetId);
+    if (next.length < items.length) {
+      onItemsChange(next);
+      toast.info("Media deselected from post.");
+    }
   }
 
   function handleReorder(fromIndex: number, toIndex: number) {
@@ -182,6 +202,7 @@ export default function MediaAssetsPicker({
             <MediaLibraryTab
               alreadyAddedIds={alreadyAddedIds}
               onAddItems={handleAddItems}
+              onRemoveItem={handleRemoveByAssetId}
               disabled={disabled}
               institutionId={institutionId}
               networkView={networkView}
@@ -208,6 +229,7 @@ export default function MediaAssetsPicker({
               selectedImageCount={selectedImageCount}
               readyImageCount={selectedImageAssetIds.length}
               onAddItems={handleAddItems}
+              onRemoveItem={handleRemoveByAssetId}
               disabled={disabled}
             />
           )}

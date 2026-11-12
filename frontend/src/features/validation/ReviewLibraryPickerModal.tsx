@@ -1,11 +1,14 @@
 import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useToast } from "../../context/ToastContext";
 import MediaLibraryTab from "../../components/media/MediaLibraryTab";
 import type { SubmissionMediaItem } from "../../types/media";
 
 interface Props {
   excludeIds: string[];
+  totalMediaCount?: number;
   onAdd: (items: SubmissionMediaItem[]) => void;
+  onRemove?: (assetId: string) => void;
   onClose: () => void;
 }
 
@@ -17,9 +20,12 @@ interface Props {
  */
 export default function ReviewLibraryPickerModal({
   excludeIds,
+  totalMediaCount,
   onAdd,
+  onRemove,
   onClose,
 }: Props) {
+  const toast = useToast();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -38,6 +44,14 @@ export default function ReviewLibraryPickerModal({
   function handleAddItems(items: SubmissionMediaItem[]) {
     if (items.length > 0) onAdd(items);
     onClose();
+  }
+
+  function handleRemoveItem(assetId: string) {
+    if (totalMediaCount != null && totalMediaCount <= 1) {
+      toast.warning("At least 1 media must be selected.");
+      return;
+    }
+    onRemove?.(assetId);
   }
 
   return createPortal(
@@ -71,6 +85,7 @@ export default function ReviewLibraryPickerModal({
             showAlbumFilter
             alreadyAddedIds={alreadyAddedIds}
             onAddItems={handleAddItems}
+            onRemoveItem={handleRemoveItem}
           />
         </div>
       </div>

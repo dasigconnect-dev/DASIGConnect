@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useToast } from "../../context/ToastContext";
 import type { SubmissionMediaItem } from "../../types/media";
 import OptimizedImage, { canTransformImageType } from "./OptimizedImage";
 
@@ -25,6 +26,7 @@ export default function SelectedMediaStrip({
   onItemClick,
   getItemCaption,
 }: SelectedMediaStripProps) {
+  const toast = useToast();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
@@ -145,13 +147,22 @@ export default function SelectedMediaStrip({
               {!disabled && (
                 <button
                   type="button"
-                  className="sms-remove-btn"
+                  className={[
+                    "sms-remove-btn",
+                    items.length <= 1 ? "sms-remove-btn--disabled" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (items.length <= 1) {
+                      toast.warning("At least 1 media must be selected.");
+                      return;
+                    }
                     onRemove(item.clientId);
                   }}
-                  aria-label={`Remove ${item.fileName}`}
-                  title="Remove"
+                  aria-label={items.length <= 1 ? "At least 1 media must be selected" : `Remove ${item.fileName}`}
+                  title={items.length <= 1 ? "At least 1 media must be selected" : "Remove"}
                 >
                   <i className="ti ti-x" aria-hidden />
                 </button>

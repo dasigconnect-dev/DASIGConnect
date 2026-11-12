@@ -64,12 +64,14 @@ export default function MediaAssetCard({
   const primaryReason = visibleReasons[0];
   const reasonId = `mac-match-${id}`;
 
+  const isSelectedOrAdded = selected || alreadyAdded;
+
   return (
     <button
       type="button"
       className={[
         "mac-card",
-        selected ? "mac-card--selected" : "",
+        isSelectedOrAdded ? "mac-card--selected" : "",
         alreadyAdded ? "mac-card--added" : "",
       ]
         .filter(Boolean)
@@ -80,10 +82,17 @@ export default function MediaAssetCard({
         assetType ? `Gemini format ${assetType}` : null,
         scoreLabel,
         primaryReason,
-        alreadyAdded ? "already in post" : null,
+        alreadyAdded ? "attached to post (click to deselect)" : selected ? "selected (click to deselect)" : null,
       ].filter(Boolean).join(", ")}
-      aria-pressed={selected}
+      aria-pressed={isSelectedOrAdded}
       aria-describedby={visibleReasons.length > 0 ? reasonId : undefined}
+      title={
+        alreadyAdded
+          ? "Attached to this post — click to deselect"
+          : selected
+            ? "Selected — click to deselect"
+            : "Click to select"
+      }
     >
       <div className="mac-thumb">
         {isVideo ? (

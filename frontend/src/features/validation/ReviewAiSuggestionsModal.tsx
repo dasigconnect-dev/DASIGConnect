@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import "../../styles/media-picker.css";
+import { useToast } from "../../context/ToastContext";
 import AiSuggestedMediaTab from "../../components/media/AiSuggestedMediaTab";
 import { useAiMediaSuggestions } from "../../hooks/useAiMediaSuggestions";
 import type { SubmissionMediaItem } from "../../types/media";
@@ -8,10 +9,12 @@ import type { SubmissionMediaItem } from "../../types/media";
 interface Props {
   submissionId: string;
   excludeIds: string[];
+  totalMediaCount?: number;
   eventTitle: string;
   caption: string;
   tags: string[];
   onAdd: (items: SubmissionMediaItem[]) => void;
+  onRemove?: (assetId: string) => void;
   onClose: () => void;
 }
 
@@ -25,12 +28,15 @@ interface Props {
 export default function ReviewAiSuggestionsModal({
   submissionId,
   excludeIds,
+  totalMediaCount,
   eventTitle,
   caption,
   tags,
   onAdd,
+  onRemove,
   onClose,
 }: Props) {
+  const toast = useToast();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -50,6 +56,14 @@ export default function ReviewAiSuggestionsModal({
   function handleAddItems(items: SubmissionMediaItem[]) {
     if (items.length > 0) onAdd(items);
     onClose();
+  }
+
+  function handleRemoveItem(assetId: string) {
+    if (totalMediaCount != null && totalMediaCount <= 1) {
+      toast.warning("At least 1 media must be selected.");
+      return;
+    }
+    onRemove?.(assetId);
   }
 
   return createPortal(
@@ -85,6 +99,7 @@ export default function ReviewAiSuggestionsModal({
             caption={caption}
             tags={tags}
             onAddItems={handleAddItems}
+            onRemoveItem={handleRemoveItem}
           />
         </div>
       </div>
