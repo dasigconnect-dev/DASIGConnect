@@ -24,14 +24,17 @@ class EngagementRecommendationServiceTest {
 
     @Mock private FacebookEngagementAnalyticsClient analyticsClient;
     @Mock private GuardRailService guardRailService;
+    @Mock private GuardRailSettingsService guardRailSettingsService;
     private EngagementRecommendationService service;
     private JwtUserDetails user;
 
     @BeforeEach
     void setUp() {
-        service = new EngagementRecommendationService(analyticsClient, guardRailService);
+        service = new EngagementRecommendationService(analyticsClient, guardRailService, guardRailSettingsService);
         user = new JwtUserDetails(UUID.randomUUID(), "contributor@example.com", "contributor", UUID.randomUUID());
         lenient().when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+        lenient().when(guardRailSettingsService.postingWindowStartHour()).thenReturn(8);
+        lenient().when(guardRailSettingsService.postingWindowEndHour()).thenReturn(20);
     }
 
     @Test
@@ -73,6 +76,23 @@ class EngagementRecommendationServiceTest {
         assertThat(result.available()).isTrue();
         assertThat(result.source()).isEqualTo("HISTORICAL");
         assertThat(result.sampleSize()).isEqualTo(20);
+        assertThat(result.slots()).isNotEmpty();
+    }
+
+    @Test
+    void configuredPostingWindowIsUsedForHistoricalRanking() throws Exception {
+        when(guardRailSettingsService.postingWindowStartHour()).thenReturn(6);
+        when(guardRailSettingsService.postingWindowEndHour()).thenReturn(22);
+        List<EngagementSample> samples = IntStream.range(0, 20)
+                .mapToObj(index -> new EngagementSample(
+                        Instant.parse("2026-08-03T23:00:00Z").minusSeconds(index * 7L * 24 * 3600),
+                        25 + index))
+                .toList();
+        when(analyticsClient.fetchRecentPostEngagement()).thenReturn(samples);
+
+        var result = service.recommend(user, null);
+
+        assertThat(result.source()).isEqualTo("HISTORICAL");
         assertThat(result.slots()).isNotEmpty();
     }
 

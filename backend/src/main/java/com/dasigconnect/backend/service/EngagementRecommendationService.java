@@ -36,12 +36,15 @@ public class EngagementRecommendationService {
 
     private final FacebookEngagementAnalyticsClient analyticsClient;
     private final GuardRailService guardRailService;
+    private final GuardRailSettingsService guardRailSettingsService;
 
     public EngagementRecommendationService(
             FacebookEngagementAnalyticsClient analyticsClient,
-            GuardRailService guardRailService) {
+            GuardRailService guardRailService,
+            GuardRailSettingsService guardRailSettingsService) {
         this.analyticsClient = analyticsClient;
         this.guardRailService = guardRailService;
+        this.guardRailSettingsService = guardRailSettingsService;
     }
 
     public EngagementRecommendationDto recommend(JwtUserDetails user, UUID requestedInstitutionId) {
@@ -69,7 +72,9 @@ public class EngagementRecommendationService {
         Map<WindowKey, WindowStats> stats = new LinkedHashMap<>();
         for (EngagementSample sample : samples) {
             var local = sample.publishedAt().atZone(PAGE_ZONE);
-            if (local.getHour() < 8 || local.getHour() >= 20) {
+            int startHour = guardRailSettingsService.postingWindowStartHour();
+            int endHour = guardRailSettingsService.postingWindowEndHour();
+            if (local.getHour() < startHour || local.getHour() > endHour) {
                 continue;
             }
             WindowKey key = new WindowKey(local.getDayOfWeek(), local.getHour());

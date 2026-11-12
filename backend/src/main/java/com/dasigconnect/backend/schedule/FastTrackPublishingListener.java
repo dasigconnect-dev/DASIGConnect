@@ -64,7 +64,14 @@ public class FastTrackPublishingListener {
     }
 
     private void publishIfFastTrack(Submission submission) {
-        if (!submission.isFastTrack() || !facebookPublisherService.isConfigured()) {
+        if (!submission.isFastTrack()) {
+            return;
+        }
+        if (!facebookPublisherService.isConfigured()) {
+            log.warn("Fast-Track submission {} cannot publish because Facebook is not configured.", submission.getId());
+            facebookPublisherService.markFailed(
+                    submission,
+                    "Fast-Track publishing is unavailable because Facebook is not configured.");
             return;
         }
 

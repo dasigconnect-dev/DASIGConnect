@@ -251,6 +251,18 @@ export function trimToCharLimit(value: string, limit = CAPTION_CHAR_LIMIT) {
 
 export function getDirtySignature(form: FormState) {
   return JSON.stringify({
+    draft: getDraftFieldSignature(form),
+    media: getMediaSignature(form),
+  });
+}
+
+/**
+ * Fields persisted by the draft create/update endpoint. Keeping this separate
+ * from media state lets background field saves finish without rebuilding the
+ * media picker or competing with the media reconciliation queue.
+ */
+export function getDraftFieldSignature(form: FormState) {
+  return JSON.stringify({
     eventTitle: form.eventTitle.trim(),
     institutionId: form.institutionId,
     eventDate: form.eventDate,
@@ -262,6 +274,12 @@ export function getDirtySignature(form: FormState) {
     mediaTags: effectiveMediaTags(form),
     scheduledDate: form.scheduledDate,
     scheduledTime: form.scheduledTime,
+  });
+}
+
+/** Media state persisted by useSubmissionMediaAutosave or an explicit save. */
+export function getMediaSignature(form: FormState) {
+  return JSON.stringify({
     files: form.files.map((file) => ({
       name: file.name,
       size: file.size,
@@ -273,6 +291,7 @@ export function getDirtySignature(form: FormState) {
     mediaCaptions: form.mediaCaptions ?? {},
     mediaSkipWatermark: form.mediaSkipWatermark ?? {},
     pendingAssetIds: form.pendingAssetIds,
+    removedAssetIds: form.removedAssetIds,
   });
 }
 
@@ -676,7 +695,7 @@ export function getPreviewValidation(
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
   }
-  if (guardRailsEnforced && form.scheduledTime) {
+  if (guardRailsEnforced && !form.fastTrack && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
       missingItems.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
@@ -702,10 +721,15 @@ export function getPreviewValidation(
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
-  if (guardRailsEnforced && form.scheduledTime) {
+  if (guardRailsEnforced && !form.fastTrack && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
       blockingErrors.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
     }
+  }
+  if (guardRailsEnforced && !form.fastTrack && guardRails?.blocked) {
+    blockingErrors.push(
+      guardRails.hardBlocks[0]?.message ?? "Choose a publishing slot that satisfies the scheduling guard rails.",
+    );
   }
   if (oversizedFile) {
     blockingErrors.push(

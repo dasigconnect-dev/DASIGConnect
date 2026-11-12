@@ -14,22 +14,25 @@ public class SubscriptionBillingReconciliationJob {
     private static final Logger log = LoggerFactory.getLogger(SubscriptionBillingReconciliationJob.class);
     private final SubscriptionBillingReconciliationService service;
     private final ScheduledJobHealthService healthService;
-    private final boolean enabled;
+    private final boolean subscriptionEnabled;
+    private final boolean reconciliationEnabled;
 
     public SubscriptionBillingReconciliationJob(
             SubscriptionBillingReconciliationService service,
             ScheduledJobHealthService healthService,
-            @Value("${app.paymongo.reconciliation-enabled:false}") boolean enabled) {
+            @Value("${app.subscription.enabled:false}") boolean subscriptionEnabled,
+            @Value("${app.paymongo.reconciliation-enabled:false}") boolean reconciliationEnabled) {
         this.service = service;
         this.healthService = healthService;
-        this.enabled = enabled;
+        this.subscriptionEnabled = subscriptionEnabled;
+        this.reconciliationEnabled = reconciliationEnabled;
     }
 
     @Scheduled(cron = "${app.paymongo.reconciliation-cron:0 35 * * * *}", zone = "UTC")
     public void reconcile() {
         Instant startedAt = Instant.now();
         try {
-            if (enabled) {
+            if (subscriptionEnabled && reconciliationEnabled) {
                 var result = service.reconcile();
                 log.info("PayMongo reconciliation checked {}, settled {}, failed {}.",
                         result.checked(), result.settled(), result.failed());

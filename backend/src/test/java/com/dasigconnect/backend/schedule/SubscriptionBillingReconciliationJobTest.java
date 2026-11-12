@@ -16,7 +16,7 @@ class SubscriptionBillingReconciliationJobTest {
         when(service.reconcile()).thenReturn(
                 new SubscriptionBillingReconciliationService.ReconciliationResult(2, 1, 0));
 
-        new SubscriptionBillingReconciliationJob(service, health, true).reconcile();
+        new SubscriptionBillingReconciliationJob(service, health, true, true).reconcile();
 
         verify(service).reconcile();
         verify(health).recordSuccess(eq("SubscriptionBillingReconciliationJob"), any(Instant.class));
@@ -27,7 +27,18 @@ class SubscriptionBillingReconciliationJobTest {
         SubscriptionBillingReconciliationService service = mock(SubscriptionBillingReconciliationService.class);
         ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
 
-        new SubscriptionBillingReconciliationJob(service, health, false).reconcile();
+        new SubscriptionBillingReconciliationJob(service, health, true, false).reconcile();
+
+        verifyNoInteractions(service);
+        verify(health).recordSuccess(eq("SubscriptionBillingReconciliationJob"), any(Instant.class));
+    }
+
+    @Test
+    void reconcile_whenSubscriptionFeatureIsDisabled_skipsProviderButReportsHealthyTick() {
+        SubscriptionBillingReconciliationService service = mock(SubscriptionBillingReconciliationService.class);
+        ScheduledJobHealthService health = mock(ScheduledJobHealthService.class);
+
+        new SubscriptionBillingReconciliationJob(service, health, false, true).reconcile();
 
         verifyNoInteractions(service);
         verify(health).recordSuccess(eq("SubscriptionBillingReconciliationJob"), any(Instant.class));

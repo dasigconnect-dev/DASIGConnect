@@ -56,6 +56,7 @@ public class PageSettingsService {
         // The guard-rail switch is network-wide — only honoured on the
         // no-institution row; ignored on per-institution Page Settings.
         if (institutionId == null) {
+            validateGuardRailSettings(request, settings);
             if (request.guardrailsEnforced() != null) {
                 settings.setGuardrailsEnforced(request.guardrailsEnforced());
             }
@@ -83,6 +84,41 @@ public class PageSettingsService {
         }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));
         return PageSettingsDto.from(repository.save(settings));
+    }
+
+    private void validateGuardRailSettings(UpdatePageSettingsRequestDto request, PageSettings current) {
+        int startHour = request.postingWindowStartHour() != null
+                ? request.postingWindowStartHour() : current.getPostingWindowStartHour();
+        int endHour = request.postingWindowEndHour() != null
+                ? request.postingWindowEndHour() : current.getPostingWindowEndHour();
+        if (startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Posting-window hours must be between 0 and 23.");
+        }
+        if (startHour >= endHour) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Posting-window start hour must be earlier than the end hour.");
+        }
+        if (request.conflictBufferMinutes() != null && request.conflictBufferMinutes() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Minimum spacing between posts cannot be negative.");
+        }
+        if (request.minimumLeadTimeHours() != null && request.minimumLeadTimeHours() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Minimum scheduling lead time cannot be negative.");
+        }
+        if (request.maximumLeadTimeDays() != null && request.maximumLeadTimeDays() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Maximum scheduling lead time must be at least one day.");
+        }
+        if (request.perInstitutionActiveQuota() != null && request.perInstitutionActiveQuota() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Per-institution active quota must be at least one.");
+        }
+        if (request.dailyVolumeCap() != null && request.dailyVolumeCap() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Daily volume cap must be at least one.");
+        }
     }
 
     private java.util.Optional<PageSettings> find(UUID institutionId) {

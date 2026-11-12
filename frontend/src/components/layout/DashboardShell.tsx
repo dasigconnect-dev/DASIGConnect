@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 import dasigLogo from '../../assets/dasigconnect-logo.png'
+import { isSubscriptionEnabled } from '../../config/features'
 
 export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications' | 'upgrade-plan'
 
@@ -205,7 +206,7 @@ export default function DashboardShell({
                       {capitalize(user.role)} · {getInstitutionName(user)}
                     </div>
                   </div>
-                  {user.role === 'admin' && (
+                  {user.role === 'admin' && isSubscriptionEnabled() && (
                     <button
                       type="button"
                       className="udrop-item"

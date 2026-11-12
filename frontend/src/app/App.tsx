@@ -218,7 +218,6 @@ function App() {
 
             {/* ── Signed in: full-screen submission editor ───────────── */}
             <Route element={<RequireSignedIn user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
-              <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
               <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
             </Route>
 
