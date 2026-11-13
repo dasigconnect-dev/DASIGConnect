@@ -773,8 +773,8 @@ export default function SystemHealthScreen({ user }: Props) {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap", flexShrink: 0 }}>
-                      <div className="um-search-wrap" style={{ width: 220, flexShrink: 1 }}>
+                    <div className="sys-jobs-toolbar-actions">
+                      <div className="um-search-wrap sys-jobs-search-wrap">
                         <i className="ti ti-search um-search-icon" aria-hidden="true" />
                         <input
                           className="um-search-input"
@@ -812,8 +812,7 @@ export default function SystemHealthScreen({ user }: Props) {
                       {filteredJobs.length > 0 && (
                         <button
                           type="button"
-                          className="sys-btn sys-btn-primary sys-btn-sm"
-                          style={{ whiteSpace: "nowrap", flexShrink: 0, height: 38 }}
+                          className="sys-btn sys-btn-primary sys-btn-sm sys-jobs-run-all-btn"
                           disabled={runningAllJobs}
                           onClick={() => void handleRunAllJobs(filteredJobs)}
                           title="Trigger all listed background jobs concurrently"
@@ -1024,6 +1023,15 @@ function StorageCard({ item }: { item: StorageMetric }) {
   );
 }
 
+function getClaudeUsageBadge(detail: string | null): string {
+  if (!detail) return "Prepaid Account";
+  const match = detail.match(/\(([^)]*tokens used[^)]*)\)/i);
+  if (match) {
+    return match[1].replace("this session", "").replace(/\s+/, " ").trim();
+  }
+  return "Prepaid Account";
+}
+
 function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
   const hasQuota = item.quotaLimit !== null && item.quotaLimit !== undefined && item.quotaLimit > 0;
   const quotaRemaining = item.quotaRemaining ?? 0;
@@ -1124,11 +1132,15 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
               ? item.status === "HEALTHY"
                 ? "Ready · Text & visual search active"
                 : "Unavailable · Media search degraded"
-              : isPrimary
+              : isClaude
                 ? item.status === "HEALTHY"
-                  ? "Credits active · Live limit updates on AI requests"
-                  : "Action needed · Check Claude credits or key"
-                : "Standby ready · Activates automatically on failover"}
+                  ? "Prepaid tier active · Auto-fails over to Gemini if balance hits $0"
+                  : "Credits exhausted ($0 balance) · Routed to Gemini fallback"
+                : isPrimary
+                  ? item.status === "HEALTHY"
+                    ? "Credits active · Live limit updates on AI requests"
+                    : "Action needed · Check Claude credits or key"
+                  : "Standby ready · Activates automatically on failover"}
           </span>
         </div>
       )}
@@ -1141,6 +1153,13 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
               Resets {item.secondsUntilExpiry ? `in ${formatDurationSeconds(item.secondsUntilExpiry)}` : formatDate(item.resetAt)}
             </span>
           </div>
+        )}
+
+        {isClaude && (
+          <span className="sys-service-fallback-badge" title={item.detail || undefined}>
+            <i className="ti ti-coins" aria-hidden="true" />
+            {getClaudeUsageBadge(item.detail)}
+          </span>
         )}
 
         {isPrimary && (
@@ -1392,7 +1411,7 @@ function TokenTable({
                       <div className="sys-page-cell">
                         <i className="ti ti-brand-facebook" aria-hidden="true" />
                         <div>
-                          <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                          <strong>{token.pageName || "DASIG Central Visayas"}</strong>
                           <span style={{ display: "block", fontSize: "11px", color: "var(--color-text-secondary, #64748b)", marginTop: "2px" }}>
                             ID: {token.pageId}
                           </span>
@@ -1507,7 +1526,7 @@ function TokenTable({
                             <span>Save</span>
                           </button>
                           <span className="sys-manual-token-hint">
-                            Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                            Must already be a Page Access Token for {token.pageName || "DASIG Central Visayas"} — this cannot change which page is connected.
                           </span>
                         </div>
                       </td>

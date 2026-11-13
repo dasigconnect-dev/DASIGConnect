@@ -1666,3 +1666,38 @@
   top: 50%;
   transform: translateY(-50%);
 }
+
+/* Background Jobs Toolbar Actions (Search & Run All) */
+.sys-jobs-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.sys-jobs-search-wrap {
+  width: 220px;
+  flex-shrink: 1;
+}
+
+.sys-jobs-run-all-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 38px;
+}
+
+@media (max-width: 640px) {
+  .sys-jobs-toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sys-jobs-search-wrap {
+    width: 100% !important;
+    flex: 1 1 100%;
+  }
+  .sys-jobs-run-all-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

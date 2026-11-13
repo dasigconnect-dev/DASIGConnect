@@ -62,6 +62,7 @@ export interface SystemHealthSummary {
 export interface TokenStatus {
   id: string;
   pageId: string;
+  pageName?: string | null;
   tokenStatus: "ACTIVE" | "EXPIRING" | "EXPIRED" | "INVALID";
   expiresAt: string | null;
   lastValidatedAt: string | null;

@@ -9,6 +9,7 @@ public class TokenStatusDto {
 
     private UUID id;
     private String pageId;
+    private String pageName;
     private String tokenStatus;
     private Instant expiresAt;
     private Instant lastValidatedAt;
@@ -45,6 +46,8 @@ public class TokenStatusDto {
 
     public UUID getId() { return id; }
     public String getPageId() { return pageId; }
+    public String getPageName() { return pageName; }
+    public void setPageName(String pageName) { this.pageName = pageName; }
     public String getTokenStatus() { return tokenStatus; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getLastValidatedAt() { return lastValidatedAt; }

@@ -356,9 +356,13 @@ public class SystemHealthService {
         }
 
         long used = quota != null ? quota.totalTokensUsed() : 0L;
+        double cost = quota != null ? quota.estimatedCostUsd() : 0.0;
+        String costStr = cost >= 0.005 ? String.format(" · est. ~$%.2f spent", cost) : "";
         String detail = claudePrimary
-                ? String.format("Connected — Model: %s (%d tokens used this session). Auto-fallback to Gemini active.", model, used)
-                : String.format("Connected and active (Standby failover, %d tokens used).", used);
+                ? String.format("Connected (Prepaid Account) — Model: %s (%,d tokens used this session%s). Auto-fallback to Gemini active.",
+                        model, used, costStr)
+                : String.format("Connected (Standby failover) — Model: %s (%,d tokens used this session%s).",
+                        model, used, costStr);
         return new ExternalServiceHealthDto(
                 "Anthropic Claude Vision API", HealthStatus.HEALTHY, detail,
                 Instant.now(), null, null, null, null, null);

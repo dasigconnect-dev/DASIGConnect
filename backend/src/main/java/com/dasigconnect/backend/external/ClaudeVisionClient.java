@@ -95,6 +95,9 @@ public class ClaudeVisionClient implements AiVisionClient {
             boolean creditsExhausted,
             boolean rateLimited,
             long totalTokensUsed,
+            long inputTokensUsed,
+            long outputTokensUsed,
+            double estimatedCostUsd,
             long configuredTokenLimit) {}
 
     public QuotaStatus getQuotaStatus() {
@@ -107,7 +110,12 @@ public class ClaudeVisionClient implements AiVisionClient {
             tokensResetAt.set(null);
         }
 
-        long used = totalInputTokensUsed.get() + totalOutputTokensUsed.get();
+        long inTokens = totalInputTokensUsed.get();
+        long outTokens = totalOutputTokensUsed.get();
+        long used = inTokens + outTokens;
+        // Claude 3.5 Haiku pricing: $0.80 / 1M input tokens, $4.00 / 1M output tokens
+        double estimatedCost = (inTokens * 0.0000008) + (outTokens * 0.000004);
+
         if (configuredTokenLimit > 0) {
             int cap = (int) Math.min(Integer.MAX_VALUE, configuredTokenLimit);
             int left = creditsExhausted.get() ? 0 : (int) Math.max(0L, cap - used);
@@ -118,18 +126,25 @@ public class ClaudeVisionClient implements AiVisionClient {
                     creditsExhausted.get(),
                     rateLimited.get(),
                     used,
+                    inTokens,
+                    outTokens,
+                    estimatedCost,
                     configuredTokenLimit);
         }
 
-        int liveLimit = tokensLimit.get();
-        int liveRemaining = creditsExhausted.get() ? 0 : tokensRemaining.get();
+        // Live Anthropic rate limit header (12M tokens/min) is throughput capacity, not a credit quota.
+        // We only return limit > 0 when an explicit token limit budget is configured via ANTHROPIC_TOKEN_LIMIT
+        // so that System Health does NOT display a misleading 100% credit quota bar for prepaid accounts.
         return new QuotaStatus(
-                liveLimit > 0 ? liveRemaining : (creditsExhausted.get() ? 0 : -1),
-                liveLimit > 0 ? liveLimit : (creditsExhausted.get() ? 1 : 0),
+                creditsExhausted.get() ? 0 : -1,
+                creditsExhausted.get() ? 1 : 0,
                 tokensResetAt.get(),
                 creditsExhausted.get(),
                 rateLimited.get(),
                 used,
+                inTokens,
+                outTokens,
+                estimatedCost,
                 0);
     }
 
