@@ -1023,13 +1023,19 @@ function StorageCard({ item }: { item: StorageMetric }) {
   );
 }
 
-function getClaudeUsageBadge(detail: string | null): string {
-  if (!detail) return "Prepaid Account";
-  const match = detail.match(/\(([^)]*tokens used[^)]*)\)/i);
-  if (match) {
-    return match[1].replace("this session", "").replace(/\s+/, " ").trim();
+function parseClaudeUsage(detail: string | null): { tokens: number; cost: string } {
+  if (!detail) return { tokens: 0, cost: "~$0.000" };
+  const tokensMatch = detail.match(/([\d,]+)\s*(?:tokens\s+used|used)/i);
+  const costMatch = detail.match(/(~?\$[\d.]+)\s*spent/i);
+  const tokens = tokensMatch ? parseInt(tokensMatch[1].replace(/,/g, ""), 10) : 0;
+  let cost = costMatch ? costMatch[1] : "";
+  if (!cost) {
+    cost = `~$${(tokens * 0.0000015).toFixed(3)}`;
   }
-  return "Prepaid Account";
+  if (!cost.startsWith("~") && !cost.startsWith("$")) {
+    cost = `~${cost}`;
+  }
+  return { tokens, cost };
 }
 
 function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
@@ -1045,6 +1051,7 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
   const isStandby = !isVoyage && (detailLower.includes("standby") || (isGemini && detailLower.includes("auto-fallback to claude")));
   const isPrimary = !isVoyage && !isStandby;
   const lowThreshold = Math.max(5, Math.round(quotaLimit * 0.1));
+  const claudeUsage = isClaude ? parseClaudeUsage(item.detail) : null;
 
   const roleTag = isVoyage
     ? "Media Search"
@@ -1100,7 +1107,34 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
 
       <p className="sys-ai-detail" title={item.detail || undefined}>{friendlyDetail}</p>
 
-      {hasQuota ? (
+      {isClaude && claudeUsage ? (
+        <div className="sys-claude-usage-block">
+          <div className="sys-service-quota-block">
+            <div className="sys-quota-header-row">
+              <span className="sys-quota-label">
+                <i className="ti ti-coins" aria-hidden="true" /> Session AI Tokens
+              </span>
+              <span className="sys-quota-pill is-healthy">
+                <strong>{claudeUsage.tokens.toLocaleString()}</strong> tokens used
+              </span>
+            </div>
+            <div className="sys-quota-header-row">
+              <span className="sys-quota-label">
+                <i className="ti ti-receipt-2" aria-hidden="true" /> Estimated Spend
+              </span>
+              <span className="sys-quota-pill is-healthy sys-spend-pill">
+                <strong>{claudeUsage.cost}</strong>
+              </span>
+            </div>
+          </div>
+          {item.status !== "HEALTHY" && (
+            <div className="sys-ai-standby-block is-warning">
+              <i className="ti ti-alert-triangle" aria-hidden="true" />
+              <span>Credits exhausted ($0 balance) · Routed to Gemini fallback</span>
+            </div>
+          )}
+        </div>
+      ) : hasQuota ? (
         <div className="sys-service-quota-block">
           <div className="sys-quota-header-row">
             <span className="sys-quota-label">
@@ -1134,7 +1168,7 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
                 : "Unavailable · Media search degraded"
               : isClaude
                 ? item.status === "HEALTHY"
-                  ? "Prepaid tier active · Auto-fails over to Gemini if balance hits $0"
+                  ? "Standby ready · Activates automatically on failover"
                   : "Credits exhausted ($0 balance) · Routed to Gemini fallback"
                 : isPrimary
                   ? item.status === "HEALTHY"
@@ -1153,13 +1187,6 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
               Resets {item.secondsUntilExpiry ? `in ${formatDurationSeconds(item.secondsUntilExpiry)}` : formatDate(item.resetAt)}
             </span>
           </div>
-        )}
-
-        {isClaude && (
-          <span className="sys-service-fallback-badge" title={item.detail || undefined}>
-            <i className="ti ti-coins" aria-hidden="true" />
-            {getClaudeUsageBadge(item.detail)}
-          </span>
         )}
 
         {isPrimary && (

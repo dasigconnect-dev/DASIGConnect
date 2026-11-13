@@ -905,6 +905,27 @@
   margin-top: 0;
 }
 
+.sys-ai-standby-block.is-warning {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.sys-ai-standby-block.is-warning i {
+  color: #dc2626;
+}
+
+.sys-claude-usage-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sys-claude-usage-block .sys-service-quota-block {
+  margin-top: 0;
+  gap: 8px;
+}
+
 .sys-ai-card .sys-service-quota-block {
   margin-top: 0;
 }
@@ -1065,6 +1086,12 @@
   background: #dcfce7;
   color: #166534;
   border: 1px solid #bbf7d0;
+}
+
+.sys-quota-pill.sys-spend-pill {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
 }
 
 .sys-quota-pill.is-low {
