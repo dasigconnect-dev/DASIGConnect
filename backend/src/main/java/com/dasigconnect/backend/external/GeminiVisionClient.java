@@ -795,20 +795,26 @@ public class GeminiVisionClient implements AiVisionClient, MediaClassificationCl
                 Selected tone: "%s"
 
                 Tone definitions:
-                - professional: polished, official, clear, and suitable for public-sector posts.
-                - community: warm, inclusive, student-facing, and participation-oriented.
-                - energetic: upbeat, action-driven, and suitable for event promotion.
+                - professional: polished, credible, and modern public-sector voice — clear, authoritative, yet engaging and easy to read on Facebook.
+                - community: warm, relatable, student- and community-centered — celebrating shared pride, connection, and participation.
+                - energetic: upbeat, hype-building, and action-driven — great for event promotion and momentum.
+
+                Facebook caption style & formatting:
+                - Write the way high-performing, modern Facebook Page posts are written — natural, engaging, and human, never like a stiff press release or formal memo.
+                - Open with a scroll-stopping hook (first line) that grabs attention before Facebook's "See more" cut-off.
+                - Use short, scannable paragraphs with clean line breaks (blank lines between thoughts) rather than one dense wall of text.
+                - Use tasteful, relevant emojis as visual anchors where natural (without overdoing it).
+                - End with a light, natural engagement CTA (e.g., inviting reactions, comments, shares, or tagging peers) when appropriate, followed by 2-3 relevant hashtags on a clean final line (unless the contributor specifies otherwise).
 
                 Rules for the caption:
-                - Keep the caption appropriate for DASIG/DOST public-sector communication.
-                - Stay relevant to the event, institution, media, draft caption, and contributor prompt.
+                - Focus directly on the actual subject shown in the attached image(s)/media, the Event title, and any contributor prompt. Never ignore them to write a generic organizational mission or "about us" post.
+                - Only mention the institution name as the host/poster when relevant; do not let the institution name override the actual topic of the photo or event title.
                 - Use the saved event date and institution name when the contributor asks \
                 for them or when they improve specificity.
                 - Do not invent missing event dates, institution names, names, awards, \
                 numbers, or official claims.
-                - If no contributor length or word-count instruction is provided, default to a concise Facebook caption.
+                - If no contributor length or word-count instruction is provided, default to a concise, punchy Facebook caption.
                 - Never exceed %d words.
-                - If no contributor hashtag instruction is provided, include 2-3 relevant hashtags.
                 - No offensive, discriminatory, sexual, violent, or otherwise inappropriate content.
 
                 Return ONLY a valid JSON array with exactly 1 object, no markdown, no explanation:

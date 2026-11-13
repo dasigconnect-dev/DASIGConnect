@@ -1391,7 +1391,7 @@ export default function ValidationQueueScreen({
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
     const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
     if (generated) {
-      toast.success("AI caption generated! Review and refine, or click Approve.");
+      toast.success("AI caption generated! Review and refine, or click Use.");
       return generated;
     } else if (aiCaption.notice) {
       toast.error(aiCaption.notice);
@@ -1402,11 +1402,15 @@ export default function ValidationQueueScreen({
     }
   }
 
-  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+  function handleAiCaptionApprove(
+    caption: string,
+    tone: CaptionTone,
+    action: "use" | "use_then_edited" = "use",
+  ) {
     applyEditCaption(caption);
-    aiCaption.logApply(tone, "use");
+    aiCaption.logApply(tone, action);
     setCaptionPromptOpen(false);
-    toast.success("AI caption approved and placed in your caption box!");
+    toast.success("AI caption applied to your caption box!");
   }
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
@@ -2308,13 +2312,14 @@ export default function ValidationQueueScreen({
                               <Suspense fallback={null}>
                                 <AiCaptionSuggestion
                                   variants={aiCaption.variants}
-                                  onApply={(caption, tone, action) => {
+                                  onApply={(caption, tone, action, qualityRating) => {
                                     applyEditCaption(caption);
-                                    aiCaption.logApply(tone, action);
+                                    aiCaption.logApply(tone, action, qualityRating);
                                   }}
                                   onDismissOne={aiCaption.logDismissOne}
                                   onDismissAll={aiCaption.dismissAll}
                                   onRegenerate={aiCaption.regenerate}
+                                  onOpenDialog={() => setCaptionPromptOpen(true)}
                                 />
                               </Suspense>
                             )}
@@ -3184,6 +3189,7 @@ export default function ValidationQueueScreen({
             state={aiCaption.state}
             hasImageAssets={editHasImage}
             existingCaption={editForm.caption}
+            initialVariant={aiCaption.variants?.[0] ?? aiCaption.lastGeneratedVariant}
             onClose={() => setCaptionPromptOpen(false)}
             onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
             onApprove={handleAiCaptionApprove}

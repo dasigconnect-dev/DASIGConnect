@@ -13,6 +13,7 @@ interface Props {
   onDismissOne: (tone: CaptionTone, qualityRating?: number | null) => void;
   onDismissAll: (qualityRating?: number | null) => void;
   onRegenerate: () => void;
+  onOpenDialog?: () => void;
   onBrowseTemplates?: () => void;
 }
 
@@ -25,39 +26,63 @@ const TONE_LABELS: Record<CaptionTone, string> = {
 export default function AiCaptionSuggestion({
   variants,
   onApply,
-  onDismissOne,
   onDismissAll,
   onRegenerate,
-  onBrowseTemplates,
+  onOpenDialog,
 }: Props) {
   const [qualityRating, setQualityRating] = useState<number | null>(null);
+  const variant = variants[0];
+
+  if (!variant) return null;
+
+  const handleOpenDialog = () => {
+    if (onOpenDialog) {
+      onOpenDialog();
+    } else {
+      onRegenerate();
+    }
+  };
 
   return (
-    <div className="ai-sugg-panel" data-testid="ai-caption-suggestion-panel">
-      {/* Visual Accent Top Bar */}
-      <div className="ai-sugg-accent-bar" aria-hidden="true" />
-
-      {/* Header */}
+    <div
+      className="ai-sugg-panel"
+      data-testid="ai-caption-suggestion-panel"
+      role="button"
+      tabIndex={0}
+      onClick={handleOpenDialog}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleOpenDialog();
+        }
+      }}
+      title="Click to edit or refine in AI Caption Assistant"
+    >
       <div className="ai-sugg-header">
         <div className="ai-sugg-header-main">
           <span className="ai-sugg-badge-icon" aria-hidden="true">
             <i className="ti ti-sparkles" />
           </span>
           <div className="ai-sugg-header-text">
-            <span className="ai-sugg-header-title">
-              AI draft ready <span className="ai-sugg-title-sep">—</span> <span className="ai-sugg-title-hint">Use / Edit / Dismiss</span>
+            <div className="ai-sugg-header-title-row">
+              <span className="ai-sugg-header-title">AI Draft Ready</span>
+              <span className="ai-sugg-tone-pill">{TONE_LABELS[variant.tone]}</span>
+            </div>
+            <span className="ai-sugg-disclaimer">
+              Click to edit or refine with AI, or use directly
             </span>
-            <span className="ai-sugg-disclaimer">Review before applying</span>
           </div>
         </div>
 
-        <div className="ai-sugg-header-actions">
+        <div
+          className="ai-sugg-header-actions"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div
             className="ai-sugg-rating-group"
             role="group"
             aria-label="Rate AI caption quality (1 to 5)"
           >
-            <span className="ai-sugg-rating-label">Rating:</span>
             {[1, 2, 3, 4, 5].map((score) => (
               <button
                 key={score}
@@ -66,6 +91,7 @@ export default function AiCaptionSuggestion({
                 aria-pressed={qualityRating === score}
                 onClick={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   setQualityRating((prev) => (prev === score ? null : score));
                 }}
                 title={`Rate AI caption ${score} out of 5`}
@@ -77,159 +103,49 @@ export default function AiCaptionSuggestion({
 
           <button
             type="button"
-            className="ai-sugg-header-btn ai-sugg-btn--regenerate"
+            className="ai-sugg-btn ai-sugg-btn--edit"
             onClick={(e) => {
               e.preventDefault();
-              onRegenerate();
+              e.stopPropagation();
+              handleOpenDialog();
             }}
-            title="Generate new suggestions"
+            title="Edit or refine in AI Caption Assistant"
           >
-            <i className="ti ti-refresh" aria-hidden="true" />
-            <span>Regenerate</span>
+            <i className="ti ti-pencil" aria-hidden="true" />
+            <span>Edit</span>
           </button>
 
           <button
             type="button"
-            className="ai-sugg-header-btn ai-sugg-btn--close"
+            className="ai-sugg-btn ai-sugg-btn--dismiss"
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               onDismissAll(qualityRating);
             }}
-            title="Dismiss suggestions"
-            aria-label="Dismiss AI draft"
+            title="Dismiss AI draft"
           >
-            <i className="ti ti-x" aria-hidden="true" />
+            <span>Dismiss</span>
           </button>
-        </div>
-      </div>
 
-      {/* Suggestions List */}
-      <div className="ai-sugg-list">
-        {variants.map((v) => (
-          <SuggestionCard
-            key={v.tone}
-            variant={v}
-            onApply={(caption, action) =>
-              onApply(caption, v.tone, action, qualityRating)
-            }
-            onDismiss={() => onDismissOne(v.tone, qualityRating)}
-          />
-        ))}
-      </div>
-
-      {/* Footer Helper: Browse templates if preferred */}
-      {onBrowseTemplates && (
-        <div className="ai-sugg-footer-note">
-          <i className="ti ti-template" aria-hidden="true" />
-          <span>Prefer a standard structure?</span>
           <button
             type="button"
-            className="ai-sugg-template-link"
+            className="ai-sugg-btn ai-sugg-btn--use"
             onClick={(e) => {
               e.preventDefault();
-              onBrowseTemplates();
+              e.stopPropagation();
+              onApply(variant.caption, variant.tone, "use", qualityRating);
             }}
-          >
-            Choose from templates &rarr;
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SuggestionCard({
-  variant,
-  onApply,
-  onDismiss,
-}: {
-  variant: CaptionVariant;
-  onApply: (caption: string, action: "use" | "use_then_edited") => void;
-  onDismiss: () => void;
-}) {
-  const [editText, setEditText] = useState(variant.caption);
-  const [editing, setEditing] = useState(false);
-
-  function handleCancelEdit() {
-    setEditing(false);
-    setEditText(variant.caption);
-  }
-
-  return (
-    <div className="ai-sugg-card">
-      <div className="ai-sugg-card-head">
-        <span className={`ai-sugg-tone-badge ai-sugg-tone--${variant.tone}`}>
-          <i className="ti ti-tag" aria-hidden="true" />
-          {TONE_LABELS[variant.tone]}
-        </span>
-        <div className="ai-sugg-card-actions">
-          <button
-            type="button"
-            className="ai-sugg-use-btn"
-            onClick={(e) => {
-              e.preventDefault();
-              onApply(editing ? editText : variant.caption, editing ? "use_then_edited" : "use");
-            }}
+            title="Apply this caption to your post"
           >
             <i className="ti ti-check" aria-hidden="true" />
-            Use
-          </button>
-          {!editing ? (
-            <button
-              type="button"
-              className="ai-sugg-btn-secondary"
-              onClick={(e) => {
-                e.preventDefault();
-                setEditing(true);
-              }}
-            >
-              <i className="ti ti-pencil" aria-hidden="true" />
-              Edit
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ai-sugg-btn-secondary"
-              onClick={(e) => {
-                e.preventDefault();
-                handleCancelEdit();
-              }}
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            type="button"
-            className="ai-sugg-dismiss-btn"
-            onClick={(e) => {
-              e.preventDefault();
-              onDismiss();
-            }}
-            title="Dismiss this suggestion"
-            aria-label="Dismiss this suggestion"
-          >
-            <i className="ti ti-x" aria-hidden="true" />
+            <span>Use</span>
           </button>
         </div>
       </div>
 
-      <div className="ai-sugg-card-body">
-        {editing ? (
-          <div className="ai-sugg-edit-wrap">
-            <textarea
-              className="ai-sugg-edit-area"
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              rows={4}
-              autoFocus
-            />
-            <div className="ai-sugg-edit-footer">
-              <span className="ai-sugg-char-count">{editText.length} characters</span>
-            </div>
-          </div>
-        ) : (
-          <p className="ai-sugg-caption-text">{variant.caption}</p>
-        )}
+      <div className="ai-sugg-body">
+        <p className="ai-sugg-caption-text">{variant.caption}</p>
       </div>
     </div>
   );
