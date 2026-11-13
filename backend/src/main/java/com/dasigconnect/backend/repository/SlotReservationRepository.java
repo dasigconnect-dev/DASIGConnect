@@ -40,7 +40,8 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
     @Query(value = """
         SELECT COUNT(*) > 0 FROM slot_reservations
         WHERE status != 'released'
-        AND scheduled_at BETWEEN :windowStart AND :windowEnd
+        AND scheduled_at > :windowStart
+        AND scheduled_at < :windowEnd
         AND (:excludeSubmissionId IS NULL OR submission_id <> :excludeSubmissionId)
     """, nativeQuery = true)
     boolean existsActiveWithin30Minutes(
@@ -48,6 +49,16 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
             @Param("windowEnd") Instant windowEnd,
             @Param("excludeSubmissionId") UUID excludeSubmissionId
     );
+
+    @Query(value = """
+        SELECT COUNT(*) > 0 FROM slot_reservations
+        WHERE status != 'released'
+        AND scheduled_at = :scheduledAt
+        AND (:excludeSubmissionId IS NULL OR submission_id <> :excludeSubmissionId)
+    """, nativeQuery = true)
+    boolean existsActiveAt(
+            @Param("scheduledAt") Instant scheduledAt,
+            @Param("excludeSubmissionId") UUID excludeSubmissionId);
 
     /**
      * GR-H1 alternative slots: find active reservations near a time window so

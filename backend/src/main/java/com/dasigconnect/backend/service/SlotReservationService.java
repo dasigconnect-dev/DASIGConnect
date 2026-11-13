@@ -92,6 +92,8 @@ public class SlotReservationService {
             return existingReservation;
         }
 
+        ensureExactSlotAvailable(requestedSlot, submissionId);
+
         if (guardRailSettings.enforced()) {
             // Step 1: Guard rail validation
             GuardRailResult result = guardRailService.validate(institutionId, requestedSlot, submissionId);
@@ -125,6 +127,7 @@ public class SlotReservationService {
         reservation.setInstitution(institution);
         reservation.setScheduledAt(requestedSlot);
         reservation.setStatus(SlotReservationStatus.held);
+        reservation.setConflictBufferMinutes(activeConflictBufferMinutes());
 
         try {
             return slotReservationRepository.save(reservation);
@@ -210,6 +213,7 @@ public class SlotReservationService {
     @Transactional
     public SlotReservation reserveLockedSlot(UUID submissionId, UUID institutionId, Instant newSlot,
             boolean adminOverride) {
+        ensureExactSlotAvailable(newSlot, submissionId);
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new IllegalArgumentException("Submission not found: " + submissionId));
         Institution institution = institutionRepository.findById(institutionId)
@@ -223,6 +227,7 @@ public class SlotReservationService {
         reservation.setScheduledAt(newSlot);
         reservation.setStatus(SlotReservationStatus.locked);
         reservation.setAdminOverride(adminOverride);
+        reservation.setConflictBufferMinutes(activeConflictBufferMinutes());
 
         try {
             return slotReservationRepository.save(reservation);
@@ -257,5 +262,18 @@ public class SlotReservationService {
 
         slotReservationRepository.saveAll(stale);
         return released;
+    }
+
+    private int activeConflictBufferMinutes() {
+        return guardRailSettings.enforced()
+                ? Math.max(0, guardRailSettings.conflictBufferMinutes())
+                : 0;
+    }
+
+    private void ensureExactSlotAvailable(Instant requestedSlot, UUID excludeSubmissionId) {
+        if (slotReservationRepository.existsActiveAt(requestedSlot, excludeSubmissionId)) {
+            throw new SlotAlreadyTakenException(
+                    "A post is already scheduled at this exact time. Please choose a different time.");
+        }
     }
 }

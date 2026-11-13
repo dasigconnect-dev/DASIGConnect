@@ -411,10 +411,12 @@ public class SubmissionService {
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
             boolean isAdmin = isAdmin(user);
-            boolean isReviewer = isAdmin || isModerator(user);
-            // Reviewers always have guard rails applied on a schedule change; for a
-            // contributor's own edit it follows the app.guardrails.enforced flag.
-            if (guardRailSettings.enforced() || isReviewer) {
+            // This endpoint only edits a submission owned by the caller. Draft
+            // scheduling therefore follows the network-wide enforcement switch,
+            // even when the draft owner also has an Admin or Moderator role.
+            // Review-time rescheduling uses reschedule(), whose override rules
+            // remain independent from this draft autosave path.
+            if (guardRailSettings.enforced()) {
                 GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
                 if (gr.isBlocked()) {
                     String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();

@@ -568,7 +568,7 @@ export function getReadinessChecklist(
             : !futureSlot
               ? "Schedule can't be in the past"
               : guardRailsEnforced && !publishWindow
-                ? `Publish time must be ${lookups.postingWindowStartHour}:00 - ${lookups.postingWindowEndHour}:00`
+                ? `Publish time must be from ${lookups.postingWindowStartHour}:00 up to ${lookups.postingWindowEndHour}:00 (end excluded)`
                 : guardRailsEnforced && guardRails?.blocked
                   ? "Resolve blocked publishing slot"
                   : formatDateTime(scheduledAt),
@@ -697,7 +697,7 @@ export function getPreviewValidation(
   }
   if (guardRailsEnforced && !form.fastTrack && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
-      missingItems.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
+      missingItems.push(`Publish time must be from ${lookups.postingWindowStartHour}:00 up to, but not including, ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (oversizedFile) {
@@ -723,7 +723,7 @@ export function getPreviewValidation(
   }
   if (guardRailsEnforced && !form.fastTrack && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime, lookups.postingWindowStartHour, lookups.postingWindowEndHour)) {
-      blockingErrors.push(`Publish time must be between ${lookups.postingWindowStartHour}:00 and ${lookups.postingWindowEndHour}:00.`);
+      blockingErrors.push(`Publish time must be from ${lookups.postingWindowStartHour}:00 up to, but not including, ${lookups.postingWindowEndHour}:00.`);
     }
   }
   if (guardRailsEnforced && !form.fastTrack && guardRails?.blocked) {
@@ -747,7 +747,7 @@ export function isWithinPublishWindow(timeValue: string, startHour: number, endH
   const [h] = timeValue.split(":").map(Number);
   const m = Number(timeValue.split(":")[1]) || 0;
   const totalMin = h * 60 + m;
-  return totalMin >= startHour * 60 && totalMin <= endHour * 60;
+  return totalMin >= startHour * 60 && totalMin < endHour * 60;
 }
 
 export function captionTone(caption: string) {

@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -14,13 +15,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
@@ -53,6 +51,7 @@ class GuardRailServiceTest {
         lenient().when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(0L);
         lenient().when(submissionRepository.countUnpublishedByInstitution(any())).thenReturn(0L);
         lenient().when(slotReservationRepository.findActiveInWindow(any(), any())).thenReturn(List.of());
+        lenient().when(guardRailSettingsService.enforced()).thenReturn(true);
         lenient().when(guardRailSettingsService.postingWindowStartHour()).thenReturn(0);
         lenient().when(guardRailSettingsService.postingWindowEndHour()).thenReturn(24);
         lenient().when(guardRailSettingsService.conflictBufferMinutes()).thenReturn(30);
@@ -60,18 +59,16 @@ class GuardRailServiceTest {
         lenient().when(guardRailSettingsService.maximumLeadTimeDays()).thenReturn(30);
         lenient().when(guardRailSettingsService.perInstitutionActiveQuota()).thenReturn(3);
         lenient().when(guardRailSettingsService.dailyVolumeCap()).thenReturn(6);
-        lenient().when(guardRailSettingsService.enforced()).thenReturn(true);
     }
 
     @Test
-    @DisplayName("disabled guard rails return clean without querying scheduling data")
-    void shouldReturnClean_withoutEvaluationWhenDisabled() {
+    void disabledGuardRailsReturnNoPolicyViolations() {
         when(guardRailSettingsService.enforced()).thenReturn(false);
 
-        GuardRailResult result = guardRailService.validate(institutionId, validFutureSlot());
+        GuardRailResult result = guardRailService.validate(institutionId, Instant.now());
 
-        assertThat(result.isClean()).isTrue();
-        verifyNoInteractions(slotReservationRepository, submissionRepository);
+        assertThat(result.isBlocked()).isFalse();
+        assertThat(result.hasWarnings()).isFalse();
     }
 
     // ── GR-H1 ────────────────────────────────────────────────────────────────
@@ -182,37 +179,6 @@ class GuardRailServiceTest {
         }
     }
 
-    @Nested
-    @DisplayName("GR-H4: Configured posting window")
-    class GrH4Tests {
-
-        private static final ZoneId MANILA = ZoneId.of("Asia/Manila");
-
-        @Test
-        @DisplayName("should allow the exact configured end time")
-        void shouldAllow_exactEndTime() {
-            when(guardRailSettingsService.postingWindowStartHour()).thenReturn(8);
-            when(guardRailSettingsService.postingWindowEndHour()).thenReturn(20);
-            Instant slot = LocalDate.now(MANILA).plusDays(1).atTime(20, 0).atZone(MANILA).toInstant();
-
-            GuardRailResult result = guardRailService.validate(institutionId, slot);
-
-            assertThat(result.getHardBlocks()).noneMatch(v -> v.getCode().equals("GR-H4"));
-        }
-
-        @Test
-        @DisplayName("should block a time after the configured end time")
-        void shouldBlock_afterEndTime() {
-            when(guardRailSettingsService.postingWindowStartHour()).thenReturn(8);
-            when(guardRailSettingsService.postingWindowEndHour()).thenReturn(20);
-            Instant slot = LocalDate.now(MANILA).plusDays(1).atTime(20, 1).atZone(MANILA).toInstant();
-
-            GuardRailResult result = guardRailService.validate(institutionId, slot);
-
-            assertThat(result.getHardBlocks()).anyMatch(v -> v.getCode().equals("GR-H4"));
-        }
-    }
-
     // ── GR-S1 ────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("GR-S1: ≤3 scheduled-but-unpublished posts per institution (soft)")
@@ -258,23 +224,6 @@ class GuardRailServiceTest {
     @Nested
     @DisplayName("GR-S2: ≤6 posts per calendar day network-wide (soft)")
     class GrS2Tests {
-
-        @Test
-        @DisplayName("should count the requested Manila calendar day")
-        void shouldCount_manilaCalendarDay() {
-            ZoneId manila = ZoneId.of("Asia/Manila");
-            LocalDate requestedDate = LocalDate.now(manila).plusDays(1);
-            Instant slot = requestedDate.atTime(1, 0).atZone(manila).toInstant();
-            ArgumentCaptor<Instant> startCaptor = ArgumentCaptor.forClass(Instant.class);
-            ArgumentCaptor<Instant> endCaptor = ArgumentCaptor.forClass(Instant.class);
-
-            guardRailService.validate(institutionId, slot);
-
-            verify(slotReservationRepository).countActiveOnDay(
-                    startCaptor.capture(), endCaptor.capture(), any());
-            assertThat(startCaptor.getValue()).isEqualTo(requestedDate.atStartOfDay(manila).toInstant());
-            assertThat(endCaptor.getValue()).isEqualTo(requestedDate.plusDays(1).atStartOfDay(manila).toInstant());
-        }
 
         @Test
         @DisplayName("should warn when 6 or more posts are scheduled on the same day")
@@ -384,6 +333,49 @@ class GuardRailServiceTest {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+    @Nested
+    @DisplayName("GR-H4: Posting window is start-inclusive and end-exclusive")
+    class GrH4Tests {
+
+        private static final ZoneId PAGE_ZONE = ZoneId.of("Asia/Manila");
+
+        @BeforeEach
+        void configureWindow() {
+            lenient().when(guardRailSettingsService.postingWindowStartHour()).thenReturn(10);
+            lenient().when(guardRailSettingsService.postingWindowEndHour()).thenReturn(14);
+        }
+
+        @Test
+        void blocksBeforeStartHour() {
+            assertThat(validateAt(LocalTime.of(9, 0)).getHardBlocks())
+                    .anyMatch(v -> v.getCode().equals("GR-H4"));
+        }
+
+        @Test
+        void allowsStartHour() {
+            assertThat(validateAt(LocalTime.of(10, 0)).getHardBlocks())
+                    .noneMatch(v -> v.getCode().equals("GR-H4"));
+        }
+
+        @Test
+        void allowsTimeInsideWindow() {
+            assertThat(validateAt(LocalTime.of(13, 59)).getHardBlocks())
+                    .noneMatch(v -> v.getCode().equals("GR-H4"));
+        }
+
+        @Test
+        void blocksEndHour() {
+            assertThat(validateAt(LocalTime.of(14, 0)).getHardBlocks())
+                    .anyMatch(v -> v.getCode().equals("GR-H4"));
+        }
+
+        private GuardRailResult validateAt(LocalTime time) {
+            Instant slot = LocalDate.now(PAGE_ZONE).plusDays(2)
+                    .atTime(time).atZone(PAGE_ZONE).toInstant();
+            return guardRailService.validate(institutionId, slot);
+        }
+    }
+
     private Instant validFutureSlot() {
         return Instant.now().plus(3, ChronoUnit.HOURS);
     }

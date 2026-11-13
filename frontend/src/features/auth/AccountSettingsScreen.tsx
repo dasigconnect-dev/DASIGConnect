@@ -475,7 +475,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       toast.success(
         data.guardrailsEnforced
           ? "Scheduling guard rails are on."
-          : "Scheduling guard rails are off — scheduled posts still require a preferred time, but spacing, lead-time, daily-cap, and posting-window rules will not block it.",
+          : "Scheduling guard rails are off — a future slot is still required, but time and spacing limits are disabled.",
       );
     } catch {
       toast.error("Unable to update scheduling guard rails.");
@@ -1128,7 +1128,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     onChange={setGuardrailsEnforced}
                   />
                   <div
-                    className="settings-studio-summary-box"
+                    className="settings-studio-summary-box settings-posting-window"
                     style={{
                       marginTop: "16px",
                       opacity: guardrailsEnforced ? 1 : 0.6,

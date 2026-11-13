@@ -76,6 +76,7 @@ class SlotReservationServiceTest {
 
         lenient().when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
         lenient().when(guardRailSettings.enforced()).thenReturn(true);
+        lenient().when(guardRailSettings.conflictBufferMinutes()).thenReturn(30);
     }
 
     // ── reserve() ─────────────────────────────────────────────────────────────
@@ -149,12 +150,27 @@ class SlotReservationServiceTest {
         @DisplayName("should save reservation when guard rail enforcement is disabled")
         void shouldSave_whenGuardRailEnforcementDisabled() {
             when(guardRailSettings.enforced()).thenReturn(false);
-            when(slotReservationRepository.save(any())).thenReturn(new SlotReservation());
+            when(slotReservationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-            slotReservationService.reserve(submissionId, institutionId, validSlot);
+            SlotReservation result = slotReservationService.reserve(submissionId, institutionId, validSlot);
 
             verify(guardRailService, never()).validate(any(), any());
             verify(slotReservationRepository).save(any(SlotReservation.class));
+            assertThat(result.getConflictBufferMinutes()).isZero();
+        }
+
+        @Test
+        @DisplayName("should reject an exact occupied time even when guard rails are disabled")
+        void shouldRejectExactCollision_whenGuardRailEnforcementDisabled() {
+            lenient().when(guardRailSettings.enforced()).thenReturn(false);
+            when(slotReservationRepository.existsActiveAt(validSlot, submissionId)).thenReturn(true);
+
+            assertThatThrownBy(() -> slotReservationService.reserve(submissionId, institutionId, validSlot))
+                    .isInstanceOf(SlotAlreadyTakenException.class)
+                    .hasMessageContaining("exact time");
+
+            verify(guardRailService, never()).validate(any(), any());
+            verify(slotReservationRepository, never()).save(any());
         }
 
         @Test

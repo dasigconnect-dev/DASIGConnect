@@ -177,7 +177,7 @@ export interface EngagementRecommendedSlot {
 
 export interface EngagementRecommendations {
   available: boolean;
-  source: "HISTORICAL" | "DEFAULT" | "UNAVAILABLE";
+  source: "AVAILABILITY" | "UNAVAILABLE";
   notice: string | null;
   timezone: string;
   sampleSize: number;
@@ -316,10 +316,19 @@ export function validateGuardRails(
   });
 }
 
-export function getEngagementRecommendations(institutionId?: string | null, signal?: AbortSignal) {
+export function getEngagementRecommendations(
+  institutionId?: string | null,
+  submissionId?: string | null,
+  date?: string | null,
+  signal?: AbortSignal,
+) {
   return api.get<EngagementRecommendations>("/engagement-recommendations", {
     signal,
-    params: institutionId ? { institutionId } : undefined,
+    params: {
+      institutionId: institutionId || undefined,
+      submissionId: submissionId || undefined,
+      date: date || undefined,
+    },
   });
 }
 

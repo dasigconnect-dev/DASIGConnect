@@ -2,7 +2,7 @@
    Compact by design: one row of slot tiles + a "why" line; the explanation
    is behind ⓘ. */
 .sub-engagement-panel {
-  margin: 0 0 12px;
+  margin: 12px 0 0;
   padding: 12px 14px;
   border: 1px solid #dbeafe;
   border-radius: 14px;
@@ -66,9 +66,57 @@
 }
 
 .sub-engagement-info-btn:focus-visible,
-.sub-engagement-tile:focus-visible {
+.sub-engagement-tile:focus-visible,
+.sub-engagement-page-btn:focus-visible {
   outline: 2px solid var(--d-blue, #1877f2);
   outline-offset: 2px;
+}
+
+.sub-engagement-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sub-engagement-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #dbe3ef;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.sub-engagement-page-btn i {
+  font-size: 15px;
+}
+
+.sub-engagement-page-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: var(--d-blue, #1877f2);
+}
+
+.sub-engagement-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sub-engagement-page-status {
+  min-width: 42px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .sub-engagement-info {
@@ -93,11 +141,12 @@
   margin-top: 6px;
 }
 
-/* Calendar-style slot tiles: three across at every width (~100px each on a
-   phone), so the choice stays a single glance. */
+/* Row-major availability grid. Fractional columns fill each row before the
+   browser creates the next one, avoiding the unused space caused by max-width
+   tile columns. */
 .sub-engagement-tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 200px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
@@ -106,16 +155,18 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   min-width: 0;
-  padding: 12px 12px 11px;
+  min-height: 64px;
+  padding: 10px 12px;
   border: 1px solid #dbe3ef;
   border-radius: 12px;
   background: #ffffff;
   color: #0c1d3d;
   font-family: inherit;
-  text-align: left;
+  text-align: center;
   text-transform: none;
   letter-spacing: 0;
   cursor: pointer;
@@ -182,10 +233,37 @@
 }
 
 .sub-engagement-tile-time {
-  color: #475569;
+  color: #0c1d3d;
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sub-engagement-tile-status {
+  color: #15803d;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sub-engagement-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 64px;
+  margin-top: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #64748b;
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .sub-engagement-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .sub-engagement-tile-meter {
@@ -223,6 +301,7 @@
 
 @media (max-width: 420px) {
   .sub-engagement-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
   .sub-engagement-tile {
@@ -232,7 +311,7 @@
     font-size: 16px;
   }
   .sub-engagement-tile-time {
-    font-size: 11.5px;
+    font-size: 14px;
   }
 }
 
@@ -275,7 +354,8 @@
 @media (prefers-reduced-motion: reduce) {
   .sub-engagement-tile,
   .sub-engagement-tile:hover,
-  .sub-engagement-tile:active {
+  .sub-engagement-tile:active,
+  .sub-engagement-page-btn {
     transition: none;
     transform: none;
   }

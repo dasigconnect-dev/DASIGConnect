@@ -267,6 +267,29 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void update_adminOwnedDraft_skipsGuardRailValidationWhenEnforcementDisabled() {
+        when(guardRailSettings.enforced()).thenReturn(false);
+        UUID submissionId = UUID.randomUUID();
+        Instant oldSlot = Instant.parse("2026-06-01T08:00:00Z");
+        Instant newSlot = Instant.parse("2026-06-02T01:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, oldSlot);
+        JwtUserDetails adminOwner = principal(contributorId, "admin", null);
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setScheduledAt(newSlot);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
+                .thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.update(submissionId, dto, adminOwner);
+
+        assertThat(result.getScheduledAt()).isEqualTo(newSlot);
+        verify(guardRailService, never()).validate(any(), any(), any());
+        verify(slotReservationService).reserve(submissionId, institutionId, newSlot);
+    }
+
+    @Test
     void update_pendingSubmission_isRejected() {
         UUID submissionId = UUID.randomUUID();
         when(submissionRepository.findById(submissionId))

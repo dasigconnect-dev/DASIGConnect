@@ -591,19 +591,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     activeStep === "schedule" &&
     !form.fastTrack &&
     !isReadOnlySubmission &&
+    Boolean(form.scheduledDate) &&
     !(isAdminComposer && !selectedInstitutionId);
   const engagementRecommendationsQuery = useQuery({
     queryKey: queryKeys.submissions.engagementRecommendations({
       role: user.role,
       userId: currentUserScope,
       institutionId: selectedInstitutionId || null,
+      submissionId: form.id || null,
+      date: form.scheduledDate || null,
     }),
     queryFn: ({ signal }) =>
-      getEngagementRecommendations(selectedInstitutionId || null, signal).then((response) =>
+      getEngagementRecommendations(
+        selectedInstitutionId || null,
+        form.id || null,
+        form.scheduledDate || null,
+        signal,
+      ).then((response) =>
         response.data.available ? response.data : null,
       ),
     enabled: shouldLoadEngagementRecommendations,
-    staleTime: COMPOSER_REF_TTL_MS,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
     meta: authenticatedQueryMeta,
   });
   const engagementRecommendations = shouldLoadEngagementRecommendations
@@ -3330,14 +3339,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 Time pickers below them (the chips' explanation is behind ⓘ). */}
             <div id="composer-when-to-post">
             <Field label="When to Post" required={!isReadOnlySubmission}>
-              <Suspense fallback={<DeferredSubmissionPanelFallback />}>
-                <EngagementRecommendationsPanel
-                  loading={engagementLoading}
-                  recommendations={engagementRecommendations}
-                  selectedAt={scheduledAt}
-                  onSelect={applyEngagementSlot}
-                />
-              </Suspense>
               <div className="sub-field-row sub-when-fields">
                 <Field label="Date">
                   <CalendarDateField
@@ -3355,10 +3356,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     placeholder="Pick a time"
                     startHour={lookups.postingWindowStartHour}
                     endHour={lookups.postingWindowEndHour}
+                    enforceRange={lookups.guardrailsEnforced}
                     onChange={(value) => updateField("scheduledTime", value)}
                   />
                 </Field>
               </div>
+              {form.scheduledDate && (
+                <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                  <EngagementRecommendationsPanel
+                    loading={engagementLoading}
+                    recommendations={engagementRecommendations}
+                    selectedAt={scheduledAt}
+                    onSelect={applyEngagementSlot}
+                  />
+                </Suspense>
+              )}
             </Field>
             </div>
             {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked

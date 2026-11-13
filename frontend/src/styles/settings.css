@@ -423,6 +423,31 @@
   padding-right: 56px;
 }
 
+/* Number controls in the posting-window panel do not use a trailing text or
+   password adornment. Keep their values at the start and reserve only the
+   space the browser needs for its native stepper at the far edge. */
+.settings-posting-window .settings-input-wrapper {
+  min-width: 0;
+}
+
+.settings-posting-window .settings-input[type="number"] {
+  min-width: 0;
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 4px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.settings-posting-window .settings-input[type="number"]::-webkit-inner-spin-button,
+.settings-posting-window .settings-input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  opacity: 1;
+  cursor: pointer;
+}
+
 .settings-char-count {
   position: absolute;
   right: 12px;

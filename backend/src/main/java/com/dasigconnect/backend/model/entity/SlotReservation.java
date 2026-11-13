@@ -51,6 +51,9 @@ public class SlotReservation {
     @Column(name = "admin_override", nullable = false)
     private boolean adminOverride = false;
 
+    @Column(name = "conflict_buffer_minutes", nullable = false)
+    private int conflictBufferMinutes = 30;
+
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -109,5 +112,13 @@ public class SlotReservation {
 
     public void setAdminOverride(boolean adminOverride) {
         this.adminOverride = adminOverride;
+    }
+
+    public int getConflictBufferMinutes() {
+        return conflictBufferMinutes;
+    }
+
+    public void setConflictBufferMinutes(int conflictBufferMinutes) {
+        this.conflictBufferMinutes = conflictBufferMinutes;
     }
 }

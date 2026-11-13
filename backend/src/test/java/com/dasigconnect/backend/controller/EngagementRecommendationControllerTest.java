@@ -14,6 +14,7 @@ import com.dasigconnect.backend.service.EngagementRecommendationService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -52,32 +53,36 @@ class EngagementRecommendationControllerTest {
     void recommendations_forContributor_delegatesUserAndInstitution() throws Exception {
         UUID userInstitution = UUID.randomUUID();
         UUID requestedInstitution = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        LocalDate date = LocalDate.of(2026, 11, 18);
         UsernamePasswordAuthenticationToken auth = auth("contributor", userInstitution);
         Instant scheduledAt = Instant.parse("2026-10-20T08:00:00Z");
         EngagementRecommendationDto response = new EngagementRecommendationDto(
                 true,
-                "HISTORICAL",
-                "Based on recent engagement",
+                "AVAILABILITY",
+                "Available times for the selected date",
                 "Asia/Manila",
-                20,
+                0,
                 List.of(new EngagementRecommendationDto.RecommendedSlotDto(
                         scheduledAt, "Tuesday 4:00 PM", 0.92, List.of())));
         when(engagementRecommendationService.recommend(
-                (JwtUserDetails) auth.getPrincipal(), requestedInstitution)).thenReturn(response);
+                (JwtUserDetails) auth.getPrincipal(), requestedInstitution, submissionId, date)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/engagement-recommendations")
                         .param("institutionId", requestedInstitution.toString())
+                        .param("submissionId", submissionId.toString())
+                        .param("date", date.toString())
                         .with(authentication(auth)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.available").value(true))
-                .andExpect(jsonPath("$.data.source").value("HISTORICAL"))
-                .andExpect(jsonPath("$.data.sampleSize").value(20))
+                .andExpect(jsonPath("$.data.source").value("AVAILABILITY"))
+                .andExpect(jsonPath("$.data.sampleSize").value(0))
                 .andExpect(jsonPath("$.data.slots[0].scheduledAt").value(scheduledAt.toString()))
                 .andExpect(jsonPath("$.data.slots[0].score").value(0.92));
 
         verify(engagementRecommendationService).recommend(
-                (JwtUserDetails) auth.getPrincipal(), requestedInstitution);
+                (JwtUserDetails) auth.getPrincipal(), requestedInstitution, submissionId, date);
     }
 
     private static UsernamePasswordAuthenticationToken auth(String role, UUID institutionId) {

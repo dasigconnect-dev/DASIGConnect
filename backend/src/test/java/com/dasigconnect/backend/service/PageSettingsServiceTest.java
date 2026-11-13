@@ -64,25 +64,16 @@ class PageSettingsServiceTest {
     }
 
     @Test
-    void networkUpdate_rejectsPostingWindowWithStartAtOrAfterEnd() {
+    void networkUpdate_appliesNewConflictIntervalWithoutRewritingReservations() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+        when(users.getReferenceById(actor.userId())).thenReturn(new com.dasigconnect.backend.model.entity.User());
+        when(repository.save(any(PageSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThatThrownBy(() -> service.update(null,
-                new UpdatePageSettingsRequestDto(true, 20, 8, null, null, null, null, null), actor))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("start hour must be earlier");
-    }
+        var result = service.update(null,
+                new UpdatePageSettingsRequestDto(true, 8, 18, 20, 2, 30, 3, 6), actor);
 
-    @Test
-    void networkUpdate_rejectsOutOfRangePostingWindowHour() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
-        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.update(null,
-                new UpdatePageSettingsRequestDto(true, -1, 20, null, null, null, null, null), actor))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("between 0 and 23");
+        assertThat(result.conflictBufferMinutes()).isEqualTo(20);
     }
 
     @Test
@@ -102,5 +93,38 @@ class PageSettingsServiceTest {
 
         // The switch is network-wide only — a per-institution PUT leaves it alone.
         assertThat(result.guardrailsEnforced()).isTrue();
+    }
+
+    @Test
+    void networkUpdate_rejectsEndHourAtOrBeforeStartHour() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(null,
+                new UpdatePageSettingsRequestDto(true, 14, 14, 20, 2, 30, 3, 6), actor))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void networkUpdate_rejectsOutOfRangeHoursEvenWhenEnforcementIsOff() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(null,
+                new UpdatePageSettingsRequestDto(false, -1, 20, 20, 2, 30, 3, 6), actor))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void networkUpdate_rejectsNegativeOrZeroLimits() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update(null,
+                new UpdatePageSettingsRequestDto(true, 8, 20, -1, 2, 0, 3, 6), actor))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
     }
 }

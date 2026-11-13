@@ -9,13 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
   getEngagementRecommendations,
   getSubmission,
   validateGuardRails,
-  type EngagementRecommendations,
   type GuardRailResult,
   type SavedMediaAsset,
   type SubmissionStatus,
@@ -434,8 +433,34 @@ export default function ValidationQueueScreen({
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
-  const [engagementRecs, setEngagementRecs] = useState<EngagementRecommendations | null>(null);
-  const [engagementLoading, setEngagementLoading] = useState(false);
+  const shouldLoadEngagementRecommendations =
+    editMode && editTab === "schedule" && Boolean(selected) && Boolean(editForm.scheduledDate);
+  const engagementRecommendationsQuery = useQuery({
+    queryKey: queryKeys.submissions.engagementRecommendations({
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: selected?.institutionId ?? null,
+      submissionId: selected?.id ?? null,
+      date: editForm.scheduledDate || null,
+    }),
+    queryFn: ({ signal }) =>
+      getEngagementRecommendations(
+        selected?.institutionId ?? null,
+        selected?.id ?? null,
+        editForm.scheduledDate || null,
+        signal,
+      ).then((response) => (response.data.available ? response.data : null)),
+    enabled: shouldLoadEngagementRecommendations,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const engagementRecs = shouldLoadEngagementRecommendations
+    ? engagementRecommendationsQuery.data ?? null
+    : null;
+  const engagementLoading =
+    shouldLoadEngagementRecommendations &&
+    (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(user, selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
@@ -1385,34 +1410,6 @@ export default function ValidationQueueScreen({
   }
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
-  useEffect(() => {
-    if (!editMode || editTab !== "schedule" || !selected) {
-      return;
-    }
-    const controller = new AbortController();
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setEngagementLoading(true);
-      getEngagementRecommendations(selected.institutionId, controller.signal)
-        .then((res) => {
-          if (active) setEngagementRecs(res.data.available ? res.data : null);
-        })
-        .catch((err: unknown) => {
-          if (active && (err as { name?: string })?.name !== "CanceledError") {
-            setEngagementRecs(null);
-          }
-        })
-        .finally(() => {
-          if (active) setEngagementLoading(false);
-        });
-    });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [editMode, editTab, selected]);
-
   function applyRecommendedSlot(scheduledAt: string) {
     const slot = new Date(scheduledAt);
     if (Number.isNaN(slot.getTime())) return;
@@ -2461,14 +2458,6 @@ export default function ValidationQueueScreen({
                             </div>
                           ) : (
                             <>
-                          <Suspense fallback={null}>
-                            <EngagementRecommendationsPanel
-                              loading={engagementLoading}
-                              recommendations={engagementRecs}
-                              selectedAt={editScheduledAtIso || undefined}
-                              onSelect={applyRecommendedSlot}
-                            />
-                          </Suspense>
                           {scheduleDiffersFromContributor && (
                             <button
                               type="button"
@@ -2502,10 +2491,21 @@ export default function ValidationQueueScreen({
                                 placeholder="Pick a time"
                                 startHour={lookups?.postingWindowStartHour ?? 8}
                                 endHour={lookups?.postingWindowEndHour ?? 20}
+                                enforceRange={lookups?.guardrailsEnforced ?? true}
                                 onChange={(value) => setEditForm((f) => ({ ...f, scheduledTime: value }))}
                               />
                             </div>
                           </div>
+                          {editForm.scheduledDate && (
+                            <Suspense fallback={null}>
+                              <EngagementRecommendationsPanel
+                                loading={engagementLoading}
+                                recommendations={engagementRecs}
+                                selectedAt={editScheduledAtIso || undefined}
+                                onSelect={applyRecommendedSlot}
+                              />
+                            </Suspense>
+                          )}
 
                           {scheduleChanged && (
                             <div className="val-edit-gr">

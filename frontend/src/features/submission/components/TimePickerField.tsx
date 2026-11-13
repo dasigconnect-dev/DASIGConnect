@@ -36,6 +36,7 @@ export function TimePickerField({
   id,
   startHour,
   endHour,
+  enforceRange,
   onChange,
 }: {
   value: string;
@@ -44,6 +45,7 @@ export function TimePickerField({
   id?: string;
   startHour: number;
   endHour: number;
+  enforceRange: boolean;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -82,7 +84,10 @@ export function TimePickerField({
   }
 
   const draftMinutes = draftToMinutes(draft);
-  const isOutOfRange = draftMinutes < startHour * 60 || draftMinutes > endHour * 60;
+  // Posting windows are start-inclusive and end-exclusive, matching the
+  // backend's GR-H4 rule. When guard rails are off, any time of day is valid.
+  const isOutOfRange = enforceRange
+    && (draftMinutes < startHour * 60 || draftMinutes >= endHour * 60);
 
   function adjust(part: "hour" | "minute", offset: number) {
     setDraft((current) => {
@@ -182,7 +187,7 @@ export function TimePickerField({
           {isOutOfRange && (
             <div className="sub-time-range-error">
               <i className="ti ti-alert-triangle"></i>
-              Time must be between {startHour}:00 and {endHour}:00.
+              Time must be from {startHour}:00 up to, but not including, {endHour}:00.
             </div>
           )}
 
