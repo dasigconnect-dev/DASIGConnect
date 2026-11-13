@@ -31,35 +31,37 @@ export function InPageFacebookPreview({
   onSubmitForReview: () => void;
   onEditDetails: () => void;
 }) {
+  const hasReorder = mediaItems.length > 1;
+
   return (
-    <section className="sub-preview-workflow" aria-labelledby="sub-preview-title">
-      <div className="sub-preview-tab-panel">
-        <div className="sub-preview-stage-head">
-          <div>
-            <span>Public feed preview</span>
-            <h2 id="sub-preview-title">What followers will see</h2>
-          </div>
-          <p>
-            Preview the public-facing post before it moves into approval.
-          </p>
+    <section
+      className={`sub-preview-workflow sub-preview-workflow--frameless${hasReorder ? " has-reorder" : ""}`}
+      aria-label="What followers will see"
+    >
+      <div className={`sub-preview-split${hasReorder ? " has-reorder" : ""}`}>
+        <div className="sub-preview-card-col">
+          <FacebookPreviewCard
+            pageName={pageName}
+            pageAvatarUrl={pageAvatarUrl}
+            publishDate={publishDate}
+            caption={caption}
+            mediaItems={mediaItems}
+            activeMediaIndex={activeMediaIndex}
+            onMediaIndexChange={onMediaIndexChange}
+            size="large"
+          />
         </div>
-        <FacebookPreviewCard
-          pageName={pageName}
-          pageAvatarUrl={pageAvatarUrl}
-          publishDate={publishDate}
-          caption={caption}
-          mediaItems={mediaItems}
-          activeMediaIndex={activeMediaIndex}
-          onMediaIndexChange={onMediaIndexChange}
-          size="large"
-        />
-        <FacebookPreviewMediaReorder
-          mediaItems={mediaItems}
-          activeMediaId={mediaItems[activeMediaIndex]?.id}
-          disabled={reorderDisabled}
-          onSelect={onMediaIndexChange}
-          onReorder={onReorderMedia}
-        />
+        {hasReorder && (
+          <aside className="sub-preview-reorder-col">
+            <FacebookPreviewMediaReorder
+              mediaItems={mediaItems}
+              activeMediaId={mediaItems[activeMediaIndex]?.id}
+              disabled={reorderDisabled}
+              onSelect={onMediaIndexChange}
+              onReorder={onReorderMedia}
+            />
+          </aside>
+        )}
       </div>
 
       {/* <div className="sub-preview-footer">

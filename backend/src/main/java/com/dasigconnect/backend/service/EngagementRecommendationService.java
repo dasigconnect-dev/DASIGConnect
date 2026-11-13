@@ -117,12 +117,11 @@ public class EngagementRecommendationService {
             }
 
             String notice = policy.enforced()
-                    ? "Available times for " + requestedDate.format(DATE_LABEL)
-                            + " between " + displayHour(startHour) + " and " + displayHour(endHour)
-                            + ", spaced by the configured " + policy.conflictBufferMinutes() + "-minute interval."
-                    : "Guard rails are off. Showing the full day for "
+                    ? "Available posting times for " + requestedDate.format(DATE_LABEL)
+                            + " between " + displayHour(startHour) + " and " + displayHour(endHour) + "."
+                    : "Showing open posting times for "
                             + requestedDate.format(DATE_LABEL)
-                            + " in 30-minute steps; occupied times are removed. Reviewer coverage is 8 AM to 6 PM.";
+                            + ". Reviewers are typically active from 8 AM to 6 PM.";
             return availabilityResult(notice, slots);
         } catch (Exception exception) {
             return new EngagementRecommendationDto(

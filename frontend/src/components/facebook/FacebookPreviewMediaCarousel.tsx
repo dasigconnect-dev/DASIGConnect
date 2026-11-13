@@ -24,10 +24,12 @@ function clampMediaRatio(ratio: number) {
 function FacebookPreviewImageItem({
   item,
   watermarkConfig,
+  fillFrame = false,
   onMeasure,
 }: {
   item: FacebookPreviewMediaItem;
   watermarkConfig: WatermarkConfiguration | null;
+  fillFrame?: boolean;
   onMeasure?: (width: number, height: number) => void;
 }) {
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
@@ -37,6 +39,8 @@ function FacebookPreviewImageItem({
       className="fb-preview-img-container"
       style={{
         position: "relative",
+        width: fillFrame ? "100%" : undefined,
+        height: fillFrame ? "100%" : undefined,
         maxWidth: "100%",
         maxHeight: "100%",
         aspectRatio: aspectRatio ? `${aspectRatio}` : undefined,
@@ -399,6 +403,7 @@ export default function FacebookPreviewMediaCarousel({
               key={current.url}
               item={current}
               watermarkConfig={watermarkConfig}
+              fillFrame={size === "large"}
               onMeasure={(width, height) => recordRatio(current.url, width, height)}
             />
           ) : (
