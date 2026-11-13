@@ -37,6 +37,7 @@ import {
   createTextElement,
   switchShapeVariant,
 } from "./watermark-editor/elementFactory";
+import { ColorPickerMenu } from "./watermark-editor/ColorPickerMenu";
 import watermarkSample from "../../../assets/watermark-preview.svg";
 import "../../../styles/watermark-content.css";
 import "../../../styles/watermark-editor.css";
@@ -51,8 +52,6 @@ interface WatermarkCanvasEditorProps {
   onSave?: () => void;
   isSaving?: boolean;
 }
-
-type SideTab = "shapes" | "text" | "uploads" | "layers" | null;
 
 const CORNER_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
 const EDGE_ANCHORS = ["top", "bottom"] as const;
@@ -70,12 +69,11 @@ export default function WatermarkCanvasEditor({
   const aspectRatio: AspectRatioType = DEFAULT_ASPECT_RATIO;
   const [background, setBackground] = useState<CanvasBackground>("sample-photo");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SideTab>(null);
+  const [layersOpen, setLayersOpen] = useState(false);
   const [openAnchorMenu, setOpenAnchorMenu] = useState<WatermarkAnchor | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
   const [showAlignMenu, setShowAlignMenu] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
@@ -247,9 +245,6 @@ export default function WatermarkCanvasEditor({
         setShowFontPicker(false);
         setShowAlignMenu(false);
       }
-      if (!target.closest(".canva-rail-bottom")) {
-        setShowInfo(false);
-      }
       if (!target.closest(".wm-anchor-control")) {
         setOpenAnchorMenu(null);
       }
@@ -292,7 +287,6 @@ export default function WatermarkCanvasEditor({
     const updated = [...elements, newElement];
     onChange(updated);
     setSelectedId(newElement.id);
-    setActiveTab(null);
     setOpenAnchorMenu(null);
   }
 
@@ -462,8 +456,9 @@ export default function WatermarkCanvasEditor({
   // Floating pill positioning helpers
   function getFloatingPillPlacement(box: ElementBox) {
     const isDockedTop = box.top < 14;
-    const isDockedLeft = box.left < 10;
-    const isDockedRight = box.left + box.width > 88;
+    const isFullWidth = box.width >= 90;
+    const isDockedLeft = !isFullWidth && box.left < 10;
+    const isDockedRight = !isFullWidth && box.left + box.width > 88;
 
     let positionClass = isDockedTop ? "pill-docked-top" : "pill-docked-bottom";
     if (isDockedLeft) positionClass += " pill-align-left";
@@ -515,273 +510,25 @@ export default function WatermarkCanvasEditor({
         </div>
       </header>
 
-      {/* 1. Main Studio Layout (Left Rail + Drawer + Center Workspace) */}
+      {/* 1. Main Studio Layout (Layers Drawer + Center Workspace) */}
       <div className="canva-studio-main">
-        {/* Left Vertical Navigation Rail (Blue & White) */}
-        <nav className="canva-rail" aria-label="Canva Design Tools">
-        <div className="canva-rail-top">
-          <button
-            type="button"
-            className={`canva-rail-btn ${activeTab === "shapes" ? "is-active" : ""}`}
-            onClick={() => setActiveTab((prev) => (prev === "shapes" ? null : "shapes"))}
-            title="Add Shapes & Ribbons"
-          >
-            <i className="ti ti-rectangle"></i>
-            <span>Shape</span>
-          </button>
-
-          <button
-            type="button"
-            className={`canva-rail-btn ${activeTab === "text" ? "is-active" : ""}`}
-            onClick={() => setActiveTab((prev) => (prev === "text" ? null : "text"))}
-            title="Add Text & Handle"
-          >
-            <i className="ti ti-typography"></i>
-            <span>Text</span>
-          </button>
-
-          <button
-            type="button"
-            className={`canva-rail-btn ${activeTab === "uploads" ? "is-active" : ""}`}
-            onClick={() => setActiveTab((prev) => (prev === "uploads" ? null : "uploads"))}
-            title="Upload / Select Logo"
-          >
-            <i className="ti ti-upload"></i>
-            <span>Uploads</span>
-          </button>
-
-          <button
-            type="button"
-            className={`canva-rail-btn ${activeTab === "layers" ? "is-active" : ""}`}
-            onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
-            title="View & Manage Layers"
-          >
-            <div className="canva-rail-icon-wrap">
-              <i className="ti ti-layers-intersect"></i>
-              {elements.length > 0 && <span className="canva-rail-badge">{elements.length}</span>}
-            </div>
-            <span>Layers</span>
-          </button>
-        </div>
-
-        {/* Info button at the bottom of rail */}
-        <div className="canva-rail-bottom">
-          <button
-            type="button"
-            className={`canva-rail-icon-only-btn ${showInfo ? "is-active" : ""}`}
-            onClick={() => setShowInfo((prev) => !prev)}
-            title="Watermark Studio Info & Tips"
-          >
-            <i className="ti ti-info-circle"></i>
-          </button>
-
-          {showInfo && (
-            <div className="canva-info-popover">
-              <div className="canva-info-header">
-                <strong>
-                  <i className="ti ti-bulb" /> Watermark Tips
-                </strong>
-                <button type="button" onClick={() => setShowInfo(false)}>
-                  <i className="ti ti-x" />
-                </button>
-              </div>
-              <ul className="canva-info-list">
-                <li>
-                  <strong>Add Elements:</strong> Use the plus buttons on the canvas to add photos, text, ribbons, and gradients (up to {MAX_WATERMARK_ELEMENTS}).
-                </li>
-                <li>
-                  <strong>Responsive Preview:</strong> Drag the handles on the canvas edges or corner to test how your watermark adapts across image shapes.
-                </li>
-                <li>
-                  <strong>Customize:</strong> Click any element to adjust its properties.
-                </li>
-                <li>
-                  <strong>Anchored &amp; Resizable:</strong> Elements stay locked to their left or right anchor while you resize them.
-                </li>
-              </ul>
-            </div>
-          )}
-        </div>
-      </nav>
-
-      {/* 2. Floating Overlay Flyout Asset Drawer */}
-      <aside className={`canva-drawer ${activeTab ? "is-open" : "is-closed"}`}>
-        {activeTab && (
+      {/* 2. Floating Overlay Layers Drawer */}
+      <aside className={`canva-drawer ${layersOpen ? "is-open" : "is-closed"}`} aria-hidden={!layersOpen}>
+        {layersOpen && (
           <>
             <div className="canva-drawer-header">
-              <h3>
-                {activeTab === "shapes" && "Shapes & Ribbons"}
-                {activeTab === "text" && "Text & Handles"}
-                {activeTab === "uploads" && "Brand Logos & Assets"}
-                {activeTab === "layers" && `Active Layers (${elements.length}/${MAX_WATERMARK_ELEMENTS})`}
-              </h3>
+              <h3>{`Active Layers (${elements.length}/${MAX_WATERMARK_ELEMENTS})`}</h3>
               <button
                 type="button"
                 className="canva-drawer-close"
-                onClick={() => setActiveTab(null)}
-                title="Close drawer"
+                onClick={() => setLayersOpen(false)}
+                title="Close layers drawer"
               >
                 <i className="ti ti-x"></i>
               </button>
             </div>
 
             <div className="canva-drawer-content">
-              {/* Drawer Tab 1: Shapes */}
-              {activeTab === "shapes" && (
-                <div className="canva-drawer-section canva-anim-fade">
-                  <p className="canva-drawer-desc">Add solid ribbons, gradient scrims, or divider lines to highlight text.</p>
-                  <div className="canva-item-card-grid">
-                    <button
-                      type="button"
-                      className="canva-item-card"
-                      onClick={() => addElement("shape", "rectangle")}
-                      disabled={elements.length >= MAX_WATERMARK_ELEMENTS || disabled}
-                    >
-                      <div className="canva-item-preview shape-ribbon-preview">
-                        <div className="mini-ribbon" />
-                      </div>
-                      <div className="canva-item-meta">
-                        <strong>Background Ribbon</strong>
-                        <span>Bottom or top solid branding banner</span>
-                      </div>
-                      <i className="ti ti-plus canva-add-icon"></i>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="canva-item-card"
-                      onClick={() => addElement("shape", "gradient")}
-                      disabled={elements.length >= MAX_WATERMARK_ELEMENTS || disabled}
-                    >
-                      <div className="canva-item-preview shape-gradient-preview">
-                        <div className="mini-gradient" />
-                      </div>
-                      <div className="canva-item-meta">
-                        <strong>Gradient Scrim</strong>
-                        <span>Fade the photo behind content at either edge</span>
-                      </div>
-                      <i className="ti ti-plus canva-add-icon"></i>
-                    </button>
-
-                  </div>
-                </div>
-              )}
-
-              {/* Drawer Tab 2: Text */}
-              {activeTab === "text" && (
-                <div className="canva-drawer-section canva-anim-fade">
-                  <p className="canva-drawer-desc">Insert handle, hashtag, or official organization watermark text.</p>
-                  <div className="canva-item-card-grid">
-                    <button
-                      type="button"
-                      className="canva-item-card"
-                      onClick={() => addElement("text", institutionName ? `@${institutionName.replace(/\s+/g, "")}` : "@DASIGConnect")}
-                      disabled={elements.length >= MAX_WATERMARK_ELEMENTS || disabled}
-                    >
-                      <div className="canva-item-preview text-handle-preview">
-                        <span className="mini-text-bold">@Handle</span>
-                      </div>
-                      <div className="canva-item-meta">
-                        <strong>Official Handle</strong>
-                        <span>{institutionName ? `@${institutionName.replace(/\s+/g, "")}` : "@DASIGConnect"}</span>
-                      </div>
-                      <i className="ti ti-plus canva-add-icon"></i>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="canva-item-card"
-                      onClick={() => addElement("text", "#DASIGCentralVisayas")}
-                      disabled={elements.length >= MAX_WATERMARK_ELEMENTS || disabled}
-                    >
-                      <div className="canva-item-preview text-hashtag-preview">
-                        <span className="mini-text-regular">#Hashtag</span>
-                      </div>
-                      <div className="canva-item-meta">
-                        <strong>Campaign Hashtag</strong>
-                        <span>#DASIGCentralVisayas</span>
-                      </div>
-                      <i className="ti ti-plus canva-add-icon"></i>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Drawer Tab 3: Uploads */}
-              {activeTab === "uploads" && (
-                <div className="canva-drawer-section canva-anim-fade">
-                  <label className="canva-upload-zone">
-                    <i className="ti ti-cloud-upload"></i>
-                    <span>Upload Brand Logo</span>
-                    <small>PNG, SVG, JPG, or WEBP</small>
-                    <input
-                      type="file"
-                      accept={ACCEPTED_IMAGE_TYPES}
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImageUpload(file);
-                        e.target.value = "";
-                      }}
-                      disabled={disabled}
-                    />
-                  </label>
-
-                  <div className="canva-brand-presets">
-                    <div className="canva-brand-title">Preset Brand Logos</div>
-                    <div className="canva-item-card-grid">
-                      {institutionLogoUrl && (
-                        <button
-                          type="button"
-                          className="canva-item-card"
-                          onClick={() => {
-                            if (selectedElement && selectedElement.type === "image") {
-                              onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, imageUrl: institutionLogoUrl } : el)));
-                            } else {
-                              addElement("image", institutionLogoUrl);
-                            }
-                          }}
-                          disabled={(elements.length >= MAX_WATERMARK_ELEMENTS && (!selectedElement || selectedElement.type !== "image")) || disabled}
-                        >
-                          <div className="canva-item-preview">
-                            <img src={institutionLogoUrl} alt="Institution Logo" />
-                          </div>
-                          <div className="canva-item-meta">
-                            <strong>{institutionName || "Institution"} Logo</strong>
-                            <span>Official seal</span>
-                          </div>
-                          <i className="ti ti-plus canva-add-icon"></i>
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        className="canva-item-card"
-                        onClick={() => {
-                          if (selectedElement && selectedElement.type === "image") {
-                            onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, imageUrl: "/dasig-logo.png" } : el)));
-                          } else {
-                            addElement("image", "/dasig-logo.png");
-                          }
-                        }}
-                        disabled={(elements.length >= MAX_WATERMARK_ELEMENTS && (!selectedElement || selectedElement.type !== "image")) || disabled}
-                      >
-                        <div className="canva-item-preview">
-                          <img src="/dasig-logo.png" alt="DASIG Logo" />
-                        </div>
-                        <div className="canva-item-meta">
-                          <strong>DASIG Main Logo</strong>
-                          <span>Regional network icon</span>
-                        </div>
-                        <i className="ti ti-plus canva-add-icon"></i>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Drawer Tab 4: Layers */}
-              {activeTab === "layers" && (
                 <div className="canva-drawer-section canva-anim-fade">
                   <p className="canva-drawer-desc">
                     Reorder layers, toggle visibility, or select covered elements.
@@ -789,7 +536,7 @@ export default function WatermarkCanvasEditor({
                   {elements.length === 0 ? (
                     <div className="canva-empty-layers">
                       <i className="ti ti-layers-subtract"></i>
-                      <p>No elements added yet. Click Shape, Text, or Uploads on the left to add a layer.</p>
+                      <p>No elements added yet. Use a plus button on the canvas to add a layer.</p>
                     </div>
                   ) : (
                     <div className="canva-layers-stack">
@@ -904,7 +651,6 @@ export default function WatermarkCanvasEditor({
                     </div>
                   )}
                 </div>
-              )}
             </div>
           </>
         )}
@@ -1008,32 +754,16 @@ export default function WatermarkCanvasEditor({
                 </button>
 
                 {showColorPicker && (
-                  <div className="canva-floating-menu canva-color-dropdown">
-                    <div className="canva-dropdown-title">Text Color</div>
-                    <div className="canva-color-grid">
-                      {COLOR_PRESETS.map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`canva-color-dot ${(selectedCfg.textColor || "#FFFFFF").toLowerCase() === color.toLowerCase() ? "is-selected" : ""}`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => {
-                            updateSelected({ textColor: color });
-                            setShowColorPicker(false);
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <div className="canva-custom-color-row">
-                      <label htmlFor="custom-text-color">Custom:</label>
-                      <input
-                        id="custom-text-color"
-                        type="color"
-                        value={selectedCfg.textColor?.startsWith("#") ? selectedCfg.textColor : "#FFFFFF"}
-                        onChange={(e) => updateSelected({ textColor: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                  <ColorPickerMenu
+                    title="Text Color"
+                    color={selectedCfg.textColor || "#FFFFFF"}
+                    presets={COLOR_PRESETS}
+                    onChange={(color) => updateSelected({ textColor: color })}
+                    onSelectPreset={(color) => {
+                      updateSelected({ textColor: color });
+                      setShowColorPicker(false);
+                    }}
+                  />
                 )}
               </div>
 
@@ -1065,6 +795,22 @@ export default function WatermarkCanvasEditor({
                 disabled={disabled}
               >
                 <i className="ti ti-italic" />
+              </button>
+
+              {/* Text Shadow Toggle */}
+              <button
+                type="button"
+                className={`canva-tool-btn ${selectedCfg.textShadow !== false ? "is-active" : ""}`}
+                onClick={() =>
+                  updateSelected({
+                    textShadow: selectedCfg.textShadow === false,
+                  })
+                }
+                title={selectedCfg.textShadow === false ? "Enable Text Shadow" : "Remove Text Shadow"}
+                disabled={disabled}
+              >
+                <i className="ti ti-shadow" />
+                <span>Shadow</span>
               </button>
 
               {/* Opacity Stepper */}
@@ -1135,7 +881,7 @@ export default function WatermarkCanvasEditor({
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveTab("layers");
+                        setLayersOpen(true);
                         setShowAlignMenu(false);
                       }}
                     >
@@ -1148,8 +894,8 @@ export default function WatermarkCanvasEditor({
               {/* Direct Layers Toggle Button */}
               <button
                 type="button"
-                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
-                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                className={`canva-tool-btn ${layersOpen ? "is-active" : ""}`}
+                onClick={() => setLayersOpen((prev) => !prev)}
                 title="Manage Layers"
                 disabled={disabled}
               >
@@ -1216,39 +962,36 @@ export default function WatermarkCanvasEditor({
                 </button>
 
                 {showColorPicker && (
-                  <div className="canva-floating-menu canva-color-dropdown">
-                    <div className="canva-dropdown-title">
-                      {selectedElement.shapeType === "line"
+                  <ColorPickerMenu
+                    title={
+                      selectedElement.shapeType === "line"
                         ? "Line Color"
                         : selectedElement.shapeType === "gradient"
                           ? "Gradient Color"
-                          : "Fill Color"}
-                    </div>
-                    <div className="canva-color-grid">
-                      {COLOR_PRESETS.map((color) => {
-                        const activeColor =
-                          selectedElement.shapeType === "line"
-                            ? selectedCfg.strokeColor || "#FFFFFF"
-                            : selectedCfg.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "rgba(15, 23, 42, 0.75)");
-                        return (
-                          <button
-                            key={color}
-                            type="button"
-                            className={`canva-color-dot ${activeColor.toLowerCase() === color.toLowerCase() ? "is-selected" : ""}`}
-                            style={{ backgroundColor: color }}
-                            onClick={() => {
-                              updateSelected(
-                                selectedElement.shapeType === "line"
-                                  ? { strokeColor: color }
-                                  : { fillColor: color }
-                              );
-                              setShowColorPicker(false);
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
+                          : "Fill Color"
+                    }
+                    color={
+                      selectedElement.shapeType === "line"
+                        ? selectedCfg.strokeColor || "#FFFFFF"
+                        : selectedCfg.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "#0f172a")
+                    }
+                    presets={COLOR_PRESETS}
+                    onChange={(color) =>
+                      updateSelected(
+                        selectedElement.shapeType === "line"
+                          ? { strokeColor: color }
+                          : { fillColor: color }
+                      )
+                    }
+                    onSelectPreset={(color) => {
+                      updateSelected(
+                        selectedElement.shapeType === "line"
+                          ? { strokeColor: color }
+                          : { fillColor: color }
+                      );
+                      setShowColorPicker(false);
+                    }}
+                  />
                 )}
               </div>
 
@@ -1353,7 +1096,7 @@ export default function WatermarkCanvasEditor({
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveTab("layers");
+                        setLayersOpen(true);
                         setShowAlignMenu(false);
                       }}
                     >
@@ -1366,8 +1109,8 @@ export default function WatermarkCanvasEditor({
               {/* Direct Layers Toggle Button */}
               <button
                 type="button"
-                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
-                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                className={`canva-tool-btn ${layersOpen ? "is-active" : ""}`}
+                onClick={() => setLayersOpen((prev) => !prev)}
                 title="Manage Layers"
                 disabled={disabled}
               >
@@ -1540,7 +1283,7 @@ export default function WatermarkCanvasEditor({
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveTab("layers");
+                        setLayersOpen(true);
                         setShowAlignMenu(false);
                       }}
                     >
@@ -1553,8 +1296,8 @@ export default function WatermarkCanvasEditor({
               {/* Direct Layers Toggle Button */}
               <button
                 type="button"
-                className={`canva-tool-btn ${activeTab === "layers" ? "is-active" : ""}`}
-                onClick={() => setActiveTab((prev) => (prev === "layers" ? null : "layers"))}
+                className={`canva-tool-btn ${layersOpen ? "is-active" : ""}`}
+                onClick={() => setLayersOpen((prev) => !prev)}
                 title="Manage Layers"
                 disabled={disabled}
               >
@@ -1581,9 +1324,16 @@ export default function WatermarkCanvasEditor({
               <span className="canva-topbar-hint">
                 <i className="ti ti-wand" /> Select an element to edit or use a plus button on the canvas
               </span>
-              <span className="canva-layer-counter-pill">
-                <i className="ti ti-layers-intersect" /> {elements.length}/{MAX_WATERMARK_ELEMENTS} Elements Added
-              </span>
+              <button
+                type="button"
+                className={`canva-tool-btn ${layersOpen ? "is-active" : ""}`}
+                onClick={() => setLayersOpen((prev) => !prev)}
+                title="View & Manage Layers"
+                disabled={disabled}
+              >
+                <i className="ti ti-layers-intersect" />
+                <span>Layers ({elements.length}/{MAX_WATERMARK_ELEMENTS})</span>
+              </button>
             </div>
           )}
         </header>
@@ -1713,7 +1463,7 @@ export default function WatermarkCanvasEditor({
               return (
                 <div
                   key={anchor}
-                  className={`wm-anchor-control wm-corner-anchor wm-corner-anchor-${anchor}`}
+                  className={`wm-anchor-control wm-corner-anchor wm-corner-anchor-${anchor} ${openAnchorMenu === anchor ? "is-open" : ""}`}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   <button
@@ -1762,7 +1512,7 @@ export default function WatermarkCanvasEditor({
               return (
                 <div
                   key={anchor}
-                  className={`wm-anchor-control wm-edge-anchor wm-edge-anchor-${anchor}`}
+                  className={`wm-anchor-control wm-edge-anchor wm-edge-anchor-${anchor} ${openAnchorMenu === anchor ? "is-open" : ""}`}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   <button

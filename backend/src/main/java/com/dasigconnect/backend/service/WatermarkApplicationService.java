@@ -269,13 +269,13 @@ public class WatermarkApplicationService {
         Font font = new Font(resolveFontFamily(config.fontFamily()), style, fontSize);
         FontMetrics fm = g.getFontMetrics(font);
         int lineHeight = Math.max(fm.getHeight(), (int) Math.round(fontSize * 1.25));
-        int shadowOffset = Math.max(1, fontSize / 18);
+        int shadowOffset = config.textShadow() ? Math.max(1, fontSize / 18) : 0;
         while (fontSize > 1 && !textFits(lines, fm, box, lineHeight, shadowOffset)) {
             fontSize--;
             font = new Font(resolveFontFamily(config.fontFamily()), style, fontSize);
             fm = g.getFontMetrics(font);
             lineHeight = Math.max(fm.getHeight(), (int) Math.round(fontSize * 1.25));
-            shadowOffset = Math.max(1, fontSize / 18);
+            shadowOffset = config.textShadow() ? Math.max(1, fontSize / 18) : 0;
         }
 
         g.setFont(font);
@@ -296,8 +296,10 @@ public class WatermarkApplicationService {
                             ? box.x()
                             : box.x() + (box.width() - lineWidth) / 2;
             int baseline = blockTop + i * lineHeight + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
-            g.setColor(shadowColor);
-            g.drawString(line, lineX + shadowOffset, baseline + shadowOffset);
+            if (config.textShadow()) {
+                g.setColor(shadowColor);
+                g.drawString(line, lineX + shadowOffset, baseline + shadowOffset);
+            }
             g.setColor(mainColor);
             g.drawString(line, lineX, baseline);
         }

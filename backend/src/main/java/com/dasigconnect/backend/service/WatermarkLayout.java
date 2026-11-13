@@ -20,6 +20,7 @@ final class WatermarkLayout {
             int order,
             boolean hidden,
             String textColor,
+            boolean textShadow,
             String fillColor,
             String strokeColor,
             Double fontSizePercent,
@@ -84,6 +85,7 @@ final class WatermarkLayout {
                 hidden,
                 element.getTextColor() != null ? element.getTextColor()
                         : legacySquare != null ? legacySquare.textColor() : null,
+                element.getTextShadow() == null || Boolean.TRUE.equals(element.getTextShadow()),
                 element.getFillColor() != null ? element.getFillColor()
                         : legacySquare != null ? legacySquare.fillColor() : null,
                 element.getStrokeColor() != null ? element.getStrokeColor()

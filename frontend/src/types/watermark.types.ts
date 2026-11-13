@@ -26,6 +26,7 @@ export interface ElementRatioConfig {
 
   // Retained style overrides from the retired format editor.
   textColor?: string;
+  textShadow?: boolean;
   fillColor?: string;
   strokeColor?: string;
   fontSizePercent?: number;
@@ -52,6 +53,7 @@ export interface WatermarkElement {
   // Text specific
   text?: string;
   textColor?: string;
+  textShadow?: boolean;
   fontSizePercent?: number;
   fontWeight?: string;
   fontStyle?: "normal" | "italic";

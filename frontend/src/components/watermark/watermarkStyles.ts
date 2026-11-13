@@ -8,6 +8,7 @@ export const DEFAULT_FONT_SIZE_PERCENT = 3.2;
 export function textElementStyle(el: WatermarkElement, cfg?: ElementRatioConfig | null): CSSProperties {
   const fontSize = cfg?.fontSizePercent ?? el.fontSizePercent ?? DEFAULT_FONT_SIZE_PERCENT;
   const textColor = cfg?.textColor ?? el.textColor ?? "#ffffff";
+  const hasShadow = cfg?.textShadow ?? el.textShadow ?? true;
   const fontFamily = cfg?.fontFamily ?? el.fontFamily ?? "inherit";
   const fontWeight = cfg?.fontWeight ?? el.fontWeight;
   const fontStyle = cfg?.fontStyle ?? el.fontStyle;
@@ -21,6 +22,7 @@ export function textElementStyle(el: WatermarkElement, cfg?: ElementRatioConfig 
     fontFamily,
     fontWeight: fontWeight === "400" ? 400 : 700,
     fontStyle: fontStyle === "italic" ? "italic" : "normal",
+    textShadow: hasShadow ? "0 1px 3px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35)" : "none",
     textAlign: isRight ? "right" : isLeft ? "left" : "center",
     justifyContent: isRight ? "flex-end" : isLeft ? "flex-start" : "center",
   };

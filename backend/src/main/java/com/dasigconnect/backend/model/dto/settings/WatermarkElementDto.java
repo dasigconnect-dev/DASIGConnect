@@ -55,6 +55,7 @@ public class WatermarkElementDto {
     // Text specific
     private String text;
     private String textColor;
+    private Boolean textShadow;
     private Double fontSizePercent;
     private String fontWeight;
     private String fontStyle;
@@ -192,6 +193,14 @@ public class WatermarkElementDto {
 
     public void setTextColor(String textColor) {
         this.textColor = textColor;
+    }
+
+    public Boolean getTextShadow() {
+        return textShadow;
+    }
+
+    public void setTextShadow(Boolean textShadow) {
+        this.textShadow = textShadow;
     }
 
     public Double getFontSizePercent() {

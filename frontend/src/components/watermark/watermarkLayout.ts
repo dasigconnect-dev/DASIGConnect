@@ -86,6 +86,7 @@ export function resolveRatioConfig(
     order: el.order ?? saved?.order ?? defaultOrder,
     hidden: el.hidden ?? saved?.hidden ?? false,
     textColor: el.textColor ?? saved?.textColor,
+    textShadow: el.textShadow ?? saved?.textShadow ?? true,
     fillColor: el.fillColor ?? saved?.fillColor,
     strokeColor: el.strokeColor ?? saved?.strokeColor,
     fontSizePercent: el.fontSizePercent ?? saved?.fontSizePercent,

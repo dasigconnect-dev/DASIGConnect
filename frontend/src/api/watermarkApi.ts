@@ -61,9 +61,13 @@ export async function saveWatermarkConfiguration(request: WatermarkConfiguration
   };
   const response = await api.put<WatermarkConfiguration>("/settings/watermark", payload);
   if (response.data?.elements) {
+    const sentById = new Map(payload.elements.map((el) => [el.id, el]));
     response.data = {
       ...response.data,
-      elements: response.data.elements.map(normalizeElementFromApi),
+      elements: response.data.elements.map((el, index) => {
+        const sent = (el.id ? sentById.get(el.id) : undefined) ?? payload.elements[index];
+        return normalizeElementFromApi(el.anchor ? el : { ...el, anchor: sent?.anchor });
+      }),
     };
   }
   return response;
