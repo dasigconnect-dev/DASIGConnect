@@ -43,6 +43,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import InfoTip from "../../components/ui/InfoTip";
+import { InlineTagInput } from "./components/InlineTagInput";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import { useTaskTelemetry } from "../../hooks/useTaskTelemetry";
 import AiCaptionButton from "./components/AiCaptionButton";
@@ -58,9 +59,7 @@ import {
   submissionComposerTourSteps,
   COMPOSER_TOUR_VIEWS,
   type ComposerTourPanel,
-  saveDraftTourSteps,
 } from "../onboarding/tours/submissionTour";
-import { hasSeenTour } from "../onboarding/tourStorage";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -82,12 +81,14 @@ import {
   getOrderedLocalFiles,
   getPreviewValidation,
   getReadinessChecklist,
+  hasRealEventTitle,
   isConflictError,
   isDefaultInstitution,
   isDirtyDraft,
   mediaCaptionsFromSavedAssets,
   mediaSkipWatermarkFromSavedAssets,
   normalizeHashtagInput,
+  normalizeHydratedEventTitle,
   normalizeMediaTag,
   pickerMediaKey,
   pruneMediaCaptions,
@@ -574,24 +575,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     form.id && (form.status === "draft" || form.status === "rejected"),
   );
 
-  const {
-    tourProps: saveDraftTourProps,
-  } = useScreenTour({
-    screenId: "save-draft-prompt",
-    steps: saveDraftTourSteps,
-    autoStartDelayMs: 400,
-    canStart:
-      isDirty &&
-      !busy &&
-      !isReadOnlySubmission &&
-      !composerTourProps.isOpen &&
-      hasSeenTour("submission-composer"),
-  });
+  const recommendationDate = form.scheduledDate || dateToInputValue(new Date());
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
     !form.fastTrack &&
     !isReadOnlySubmission &&
-    Boolean(form.scheduledDate) &&
     !(isAdminComposer && !selectedInstitutionId);
   const engagementRecommendationsQuery = useQuery({
     queryKey: queryKeys.submissions.engagementRecommendations({
@@ -599,13 +587,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       userId: currentUserScope,
       institutionId: selectedInstitutionId || null,
       submissionId: form.id || null,
-      date: form.scheduledDate || null,
+      date: recommendationDate,
     }),
     queryFn: ({ signal }) =>
       getEngagementRecommendations(
         selectedInstitutionId || null,
         form.id || null,
-        form.scheduledDate || null,
+        recommendationDate,
         signal,
       ).then((response) =>
         response.data.available ? response.data : null,
@@ -739,7 +727,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setForm((prev) => {
         if (prev.institutionId || prev.id) return prev;
         const dasig = institutions.find((inst) => isDefaultInstitution(inst));
-        return dasig ? { ...prev, institutionId: dasig.id } : prev;
+        if (!dasig) return prev;
+        const next = { ...prev, institutionId: dasig.id };
+        if (!isDirtyDraft({ ...prev, institutionId: "" })) {
+          cleanDraftFieldSignatureRef.current = getDraftFieldSignature(next);
+        }
+        return next;
       });
     });
   }, [institutions, isAdminComposer]);
@@ -759,7 +752,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   const isDetailsComplete = useMemo(
     () =>
-      Boolean(form.eventTitle.trim()) &&
+      hasRealEventTitle(form.eventTitle) &&
       Boolean(form.eventDate) &&
       Boolean(form.caption.trim()),
     [form.eventTitle, form.eventDate, form.caption],
@@ -887,7 +880,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           id: "details" as const,
           label: "Post Details",
           complete:
-            Boolean(form.eventTitle.trim()) &&
+            hasRealEventTitle(form.eventTitle) &&
             Boolean(form.eventDate) &&
             Boolean(form.caption.trim()),
         },
@@ -1055,7 +1048,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           ...current,
           id: existing.id,
           status: existing.status,
-          eventTitle: existing.eventTitle || "",
+          eventTitle: normalizeHydratedEventTitle(existing.eventTitle),
           eventDate: existing.eventDate || "",
           institutionId: existing.institutionId || current.institutionId,
         }));
@@ -1065,7 +1058,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       id: submissionId,
       institutionId: existing?.institutionId || user.institutionId || "",
       institutionName: existing?.institutionName || user.inst,
-      eventTitle: existing?.eventTitle || "",
+      eventTitle: normalizeHydratedEventTitle(existing?.eventTitle),
       eventDate: existing?.eventDate || "",
       status: initialStatus,
     });
@@ -1641,7 +1634,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         selectedTemplateId: submission.templateId ?? null,
         fastTrack: Boolean(submission.fastTrack),
         liveEventName: submission.liveEventName || "",
-        eventTitle: submission.eventTitle || "",
+        eventTitle: normalizeHydratedEventTitle(submission.eventTitle),
         eventDate: submission.eventDate || "",
         caption: submission.caption || "",
         description: "",
@@ -1653,7 +1646,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           : "",
         tags: [],
         albumName: submission.albumName || "",
-        mediaTags: submission.mediaTags ?? defaultMediaTags(submission.eventTitle || ""),
+        mediaTags: submission.mediaTags ?? defaultMediaTags(normalizeHydratedEventTitle(submission.eventTitle)),
         files: [],
         savedAssets: submission.mediaAssets ?? [],
         mediaOrder: (submission.mediaAssets ?? []).map((asset) =>
@@ -1744,10 +1737,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
 
-      // Background autosave owns draft fields only. Media has a dedicated,
-      // serialized reconciliation queue, so do not rebuild picker state or
-      // duplicate uploads while quietly saving title/caption/schedule changes.
-      if (options.fieldsOnly) {
+      // Background autosave owns draft fields only once the draft already exists.
+      // On first save (!form.id), always run the full save so selected/uploaded media
+      // is uploaded and attached in the same flow before updating the URL.
+      if (options.fieldsOnly && form.id) {
         setForm((current) => ({
           ...current,
           id: response.data.id,
@@ -1822,7 +1815,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         removedAssetIds: [],
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
-      setCaptionMediaKey(null);
+      if (!options.silent) setCaptionMediaKey(null);
       syncSubmissionCaches(finalResponse.data);
       clearAssetIdParam();
       setSaveState("saved");
@@ -1851,19 +1844,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     const retryFailedMedia = mediaAutosave.failed && hasMediaChanges;
-    if ((!hasDraftFieldChanges && !retryFailedMedia) || busy || fancyTextPreviewActive) return;
-    // Selecting media is enough to create the initial draft. The media picker
-    // depends on persisted asset IDs for visual AI suggestions, so requiring an
-    // explicit first save would leave a newly selected image unusable there.
-    if (!form.id && !hasMedia) return;
+    const needsInitialMediaSave = !form.id && hasMedia && hasMediaChanges;
+    const needsSavedMediaDetailsSave =
+      Boolean(form.id) &&
+      hasMediaChanges &&
+      form.files.length === 0 &&
+      form.pendingAssetIds.length === 0 &&
+      form.removedAssetIds.length === 0;
+    if (
+      (!hasDraftFieldChanges &&
+        !retryFailedMedia &&
+        !needsInitialMediaSave &&
+        !needsSavedMediaDetailsSave) ||
+      busy ||
+      fancyTextPreviewActive
+    ) {
+      return;
+    }
+    // Never create an empty draft on /new just because institutionId was auto-populated.
+    const hasSubstantiveContent = Boolean(
+      hasMedia ||
+        hasRealEventTitle(form.eventTitle) ||
+        form.caption.trim() ||
+        form.liveEventName.trim() ||
+        form.albumName.trim() ||
+        form.mediaTags.length > 0 ||
+        form.scheduledDate ||
+        form.scheduledTime,
+    );
+    if (!form.id && !hasSubstantiveContent) return;
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
-      autosaveDraft(!retryFailedMedia);
+      // On first save (!form.id) or saved-media metadata changes (skipWatermark / per-image caption / order),
+      // run full save (fieldsOnly = false) so media & media details are persisted.
+      autosaveDraft(Boolean(form.id) && !retryFailedMedia && !needsSavedMediaDetailsSave);
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [busy, draftFieldSignature, fancyTextPreviewActive, form.id, form.institutionId, hasDraftFieldChanges, hasMedia, hasMediaChanges, isAdminComposer, mediaAutosave.failed, scheduledAt]);
+  }, [busy, draftFieldSignature, fancyTextPreviewActive, form, hasDraftFieldChanges, hasMedia, hasMediaChanges, isAdminComposer, mediaAutosave.failed, scheduledAt]);
 
   async function handleSave() {
     await saveDraft();
@@ -1894,7 +1913,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
     const missing: string[] = [];
     if (isAdminComposer && !form.institutionId) missing.push("an institution scope");
-    if (!form.eventTitle.trim()) missing.push("an event title");
+    if (!hasRealEventTitle(form.eventTitle)) missing.push("an event title");
     if (!form.eventDate) missing.push("an event date");
     if (!form.caption.trim()) missing.push("a caption");
     if (!hasMedia) missing.push("at least one media attachment");
@@ -1902,7 +1921,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (!form.fastTrack && !scheduledAt) missing.push("a preferred schedule");
     if (missing.length > 0) {
       toast.error(`Add ${missing.join(", ")} before submitting.`);
-      if ((isAdminComposer && !form.institutionId) || !form.eventTitle.trim() || !form.eventDate || !form.caption.trim()) {
+      if ((isAdminComposer && !form.institutionId) || !hasRealEventTitle(form.eventTitle) || !form.eventDate || !form.caption.trim()) {
         setActiveStep("details");
       } else if (!hasMedia) {
         setActiveStep("media");
@@ -2673,7 +2692,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <div>
               <h1 className="sub-form-page-title">
                 {centerMode === "preview"
-                  ? "Facebook Preview"
+                  ? "What followers will see"
                   : isReadOnlySubmission
                     ? `${statusLabels[form.status]} submission`
                     : isEditingRejected
@@ -2919,12 +2938,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   className="sub-finput"
                   readOnly={isReadOnlySubmission}
                   aria-required={!isReadOnlySubmission}
+                  aria-invalid={
+                    !isReadOnlySubmission &&
+                    form.eventTitle.trim().toLowerCase() === "untitled submission"
+                  }
                   placeholder="e.g. CIT-U Innovation Summit 2026"
                   value={form.eventTitle}
                   onChange={(event) =>
                     updateField("eventTitle", event.target.value)
                   }
                 />
+                {!isReadOnlySubmission &&
+                  form.eventTitle.trim().toLowerCase() === "untitled submission" && (
+                    <div className="sub-finput-hint" style={{ color: "#b45309" }}>
+                      Replace &ldquo;Untitled submission&rdquo; with a real event title to continue.
+                    </div>
+                  )}
               </Field>
               <div ref={eventDateRef}>
                 <Field
@@ -3118,50 +3147,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               isDone={addressedRevisionFields.has("tags")}
               onToggleDone={() => toggleRevisionFieldDone("tags")}
             >
-              <div className="sub-hashtag-entry">
-                <input
-                  ref={tagsInputRef}
-                  className="sub-finput"
-                  readOnly={isReadOnlySubmission}
-                  value={hashtagInput}
-                  onChange={(event) => setHashtagInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addHashtagToCaption();
-                    }
-                  }}
-                  placeholder="Add tag"
-                />
-                <button
-                  className="sub-hashtag-add"
-                  type="button"
-                  disabled={isReadOnlySubmission || !normalizeHashtagInput(hashtagInput)}
-                  onClick={addHashtagToCaption}
-                >
-                  <i className="ti ti-plus" aria-hidden />
-                  Add
-                </button>
-              </div>
+              <InlineTagInput
+                tags={captionHashtags}
+                value={hashtagInput}
+                onChange={setHashtagInput}
+                onAdd={addHashtagToCaption}
+                canAdd={Boolean(normalizeHashtagInput(hashtagInput))}
+                onRemove={removeHashtagFromCaption}
+                disabled={isReadOnlySubmission}
+                inputRef={tagsInputRef}
+                placeholder="Type tag & press Enter"
+                emptyText="Click + to add caption tag"
+                addButtonLabel="Add caption tag"
+              />
               <div className="sub-finput-hint">
-                Type a tag (without &apos;#&apos;) and press Enter or click Add to append it to your caption. Click a tag below to remove it.
-              </div>
-              <div className="sub-tag-row">
-                {captionHashtags.length > 0 ? (
-                  captionHashtags.map((hashtag) => (
-                    <button
-                      key={hashtag}
-                      type="button"
-                      className="sub-tag active"
-                      disabled={isReadOnlySubmission}
-                      onClick={() => removeHashtagFromCaption(hashtag)}
-                    >
-                      {hashtag}
-                    </button>
-                  ))
-                ) : (
-                  <span className="sub-muted-text">No tags in caption.</span>
-                )}
+                Click + to type a tag (without &apos;#&apos;) and press Enter to append it to your caption. Click a tag to remove it.
               </div>
             </Field>
           </section>
@@ -3256,47 +3256,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
             <Field label="Media Tags"
               tooltip="Add relevant media tags to help categorize and search for this content later.">
-              <div className="sub-hashtag-entry">
-                <input
-                  ref={mediaTagsInputRef}
-                  className="sub-finput"
-                  value={mediaTagInput}
-                  onChange={(event) => setMediaTagInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addMediaTag();
-                    }
-                  }}
-                  placeholder="Add album tag"
-                  disabled={isReadOnlySubmission}
-                />
-                <button
-                  type="button"
-                  className="sub-hashtag-add"
-                  disabled={isReadOnlySubmission || !normalizeMediaTag(mediaTagInput)}
-                  onClick={addMediaTag}
-                >
-                  <i className="ti ti-plus" aria-hidden /> Add
-                </button>
-              </div>
-              <div className="sub-tag-row">
-                {effectiveMediaTags(form).length > 0 ? (
-                  effectiveMediaTags(form).map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      className="sub-tag active"
-                      onClick={() => removeMediaTag(tag)}
-                      disabled={isReadOnlySubmission}
-                    >
-                      {tag}
-                    </button>
-                  ))
-                ) : (
-                  <span className="sub-muted-text">Event title will appear here as the default album tag.</span>
-                )}
-              </div>
+              <InlineTagInput
+                tags={effectiveMediaTags(form)}
+                value={mediaTagInput}
+                onChange={setMediaTagInput}
+                onAdd={addMediaTag}
+                canAdd={Boolean(normalizeMediaTag(mediaTagInput))}
+                onRemove={removeMediaTag}
+                disabled={isReadOnlySubmission}
+                inputRef={mediaTagsInputRef}
+                placeholder="Type album tag & press Enter"
+                emptyText="Event title will appear here as the default album tag."
+                addButtonLabel="Add media tag"
+              />
             </Field>
             </div>
 
@@ -3367,16 +3339,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   />
                 </Field>
               </div>
-              {form.scheduledDate && (
-                <Suspense fallback={<DeferredSubmissionPanelFallback />}>
-                  <EngagementRecommendationsPanel
-                    loading={engagementLoading}
-                    recommendations={engagementRecommendations}
-                    selectedAt={scheduledAt}
-                    onSelect={applyEngagementSlot}
-                  />
-                </Suspense>
-              )}
+              <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                <EngagementRecommendationsPanel
+                  loading={engagementLoading}
+                  recommendations={engagementRecommendations}
+                  selectedAt={scheduledAt}
+                  date={recommendationDate}
+                  isDefaultDate={!form.scheduledDate}
+                  onSelect={applyEngagementSlot}
+                />
+              </Suspense>
             </Field>
             </div>
             {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
@@ -3915,7 +3887,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         }}
       />
       <SpotlightTour {...composerTourProps} viewOnly />
-      <SpotlightTour {...saveDraftTourProps} />
     </div>
   );
 }

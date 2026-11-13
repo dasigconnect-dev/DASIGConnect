@@ -219,6 +219,16 @@ export function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export function hasRealEventTitle(title: string) {
+  const trimmed = title.trim();
+  return Boolean(trimmed) && trimmed.toLowerCase() !== "untitled submission";
+}
+
+export function normalizeHydratedEventTitle(title?: string | null) {
+  const value = title ?? "";
+  return value.trim().toLowerCase() === "untitled submission" ? "" : value;
+}
+
 export function isDirtyDraft(form: FormState) {
   return Boolean(
     form.eventTitle.trim() ||
@@ -509,8 +519,12 @@ export function getReadinessChecklist(
     {
       title: "Event title",
       target: "eventTitle",
-      pass: Boolean(form.eventTitle.trim()),
-      sub: form.eventTitle || "Required",
+      pass: hasRealEventTitle(form.eventTitle),
+      sub: hasRealEventTitle(form.eventTitle)
+        ? form.eventTitle
+        : form.eventTitle.trim()
+          ? "Replace placeholder title"
+          : "Required",
     },
     {
       title: "Event date",
@@ -712,7 +726,7 @@ export function getPreviewValidation(
     missingItems.push("Resolve the blocked publishing slot.");
   }
 
-  if (!form.eventTitle.trim()) blockingErrors.push("Event title is required.");
+  if (!hasRealEventTitle(form.eventTitle)) blockingErrors.push("Event title is required.");
   if (!form.eventDate) blockingErrors.push("Event date is required.");
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
   if (form.files.length + form.savedAssets.length < 1) blockingErrors.push("At least one media attachment is required.");

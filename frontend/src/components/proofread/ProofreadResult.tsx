@@ -22,15 +22,17 @@ export default function ProofreadResult({
   return (
     <div className="proof-result" aria-live="polite">
       {open ? (
-        <ProofreadIssues issues={issues} text={text} onApply={onApply} onDismiss={onDismiss} />
+        <>
+          <ProofreadIssues issues={issues} text={text} onApply={onApply} onDismiss={onDismiss} />
+          <p className="proof-note">
+            AI suggestions can be wrong about names and local words — nothing changes unless you apply it.
+          </p>
+        </>
       ) : (
         <p className="proof-status is-ok">
           <i className="ti ti-circle-check" aria-hidden="true" /> No spelling or grammar issues found.
         </p>
       )}
-      <p className="proof-note">
-        AI suggestions can be wrong about names and local words — nothing changes unless you apply it.
-      </p>
     </div>
   );
 }

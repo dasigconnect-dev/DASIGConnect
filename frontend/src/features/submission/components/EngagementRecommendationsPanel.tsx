@@ -12,6 +12,30 @@ function slotTime(value: string) {
   }).format(date);
 }
 
+function slotDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(date);
+}
+
+function headingDateLabel(dateStr?: string, isDefaultDate?: boolean) {
+  if (!dateStr) return "";
+  const parsed = new Date(`${dateStr}T12:00:00+08:00`);
+  if (Number.isNaN(parsed.getTime())) return dateStr;
+  const formatted = new Intl.DateTimeFormat("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(parsed);
+  return isDefaultDate ? `Today, ${formatted}` : formatted;
+}
+
 const ROWS_PER_PAGE = 4;
 
 function useAvailabilityColumns() {
@@ -41,11 +65,15 @@ export function EngagementRecommendationsPanel({
   loading,
   recommendations,
   selectedAt,
+  date,
+  isDefaultDate = false,
   onSelect,
 }: {
   loading: boolean;
   recommendations: EngagementRecommendations | null;
   selectedAt?: string;
+  date?: string;
+  isDefaultDate?: boolean;
   onSelect: (scheduledAt: string) => void;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
@@ -87,11 +115,16 @@ export function EngagementRecommendationsPanel({
     (currentPage + 1) * pageSize,
   );
 
+  const dateLabel = headingDateLabel(date, isDefaultDate);
+
   return (
     <div className="sub-engagement-panel">
       <div className="sub-engagement-heading">
         <span className="sub-engagement-title">
           <i className="ti ti-calendar-clock" aria-hidden="true" /> Available times
+          {dateLabel && (
+            <span className="sub-engagement-date-tag">{dateLabel}</span>
+          )}
         </span>
         <button
           type="button"
@@ -107,9 +140,9 @@ export function EngagementRecommendationsPanel({
 
       {infoOpen && (
         <div id={infoId} className="sub-engagement-info">
-          <p>{recommendations.notice || "Open calendar times for the selected date."}</p>
-          <p>Occupied times and any spacing conflicts required by the current guard rails are removed.</p>
-          <p>The highlighted time is the closest available slot to Philippine Facebook engagement benchmarks. Your Page Insights should replace this baseline when enough audience data is available.</p>
+          <p>{recommendations.notice || "Open calendar times for this date."}</p>
+          <p>Times that are already booked or too close to another scheduled post are hidden automatically.</p>
+          <p>The highlighted Best available time is when your audience is most likely to be active.</p>
         </div>
       )}
 
@@ -124,13 +157,14 @@ export function EngagementRecommendationsPanel({
             const selected = slot === selectedSlot;
             const best = slot === bestSlot;
             const time = slotTime(slot.scheduledAt);
+            const slotDay = slotDateLabel(slot.scheduledAt);
             return (
               <button
                 type="button"
                 key={slot.scheduledAt}
                 className={`sub-engagement-tile${best ? " is-top" : ""}${selected ? " is-selected" : ""}`}
                 aria-pressed={selected}
-                aria-label={`${time}, available${best ? ", best available time" : ""}${selected ? ", selected" : ""}`}
+                aria-label={`${slotDay ? `${slotDay}, ` : ""}${time}, available${best ? ", best available time" : ""}${selected ? ", selected" : ""}`}
                 title={best ? slot.windowLabel : "Available calendar time"}
                 onClick={() => onSelect(slot.scheduledAt)}
               >
@@ -139,6 +173,7 @@ export function EngagementRecommendationsPanel({
                     <i className="ti ti-star-filled" aria-hidden="true" /> Best available
                   </span>
                 )}
+                {slotDay && <span className="sub-engagement-tile-date">{slotDay}</span>}
                 <span className="sub-engagement-tile-time">{time}</span>
                 <span className="sub-engagement-tile-status">Available</span>
                 {selected && (
