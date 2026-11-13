@@ -1252,7 +1252,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     const generated = await aiCaption.suggest(prompt, tone, currentId, form.caption);
     if (generated) {
-      toast.success("AI caption generated! Review and refine, or click Approve.");
+      toast.success("AI caption generated! Review and refine, or click Use.");
       return generated;
     } else if (aiCaption.notice) {
       toast.error(aiCaption.notice);
@@ -1263,11 +1263,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+  function handleAiCaptionApprove(
+    caption: string,
+    tone: CaptionTone,
+    action: "use" | "use_then_edited" = "use",
+  ) {
     updateCaption(caption);
-    aiCaption.logApply(tone, "use");
+    aiCaption.logApply(tone, action);
     setCaptionPromptOpen(false);
-    toast.success("AI caption approved and placed in your caption box!");
+    toast.success("AI caption applied to your caption box!");
   }
 
   function updateFastTrack(value: boolean) {
@@ -3079,6 +3083,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     onDismissOne={aiCaption.logDismissOne}
                     onDismissAll={aiCaption.dismissAll}
                     onRegenerate={aiCaption.regenerate}
+                    onOpenDialog={() => setCaptionPromptOpen(true)}
                     onBrowseTemplates={() => {
                       setReadinessSheetOpen(false);
                       setTemplatesPanelOpen(true);
@@ -3096,6 +3101,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     state={aiCaption.state}
                     hasImageAssets={hasImageAssets}
                     existingCaption={form.caption}
+                    initialVariant={aiCaption.variants?.[0] ?? aiCaption.lastGeneratedVariant}
                     isUnsaved={!form.id}
                     onClose={() => setCaptionPromptOpen(false)}
                     onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
