@@ -1,30 +1,23 @@
 export type WatermarkElementType = "image" | "text" | "shape";
-export type WatermarkAnchor =
-  | "freeform"
-  | "top"
-  | "bottom"
-  | "top-left"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-right";
 
-/** Legacy format keys retained only to read existing saved configurations. */
+/** Canvas formats the studio can lay out. 1:1 is the reference format. */
 export type AspectRatioType = "1:1" | "4:3" | "16:9";
 
 /**
- * Legacy format-specific settings. New layouts ignore per-format geometry
- * and use a single square-reference configuration for every image shape.
+ * Configuration of an element specific to a format (1:1, 4:3, or 16:9).
+ * Layering (order), positioning, sizes/height, transparency, and colors
+ * can each be customized independently per format.
  */
 export interface ElementRatioConfig {
-  xPercent: number; // % of the square reference side from the selected edge
-  yPercent: number; // % of the square reference side from the selected edge
-  widthPercent: number; // % of the square reference side
-  heightPercent: number; // % of the square reference side
+  xPercent: number; // % of canvas width
+  yPercent: number; // % of canvas height
+  widthPercent: number; // % of canvas height (or width in square)
+  heightPercent: number; // % of canvas height
   opacity?: number; // 0.05 - 1.0
-  order?: number; // Layer stack position (0 = back)
+  order?: number; // Layer stack position in this ratio (0 = back, 1 = middle, 2 = front)
   hidden?: boolean;
 
-  // Retained style overrides from the retired format editor.
+  // Style overrides for this ratio
   textColor?: string;
   fillColor?: string;
   strokeColor?: string;
@@ -37,16 +30,13 @@ export interface ElementRatioConfig {
 export interface WatermarkElement {
   id: string;
   type: WatermarkElementType;
-  /** Shared edge anchor; x/y percentages are insets from the selected edge. */
-  anchor?: WatermarkAnchor;
 
-  // Base properties use square-reference percentages for every image size.
+  // Base fallback properties (also represent default 1:1 configuration)
   xPercent: number;
   yPercent: number;
   widthPercent: number;
   heightPercent: number;
   opacity: number;
-  order?: number;
   hidden?: boolean;
 
   // Text specific
@@ -65,7 +55,7 @@ export interface WatermarkElement {
   fillColor?: string;
   strokeColor?: string;
 
-  // Legacy format configurations retained for saved-data compatibility.
+  // Per-ratio configurations: "1:1" | "4:3" | "16:9"
   ratios?: Partial<Record<AspectRatioType, ElementRatioConfig>>;
 }
 

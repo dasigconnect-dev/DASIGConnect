@@ -1,25 +1,21 @@
 import { useState, useRef, useEffect } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
-import type {
-  AspectRatioType,
-  WatermarkAnchor,
-  WatermarkElement,
-  WatermarkElementType,
-  ElementRatioConfig,
-} from "../../../types/watermark.types";
+import type { AspectRatioType, WatermarkElement, WatermarkElementType, ElementRatioConfig } from "../../../types/watermark.types";
 import {
-  DEFAULT_ANCHOR_INSET_PERCENT,
-  DEFAULT_ASPECT_RATIO,
   computeBox,
+  applyBox,
+  snapBox,
   fitTextHeight,
+  aspectOf,
   resolveRatioConfig,
   updateElementForRatio,
   getSortedElementsByRatio,
   reorderElementsByRatio,
   reorderElementsByDrag,
   type ElementBox,
+  type HorizontalAnchor,
+  type VerticalAnchor,
+  FULL_WIDTH_PERCENT,
   MAX_WATERMARK_ELEMENTS,
-  normalizeWatermarkAnchor,
 } from "../../../components/watermark/watermarkLayout";
 import WatermarkElementContent from "../../../components/watermark/WatermarkElementContent";
 import { textElementStyle } from "../../../components/watermark/watermarkStyles";
@@ -37,7 +33,6 @@ import {
   createTextElement,
   switchShapeVariant,
 } from "./watermark-editor/elementFactory";
-import watermarkSample from "../../../assets/watermark-preview.svg";
 import "../../../styles/watermark-content.css";
 import "../../../styles/watermark-editor.css";
 
@@ -54,9 +49,6 @@ interface WatermarkCanvasEditorProps {
 
 type SideTab = "shapes" | "text" | "uploads" | "layers" | null;
 
-const CORNER_ANCHORS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
-const EDGE_ANCHORS = ["top", "bottom"] as const;
-
 export default function WatermarkCanvasEditor({
   elements,
   onChange,
@@ -67,11 +59,10 @@ export default function WatermarkCanvasEditor({
   onSave,
   isSaving = false,
 }: WatermarkCanvasEditorProps) {
-  const aspectRatio: AspectRatioType = DEFAULT_ASPECT_RATIO;
-  const [background, setBackground] = useState<CanvasBackground>("sample-photo");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioType>("1:1");
+  const [background, setBackground] = useState<CanvasBackground>("checkerboard");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SideTab>(null);
-  const [openAnchorMenu, setOpenAnchorMenu] = useState<WatermarkAnchor | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
   const [showAlignMenu, setShowAlignMenu] = useState(false);
@@ -80,29 +71,9 @@ export default function WatermarkCanvasEditor({
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(100);
-  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
-  const [measuredCanvasSize, setMeasuredCanvasSize] = useState<{ width: number; height: number }>({
-    width: 520,
-    height: 520,
-  });
-  const [isResizingCanvas, setIsResizingCanvas] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const anchorImageInputRef = useRef<HTMLInputElement>(null);
-  const pendingImageAnchorRef = useRef<WatermarkAnchor | null>(null);
-  const canvasResizeSessionRef = useRef<{
-    direction: "e" | "w" | "s" | "n" | "se";
-    startX: number;
-    startY: number;
-    startWidth: number;
-    startHeight: number;
-  } | null>(null);
-
-  const canvasAspect =
-    measuredCanvasSize.width > 0 && measuredCanvasSize.height > 0
-      ? measuredCanvasSize.width / measuredCanvasSize.height
-      : 1;
 
   function handleZoomIn() {
     setZoom((prev) => Math.min(200, prev + 10));
@@ -115,93 +86,6 @@ export default function WatermarkCanvasEditor({
   function handleResetZoom() {
     setZoom(100);
   }
-
-  function handleResetCanvasSize() {
-    setCanvasSize(null);
-  }
-
-  function beginCanvasResize(
-    event: ReactPointerEvent,
-    direction: "e" | "w" | "s" | "n" | "se",
-  ) {
-    event.stopPropagation();
-    event.preventDefault();
-    const frame = canvasRef.current;
-    if (!frame) return;
-    canvasResizeSessionRef.current = {
-      direction,
-      startX: event.clientX,
-      startY: event.clientY,
-      startWidth: frame.offsetWidth || measuredCanvasSize.width || 520,
-      startHeight: frame.offsetHeight || measuredCanvasSize.height || 520,
-    };
-    setIsResizingCanvas(true);
-  }
-
-  useEffect(() => {
-    const frame = canvasRef.current;
-    if (!frame) return;
-    const updateMeasured = () => {
-      const w = frame.offsetWidth;
-      const h = frame.offsetHeight;
-      if (w > 0 && h > 0) {
-        setMeasuredCanvasSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
-      }
-    };
-    updateMeasured();
-    const observer = new ResizeObserver(updateMeasured);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    function handleCanvasPointerMove(event: PointerEvent) {
-      const session = canvasResizeSessionRef.current;
-      if (!session) return;
-      const scale = zoom / 100;
-      const dx = (event.clientX - session.startX) / scale;
-      const dy = (event.clientY - session.startY) / scale;
-
-      const stage = stageRef.current;
-      const maxStageW = stage ? Math.max(320, stage.clientWidth - 64) : 1100;
-      const maxStageH = stage ? Math.max(320, stage.clientHeight - 64) : 900;
-      const minCanvasDim = 220;
-
-      let nextWidth = session.startWidth;
-      let nextHeight = session.startHeight;
-
-      if (session.direction.includes("e")) {
-        nextWidth = Math.max(minCanvasDim, Math.min(maxStageW, Math.round(session.startWidth + dx * 2)));
-      } else if (session.direction.includes("w")) {
-        nextWidth = Math.max(minCanvasDim, Math.min(maxStageW, Math.round(session.startWidth - dx * 2)));
-      }
-
-      if (session.direction.includes("s")) {
-        nextHeight = Math.max(minCanvasDim, Math.min(maxStageH, Math.round(session.startHeight + dy * 2)));
-      } else if (session.direction.includes("n")) {
-        nextHeight = Math.max(minCanvasDim, Math.min(maxStageH, Math.round(session.startHeight - dy * 2)));
-      }
-
-      setCanvasSize({ width: nextWidth, height: nextHeight });
-      setMeasuredCanvasSize({ width: nextWidth, height: nextHeight });
-    }
-
-    function handleCanvasPointerUp() {
-      if (canvasResizeSessionRef.current) {
-        canvasResizeSessionRef.current = null;
-        setIsResizingCanvas(false);
-      }
-    }
-
-    window.addEventListener("pointermove", handleCanvasPointerMove);
-    window.addEventListener("pointerup", handleCanvasPointerUp);
-    window.addEventListener("pointercancel", handleCanvasPointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handleCanvasPointerMove);
-      window.removeEventListener("pointerup", handleCanvasPointerUp);
-      window.removeEventListener("pointercancel", handleCanvasPointerUp);
-    };
-  }, [zoom]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -220,7 +104,6 @@ export default function WatermarkCanvasEditor({
   const interaction = useCanvasInteraction({
     frameRef: canvasRef,
     ratio: aspectRatio,
-    canvasAspect,
     elements,
     onChange,
     disabled,
@@ -250,50 +133,32 @@ export default function WatermarkCanvasEditor({
       if (!target.closest(".canva-rail-bottom")) {
         setShowInfo(false);
       }
-      if (!target.closest(".wm-anchor-control")) {
-        setOpenAnchorMenu(null);
-      }
     }
     document.addEventListener("mousedown", handleDocClick);
     return () => document.removeEventListener("mousedown", handleDocClick);
   }, []);
 
   // Add Element Handlers
-  function getAvailableAnchor(type: WatermarkElementType): WatermarkAnchor | null {
-    const anchors: readonly WatermarkAnchor[] = type === "shape" ? EDGE_ANCHORS : CORNER_ANCHORS;
-    return anchors.find((anchor) =>
-      !elements.some((el) => normalizeWatermarkAnchor(el).anchor === anchor)
-    ) ?? null;
-  }
-
-  function addElement(
-    type: WatermarkElementType,
-    initialVariant?: string,
-    requestedAnchor?: WatermarkAnchor,
-  ) {
+  function addElement(type: WatermarkElementType, initialVariant?: string) {
     if (elements.length >= MAX_WATERMARK_ELEMENTS || disabled) return;
-    const anchor = requestedAnchor ?? getAvailableAnchor(type);
-    if (!anchor || elements.some((el) => normalizeWatermarkAnchor(el).anchor === anchor)) return;
 
     let newElement: WatermarkElement;
 
     if (type === "image") {
-      newElement = createImageElement(initialVariant || institutionLogoUrl || "/dasig-logo.png", anchor);
+      newElement = createImageElement(initialVariant || institutionLogoUrl || "/dasig-logo.png");
     } else if (type === "text") {
       const defaultText = initialVariant || (institutionName ? `@${institutionName.replace(/\s+/g, "")}` : "@DASIGConnect");
-      newElement = createTextElement(defaultText, anchor);
+      newElement = createTextElement(defaultText);
     } else {
       const isLine = initialVariant === "line";
       const isGradient = initialVariant === "gradient";
-      const edgeAnchor = anchor === "top" ? "top" : "bottom";
-      newElement = createShapeElement(isLine ? "line" : isGradient ? "gradient" : "rectangle", edgeAnchor);
+      newElement = createShapeElement(isLine ? "line" : isGradient ? "gradient" : "rectangle");
     }
 
     const updated = [...elements, newElement];
     onChange(updated);
     setSelectedId(newElement.id);
     setActiveTab(null);
-    setOpenAnchorMenu(null);
   }
 
   function updateSelected(updates: Partial<ElementRatioConfig>) {
@@ -304,18 +169,6 @@ export default function WatermarkCanvasEditor({
     onChange(updated);
   }
 
-  function updateSelectedShapeVariant(variant: "rectangle" | "line" | "gradient") {
-    if (!selectedElement || disabled) return;
-    const patch = switchShapeVariant(selectedElement, variant);
-    onChange(
-      elements.map((el) =>
-        el.id === selectedElement.id
-          ? updateElementForRatio({ ...el, ...patch }, aspectRatio, patch)
-          : el
-      )
-    );
-  }
-
   function removeSelected() {
     if (!selectedId || disabled) return;
     const updated = elements.filter((el) => el.id !== selectedId);
@@ -323,53 +176,46 @@ export default function WatermarkCanvasEditor({
     setSelectedId(null);
   }
 
-  function alignElement(alignment: WatermarkAnchor) {
+  function alignElement(alignment: "bottom-right" | "bottom-left" | "top-right" | "top-left" | "bottom-center" | "top-center" | "bottom-bar" | "top-bar" | "center") {
     if (!selectedElement || disabled) return;
-    const anchor = selectedElement.type === "shape"
-      ? alignment === "top" ? "top" : "bottom"
-      : CORNER_ANCHORS.includes(alignment as (typeof CORNER_ANCHORS)[number])
-        ? alignment
-        : "bottom-right";
-    const xPercent = anchor === "top" || anchor === "bottom" ? 0 : DEFAULT_ANCHOR_INSET_PERCENT;
-    const yPercent = anchor === "top" || anchor === "bottom" ? 0 : DEFAULT_ANCHOR_INSET_PERCENT;
-    onChange(elements.map((el) =>
-      el.id === selectedElement.id
-        ? { ...updateElementForRatio(el, aspectRatio, { xPercent, yPercent }), anchor }
-        : el
-    ));
+
+    const currentBox = computeBox(selectedElement, aspectRatio);
+
+    if (alignment === "bottom-bar") {
+      const newBox: ElementBox = {
+        left: 0,
+        top: Math.max(0, 100 - currentBox.height),
+        width: 100,
+        height: currentBox.height,
+      };
+      onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, newBox) : el)));
+      setShowAlignMenu(false);
+      return;
+    }
+
+    if (alignment === "top-bar") {
+      const newBox: ElementBox = {
+        left: 0,
+        top: 0,
+        width: 100,
+        height: currentBox.height,
+      };
+      onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, newBox) : el)));
+      setShowAlignMenu(false);
+      return;
+    }
+
+    let h: HorizontalAnchor = "center";
+    let v: VerticalAnchor = "middle";
+    if (alignment.includes("left")) h = "left";
+    else if (alignment.includes("right")) h = "right";
+
+    if (alignment.includes("top")) v = "top";
+    else if (alignment.includes("bottom")) v = "bottom";
+
+    const snapped = snapBox(currentBox, h, v);
+    onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, snapped) : el)));
     setShowAlignMenu(false);
-  }
-
-  function renderCornerAnchorOptions() {
-    const isShape = selectedElement?.type === "shape";
-    const options = isShape
-      ? EDGE_ANCHORS.map((anchor) => ({ anchor, label: anchor === "top" ? "Top edge" : "Bottom edge" }))
-      : CORNER_ANCHORS.map((anchor) => ({
-          anchor,
-          label: anchor.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" "),
-        }));
-
-    return (
-      <>
-        <div className="canva-dropdown-title">{isShape ? "Anchor ribbon to an edge" : "Anchor to a corner"}</div>
-        <div className="canva-anchor-grid">
-          {options.map(({ anchor, label }) => (
-            <button
-              key={anchor}
-              type="button"
-              className={`canva-anchor-option ${selectedElement?.anchor === anchor ? "is-active" : ""}`}
-              onClick={() => alignElement(anchor)}
-              aria-pressed={selectedElement?.anchor === anchor}
-              title={`${label}, with a 3% inset`}
-            >
-              <span className={`canva-anchor-preview canva-anchor-preview-${anchor}`} aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="canva-anchor-hint">Elements stay locked to their anchor while you resize them.</p>
-      </>
-    );
   }
 
   function setElementSize(widthPercent: number, heightPercent?: number) {
@@ -378,25 +224,20 @@ export default function WatermarkCanvasEditor({
     const currentW = currentCfg.widthPercent || 18;
     const currentH = currentCfg.heightPercent || 18;
     const aspect = currentW > 0 ? currentH / currentW : 1;
-    const maxAllowed = 100 - DEFAULT_ANCHOR_INSET_PERCENT * 2;
-    const targetW = Math.min(maxAllowed, Math.max(3, Math.round(widthPercent * 10) / 10));
-    const targetH =
-      heightPercent !== undefined
-        ? Math.min(maxAllowed, Math.max(1, heightPercent))
-        : Math.min(maxAllowed, Math.round(targetW * aspect * 10) / 10);
+    const targetH = heightPercent !== undefined ? heightPercent : Math.min(100, Math.round(widthPercent * aspect * 10) / 10);
 
-    onChange(
-      elements.map((el) =>
-        el.id === selectedElement.id
-          ? updateElementForRatio(el, aspectRatio, {
-              xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
-              yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
-              widthPercent: targetW,
-              heightPercent: targetH,
-            })
-          : el,
-      ),
-    );
+    const canvasAspect = aspectOf(aspectRatio);
+    const boxW = Math.min(widthPercent / canvasAspect, 100);
+    const boxH = Math.min(targetH, 100);
+    const currentBox = computeBox(selectedElement, aspectRatio);
+
+    const newBox: ElementBox = {
+      left: Math.max(0, Math.min(currentBox.left, 100 - boxW)),
+      top: Math.max(0, Math.min(currentBox.top, 100 - boxH)),
+      width: boxW,
+      height: boxH,
+    };
+    onChange(elements.map((el) => (el.id === selectedElement.id ? applyBox(el, aspectRatio, newBox, canvasAspect) : el)));
   }
 
   function moveLayer(id: string, direction: "up" | "down" | "top" | "bottom") {
@@ -410,25 +251,19 @@ export default function WatermarkCanvasEditor({
     setSelectedId(draggedId);
   }
 
-  function handleImageUpload(file: File, anchor?: WatermarkAnchor) {
+  function handleImageUpload(file: File) {
     if (!file || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
-        if (!anchor && selectedElement && selectedElement.type === "image") {
+        if (selectedElement && selectedElement.type === "image") {
           onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, imageUrl: reader.result as string } : el)));
         } else {
-          addElement("image", reader.result, anchor);
+          addElement("image", reader.result);
         }
       }
     };
     reader.readAsDataURL(file);
-  }
-
-  function openAnchorImagePicker(anchor: WatermarkAnchor) {
-    pendingImageAnchorRef.current = anchor;
-    setOpenAnchorMenu(null);
-    anchorImageInputRef.current?.click();
   }
 
   function toggleElementVisibility(id: string) {
@@ -499,6 +334,10 @@ export default function WatermarkCanvasEditor({
         </div>
 
         <div className="canva-header-right">
+          <div className="canva-header-ratio-badge" title={`Active canvas format is ${aspectRatio}`}>
+            <i className="ti ti-aspect-ratio" aria-hidden="true" />
+            <span>Format: <strong>{aspectRatio}</strong></span>
+          </div>
           {onSave && (
             <button
               type="button"
@@ -506,7 +345,7 @@ export default function WatermarkCanvasEditor({
               disabled={disabled || isSaving}
               aria-busy={isSaving}
               onClick={onSave}
-              title="Save watermark changes"
+              title="Save watermark changes across all ratios"
             >
               <i className={isSaving ? "ti ti-loader-2 canva-spinner" : "ti ti-device-floppy"} aria-hidden="true" />
               <span>{isSaving ? "Saving..." : "Save"}</span>
@@ -587,16 +426,16 @@ export default function WatermarkCanvasEditor({
               </div>
               <ul className="canva-info-list">
                 <li>
-                  <strong>Add Elements:</strong> Use the plus buttons on the canvas to add photos, text, ribbons, and gradients (up to {MAX_WATERMARK_ELEMENTS}).
+                  <strong>Add Elements:</strong> Use <em>Shape</em>, <em>Text</em>, or <em>Uploads</em> (up to 3).
                 </li>
                 <li>
-                  <strong>Responsive Preview:</strong> Drag the handles on the canvas edges or corner to test how your watermark adapts across image shapes.
+                  <strong>Multi-Ratio:</strong> Elements stay the same across 1:1, 4:3, and 16:9, but each ratio saves its own layering, positioning, size, colors, and transparency!
                 </li>
                 <li>
-                  <strong>Customize:</strong> Click any element to adjust its properties.
+                  <strong>Customize:</strong> Click any element to adjust its properties for the current format.
                 </li>
                 <li>
-                  <strong>Anchored &amp; Resizable:</strong> Elements stay locked to their left or right anchor while you resize them.
+                  <strong>Drag & Resize:</strong> Move freely or drag handles to scale.
                 </li>
               </ul>
             </div>
@@ -613,7 +452,7 @@ export default function WatermarkCanvasEditor({
                 {activeTab === "shapes" && "Shapes & Ribbons"}
                 {activeTab === "text" && "Text & Handles"}
                 {activeTab === "uploads" && "Brand Logos & Assets"}
-                {activeTab === "layers" && `Active Layers (${elements.length}/${MAX_WATERMARK_ELEMENTS})`}
+                {activeTab === "layers" && `Active Layers (${elements.length}/3)`}
               </h3>
               <button
                 type="button"
@@ -658,11 +497,26 @@ export default function WatermarkCanvasEditor({
                       </div>
                       <div className="canva-item-meta">
                         <strong>Gradient Scrim</strong>
-                        <span>Fade the photo behind content at either edge</span>
+                        <span>Smooth bottom photo fade</span>
                       </div>
                       <i className="ti ti-plus canva-add-icon"></i>
                     </button>
 
+                    <button
+                      type="button"
+                      className="canva-item-card"
+                      onClick={() => addElement("shape", "line")}
+                      disabled={elements.length >= MAX_WATERMARK_ELEMENTS || disabled}
+                    >
+                      <div className="canva-item-preview shape-line-preview">
+                        <div className="mini-line" />
+                      </div>
+                      <div className="canva-item-meta">
+                        <strong>Divider Line</strong>
+                        <span>Clean separator line</span>
+                      </div>
+                      <i className="ti ti-plus canva-add-icon"></i>
+                    </button>
                   </div>
                 </div>
               )}
@@ -784,7 +638,7 @@ export default function WatermarkCanvasEditor({
               {activeTab === "layers" && (
                 <div className="canva-drawer-section canva-anim-fade">
                   <p className="canva-drawer-desc">
-                    Reorder layers, toggle visibility, or select covered elements.
+                    Reorder layers, toggle visibility, or select covered elements for <strong>{aspectRatio}</strong>.
                   </p>
                   {elements.length === 0 ? (
                     <div className="canva-empty-layers">
@@ -841,6 +695,9 @@ export default function WatermarkCanvasEditor({
                             >
                               <div className="canva-layer-info">
                                 <i className="ti ti-grip-vertical canva-layer-grip" title="Drag to reorder" />
+                                <span className={`canva-layer-badge ${isTop ? "is-top" : isBottom ? "is-bottom" : ""}`}>
+                                  {isTop ? "Front" : isBottom ? "Back" : "Middle"}
+                                </span>
                                 <i
                                   className={`ti ${
                                     el.type === "image"
@@ -958,7 +815,7 @@ export default function WatermarkCanvasEditor({
               </div>
 
               {/* Font Size Stepper */}
-              <div className="canva-stepper-pill" title="Font size as a percentage of the image's shorter side">
+              <div className="canva-stepper-pill" title={`Font Size (% of canvas height in ${aspectRatio})`}>
                 <button
                   type="button"
                   className="canva-stepper-btn"
@@ -996,7 +853,7 @@ export default function WatermarkCanvasEditor({
                   type="button"
                   className="canva-tool-btn"
                   onClick={() => setShowColorPicker((prev) => !prev)}
-                  title="Text Color"
+                  title={`Text Color (${aspectRatio})`}
                   disabled={disabled}
                 >
                   <span
@@ -1009,7 +866,7 @@ export default function WatermarkCanvasEditor({
 
                 {showColorPicker && (
                   <div className="canva-floating-menu canva-color-dropdown">
-                    <div className="canva-dropdown-title">Text Color</div>
+                    <div className="canva-dropdown-title">Text Color ({aspectRatio})</div>
                     <div className="canva-color-grid">
                       {COLOR_PRESETS.map((color) => (
                         <button
@@ -1068,7 +925,7 @@ export default function WatermarkCanvasEditor({
               </button>
 
               {/* Opacity Stepper */}
-              <div className="canva-stepper-pill" title="Transparency / Opacity">
+              <div className="canva-stepper-pill" title={`Transparency / Opacity (${aspectRatio})`}>
                 <i className="ti ti-blur" />
                 <span className="canva-stepper-val">{Math.round((selectedCfg.opacity ?? 1) * 100)}%</span>
                 <input
@@ -1098,10 +955,31 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
+                    <button type="button" onClick={() => alignElement("bottom-right")}>
+                      <i className="ti ti-layout-align-right" /> Bottom-Right
+                    </button>
+                    <button type="button" onClick={() => alignElement("bottom-center")}>
+                      <i className="ti ti-layout-align-bottom" /> Bottom-Center
+                    </button>
+                    <button type="button" onClick={() => alignElement("bottom-left")}>
+                      <i className="ti ti-layout-align-left" /> Bottom-Left
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-right")}>
+                      <i className="ti ti-layout-align-top" /> Top-Right
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-center")}>
+                      <i className="ti ti-layout-align-top" /> Top-Center
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-left")}>
+                      <i className="ti ti-layout-align-top" /> Top-Left
+                    </button>
+                    <button type="button" onClick={() => alignElement("center")}>
+                      <i className="ti ti-layout-align-middle" /> Center
+                    </button>
                     <div className="canva-dropdown-divider" />
                     <div className="canva-dropdown-title">
-                      Layer Stacking ({selectedIndex + 1} of {elements.length})
+                      Layer Stacking in {aspectRatio} ({selectedIndex + 1} of {elements.length})
                     </div>
                     <button
                       type="button"
@@ -1178,7 +1056,10 @@ export default function WatermarkCanvasEditor({
                 <button
                   type="button"
                   className={`canva-segment-item ${selectedElement.shapeType === "rectangle" || (!selectedElement.shapeType && selectedElement.shapeType !== "line" && selectedElement.shapeType !== "gradient") ? "is-active" : ""}`}
-                  onClick={() => updateSelectedShapeVariant("rectangle")}
+                  onClick={() => {
+                    const patch = switchShapeVariant(selectedElement, "rectangle");
+                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
+                  }}
                   disabled={disabled}
                 >
                   Ribbon
@@ -1186,10 +1067,24 @@ export default function WatermarkCanvasEditor({
                 <button
                   type="button"
                   className={`canva-segment-item ${selectedElement.shapeType === "gradient" ? "is-active" : ""}`}
-                  onClick={() => updateSelectedShapeVariant("gradient")}
+                  onClick={() => {
+                    const patch = switchShapeVariant(selectedElement, "gradient");
+                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
+                  }}
                   disabled={disabled}
                 >
                   Gradient Scrim
+                </button>
+                <button
+                  type="button"
+                  className={`canva-segment-item ${selectedElement.shapeType === "line" ? "is-active" : ""}`}
+                  onClick={() => {
+                    const patch = switchShapeVariant(selectedElement, "line");
+                    onChange(elements.map((el) => (el.id === selectedElement.id ? { ...el, ...patch, ...updateElementForRatio(el, aspectRatio, patch) } : el)));
+                  }}
+                  disabled={disabled}
+                >
+                  Line
                 </button>
               </div>
 
@@ -1199,7 +1094,7 @@ export default function WatermarkCanvasEditor({
                   type="button"
                   className="canva-tool-btn"
                   onClick={() => setShowColorPicker((prev) => !prev)}
-                  title="Shape Color"
+                  title={`Shape Color (${aspectRatio})`}
                   disabled={disabled}
                 >
                   <span
@@ -1219,10 +1114,10 @@ export default function WatermarkCanvasEditor({
                   <div className="canva-floating-menu canva-color-dropdown">
                     <div className="canva-dropdown-title">
                       {selectedElement.shapeType === "line"
-                        ? "Line Color"
+                        ? `Line Color (${aspectRatio})`
                         : selectedElement.shapeType === "gradient"
-                          ? "Gradient Color"
-                          : "Fill Color"}
+                          ? `Gradient Color (${aspectRatio})`
+                          : `Fill Color (${aspectRatio})`}
                     </div>
                     <div className="canva-color-grid">
                       {COLOR_PRESETS.map((color) => {
@@ -1254,7 +1149,7 @@ export default function WatermarkCanvasEditor({
 
               {/* Height / Thickness Stepper with Slider */}
               {selectedElement.shapeType !== "line" ? (
-                <div className="canva-stepper-pill" title="Ribbon height as a percentage of the image's shorter side">
+                <div className="canva-stepper-pill" title={`Height in ${aspectRatio}`}>
                   <span className="canva-stepper-label">Height:</span>
                   <span className="canva-stepper-val">{Math.round((selectedCfg.heightPercent || 14) * 10) / 10}%</span>
                   <input
@@ -1269,7 +1164,7 @@ export default function WatermarkCanvasEditor({
                   />
                 </div>
               ) : (
-                <div className="canva-stepper-pill" title="Line thickness as a percentage of the image's shorter side">
+                <div className="canva-stepper-pill" title={`Thickness in ${aspectRatio}`}>
                   <span className="canva-stepper-label">Thickness:</span>
                   <span className="canva-stepper-val">{Math.round((selectedCfg.heightPercent || 2) * 10) / 10}%</span>
                   <input
@@ -1285,8 +1180,20 @@ export default function WatermarkCanvasEditor({
                 </div>
               )}
 
+              {/* Full Width Toggle */}
+              <button
+                type="button"
+                className={`canva-tool-btn ${selectedCfg.widthPercent >= FULL_WIDTH_PERCENT ? "is-active" : ""}`}
+                onClick={() => updateSelected({ widthPercent: FULL_WIDTH_PERCENT })}
+                title="Extend width to fill canvas in all formats"
+                disabled={disabled}
+              >
+                <i className="ti ti-arrows-horizontal" />
+                <span>Full Width</span>
+              </button>
+
               {/* Opacity Stepper */}
-              <div className="canva-stepper-pill" title="Transparency / Opacity">
+              <div className="canva-stepper-pill" title={`Transparency / Opacity (${aspectRatio})`}>
                 <i className="ti ti-blur" />
                 <span className="canva-stepper-val">{Math.round((selectedCfg.opacity ?? 1) * 100)}%</span>
                 <input
@@ -1316,10 +1223,19 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
+                    <button type="button" onClick={() => alignElement("bottom-bar")}>
+                      <i className="ti ti-layout-align-bottom" /> Full Bottom Bar
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-bar")}>
+                      <i className="ti ti-layout-align-top" /> Full Top Bar
+                    </button>
+                    <button type="button" onClick={() => alignElement("center")}>
+                      <i className="ti ti-layout-align-middle" /> Centered Bar
+                    </button>
                     <div className="canva-dropdown-divider" />
                     <div className="canva-dropdown-title">
-                      Layer Stacking ({selectedIndex + 1} of {elements.length})
+                      Layer Stacking in {aspectRatio} ({selectedIndex + 1} of {elements.length})
                     </div>
                     <button
                       type="button"
@@ -1432,7 +1348,7 @@ export default function WatermarkCanvasEditor({
               </button>
 
               {/* Image Size Stepper with Slider */}
-              <div className="canva-stepper-pill" title="Photo size as a percentage of the image's shorter side">
+              <div className="canva-stepper-pill" title={`Logo / Image Size in ${aspectRatio}`}>
                 <span className="canva-stepper-label">Size:</span>
                 <span className="canva-stepper-val">{Math.round((selectedCfg.widthPercent || 18) * 10) / 10}%</span>
                 <input
@@ -1453,8 +1369,9 @@ export default function WatermarkCanvasEditor({
                 className="canva-tool-btn"
                 onClick={() => {
                   setElementSize(18, 18);
+                  alignElement("bottom-right");
                 }}
-                title="Reset to default logo size (18%)"
+                title="Reset to default logo size (18%) and position"
                 disabled={disabled}
               >
                 <i className="ti ti-rotate-clockwise" />
@@ -1462,7 +1379,7 @@ export default function WatermarkCanvasEditor({
               </button>
 
               {/* Opacity Stepper */}
-              <div className="canva-stepper-pill" title="Transparency / Opacity">
+              <div className="canva-stepper-pill" title={`Transparency / Opacity (${aspectRatio})`}>
                 <i className="ti ti-blur" />
                 <span className="canva-stepper-val">{Math.round((selectedCfg.opacity ?? 1) * 100)}%</span>
                 <input
@@ -1492,7 +1409,28 @@ export default function WatermarkCanvasEditor({
 
                 {showAlignMenu && (
                   <div className="canva-floating-menu canva-align-dropdown">
-                    {renderCornerAnchorOptions()}
+                    <div className="canva-dropdown-title">Quick Alignment ({aspectRatio})</div>
+                    <button type="button" onClick={() => alignElement("bottom-right")}>
+                      <i className="ti ti-layout-align-right" /> Bottom-Right
+                    </button>
+                    <button type="button" onClick={() => alignElement("bottom-center")}>
+                      <i className="ti ti-layout-align-bottom" /> Bottom-Center
+                    </button>
+                    <button type="button" onClick={() => alignElement("bottom-left")}>
+                      <i className="ti ti-layout-align-left" /> Bottom-Left
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-right")}>
+                      <i className="ti ti-layout-align-top" /> Top-Right
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-center")}>
+                      <i className="ti ti-layout-align-top" /> Top-Center
+                    </button>
+                    <button type="button" onClick={() => alignElement("top-left")}>
+                      <i className="ti ti-layout-align-top" /> Top-Left
+                    </button>
+                    <button type="button" onClick={() => alignElement("center")}>
+                      <i className="ti ti-layout-align-middle" /> Center
+                    </button>
                     <div className="canva-dropdown-divider" />
                     <div className="canva-dropdown-title">Size Presets</div>
                     <button type="button" onClick={() => setElementSize(18, 18)}>
@@ -1506,7 +1444,7 @@ export default function WatermarkCanvasEditor({
                     </button>
                     <div className="canva-dropdown-divider" />
                     <div className="canva-dropdown-title">
-                      Layer Stacking ({selectedIndex + 1} of {elements.length})
+                      Layer Stacking in {aspectRatio} ({selectedIndex + 1} of {elements.length})
                     </div>
                     <button
                       type="button"
@@ -1579,10 +1517,10 @@ export default function WatermarkCanvasEditor({
           {!selectedElement && (
             <div className="canva-default-topbar-group canva-anim-bar">
               <span className="canva-topbar-hint">
-                <i className="ti ti-wand" /> Select an element to edit or use a plus button on the canvas
+                <i className="ti ti-wand" /> Select an element to edit for <strong>{aspectRatio}</strong> or pick a tool from the side rail
               </span>
               <span className="canva-layer-counter-pill">
-                <i className="ti ti-layers-intersect" /> {elements.length}/{MAX_WATERMARK_ELEMENTS} Elements Added
+                <i className="ti ti-layers-intersect" /> {elements.length}/3 Elements Added
               </span>
             </div>
           )}
@@ -1593,209 +1531,42 @@ export default function WatermarkCanvasEditor({
           className="canva-stage-wrap"
           ref={stageRef}
           onClick={(e) => {
-            if (
-              e.target === e.currentTarget ||
-              (e.target as HTMLElement).classList.contains("canva-stage-wrap") ||
-              (e.target as HTMLElement).classList.contains("canva-frame-shell")
-            ) {
+            if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("canva-stage-wrap")) {
               setSelectedId(null);
             }
           }}
         >
           <div
-            className={`canva-frame-shell ${isResizingCanvas ? "is-resizing-canvas" : ""}`}
+            className={`canva-frame wm-aspect-${aspectRatio.replace(":", "-")} wm-bg-${background}`}
+            ref={canvasRef}
             style={{
               transform: `scale(${zoom / 100})`,
               transformOrigin: "center center",
-              transition: isResizingCanvas ? "none" : "transform 0.12s ease-out",
+              transition: "transform 0.12s ease-out",
             }}
-          >
-            {/* Responsive Preview Resize Handles (DevTools style) */}
-            <button
-              type="button"
-              className="wm-canvas-resize-handle wm-canvas-resize-e"
-              onPointerDown={(e) => beginCanvasResize(e, "e")}
-              onDoubleClick={handleResetCanvasSize}
-              title="Drag to resize canvas width (double-click to reset)"
-              aria-label="Resize canvas width"
-            >
-              <span className="wm-canvas-resize-grip" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="wm-canvas-resize-handle wm-canvas-resize-w"
-              onPointerDown={(e) => beginCanvasResize(e, "w")}
-              onDoubleClick={handleResetCanvasSize}
-              title="Drag to resize canvas width (double-click to reset)"
-              aria-label="Resize canvas width"
-            >
-              <span className="wm-canvas-resize-grip" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="wm-canvas-resize-handle wm-canvas-resize-s"
-              onPointerDown={(e) => beginCanvasResize(e, "s")}
-              onDoubleClick={handleResetCanvasSize}
-              title="Drag to resize canvas height (double-click to reset)"
-              aria-label="Resize canvas height"
-            >
-              <span className="wm-canvas-resize-grip" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="wm-canvas-resize-handle wm-canvas-resize-n"
-              onPointerDown={(e) => beginCanvasResize(e, "n")}
-              onDoubleClick={handleResetCanvasSize}
-              title="Drag to resize canvas height (double-click to reset)"
-              aria-label="Resize canvas height"
-            >
-              <span className="wm-canvas-resize-grip" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="wm-canvas-resize-handle wm-canvas-resize-se"
-              onPointerDown={(e) => beginCanvasResize(e, "se")}
-              onDoubleClick={handleResetCanvasSize}
-              title="Drag to resize canvas width and height (double-click to reset)"
-              aria-label="Resize canvas width and height"
-            >
-              <span className="wm-canvas-resize-corner-grip" aria-hidden="true" />
-            </button>
-
-            {isResizingCanvas && (
-              <div className="wm-canvas-size-hud" aria-live="polite">
-                {measuredCanvasSize.width} &times; {measuredCanvasSize.height} px
-              </div>
-            )}
-
-          <div
-            className={`canva-frame wm-bg-${background} ${canvasSize ? "has-custom-size" : ""} ${isResizingCanvas ? "is-resizing-canvas" : ""}`}
-            ref={canvasRef}
-            style={
-              canvasSize
-                ? {
-                    width: `${canvasSize.width}px`,
-                    height: `${canvasSize.height}px`,
-                    aspectRatio: "unset",
-                  }
-                : undefined
-            }
             onClick={(e) => {
               if (
                 e.target === canvasRef.current ||
-                (e.target as HTMLElement).classList.contains("wm-canvas-sample-image")
+                (e.target as HTMLElement).classList.contains("wm-canvas-sample-bg")
               ) {
                 setSelectedId(null);
               }
             }}
           >
-            {background === "sample-photo" && (
-              <img className="wm-canvas-sample-image" src={watermarkSample} alt="" draggable={false} />
+            {/* Background Sample Images */}
+            {background === "sample-light" && (
+              <div className="wm-canvas-sample-bg wm-sample-light-gradient" />
             )}
-
-            <input
-              ref={anchorImageInputRef}
-              type="file"
-              accept={ACCEPTED_IMAGE_TYPES}
-              className="wm-anchor-image-input"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                const anchor = pendingImageAnchorRef.current;
-                pendingImageAnchorRef.current = null;
-                if (file && anchor) handleImageUpload(file, anchor);
-                event.target.value = "";
-              }}
-            />
-
-            {CORNER_ANCHORS.map((anchor) => {
-              const occupied = elements.some((el) => normalizeWatermarkAnchor(el).anchor === anchor);
-              if (occupied) return null;
-              return (
-                <div
-                  key={anchor}
-                  className={`wm-anchor-control wm-corner-anchor wm-corner-anchor-${anchor}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    className="wm-anchor-add"
-                    aria-label={`Add photo or text at ${anchor.replace("-", " ")}`}
-                    aria-expanded={openAnchorMenu === anchor}
-                    onClick={() => setOpenAnchorMenu((current) => current === anchor ? null : anchor)}
-                    disabled={disabled || elements.length >= MAX_WATERMARK_ELEMENTS}
-                  >
-                    <i className="ti ti-plus" aria-hidden="true" />
-                  </button>
-                  {openAnchorMenu === anchor && (
-                    <div className={`wm-anchor-menu wm-anchor-menu-${anchor}`} role="menu">
-                      <strong>Add at {anchor.replace("-", " ")}</strong>
-                      <button type="button" role="menuitem" onClick={() => openAnchorImagePicker(anchor)}>
-                        <i className="ti ti-photo-plus" /> Upload photo
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => addElement("image", institutionLogoUrl || "/dasig-logo.png", anchor)}
-                      >
-                        <i className="ti ti-brand-asana" /> Use DASIG logo
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => addElement(
-                          "text",
-                          institutionName ? `@${institutionName.replace(/\s+/g, "")}` : "@DASIGConnect",
-                          anchor,
-                        )}
-                      >
-                        <i className="ti ti-typography" /> Add text
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {EDGE_ANCHORS.map((anchor) => {
-              const occupied = elements.some((el) => normalizeWatermarkAnchor(el).anchor === anchor);
-              if (occupied) return null;
-              return (
-                <div
-                  key={anchor}
-                  className={`wm-anchor-control wm-edge-anchor wm-edge-anchor-${anchor}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    className="wm-anchor-add"
-                    aria-label={`Add ribbon or gradient at ${anchor} edge`}
-                    aria-expanded={openAnchorMenu === anchor}
-                    onClick={() => setOpenAnchorMenu((current) => current === anchor ? null : anchor)}
-                    disabled={disabled || elements.length >= MAX_WATERMARK_ELEMENTS}
-                  >
-                    <i className="ti ti-plus" aria-hidden="true" />
-                  </button>
-                  {openAnchorMenu === anchor && (
-                    <div className={`wm-anchor-menu wm-edge-menu-${anchor}`} role="menu">
-                      <strong>Add to {anchor} edge</strong>
-                      <button type="button" role="menuitem" onClick={() => addElement("shape", "rectangle", anchor)}>
-                        <i className="ti ti-rectangle" /> Ribbon
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => addElement("shape", "gradient", anchor)}>
-                        <i className="ti ti-layers-subtract" /> Gradient
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {background === "sample-dark" && (
+              <div className="wm-canvas-sample-bg wm-sample-dark-gradient" />
+            )}
 
             {/* Rendered Canvas Elements */}
             {sortedElements.map((el, index) => {
               const isSelected = el.id === selectedId;
               const elCfg = resolveRatioConfig(el, aspectRatio, index);
               const isHidden = !!elCfg.hidden;
-              const box = computeBox(el, aspectRatio, canvasAspect);
+              const box = computeBox(el, aspectRatio);
               const pillPlacement = getFloatingPillPlacement(box);
 
               if (isHidden) return null;
@@ -1811,6 +1582,7 @@ export default function WatermarkCanvasEditor({
                     height: `${box.height}%`,
                     zIndex: 10 + index * 5 + (isSelected ? 2 : 0),
                   }}
+                  onPointerDown={(event) => interaction.beginMove(event, el.id)}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedId(el.id);
@@ -1877,24 +1649,14 @@ export default function WatermarkCanvasEditor({
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
-                        {el.type === "shape" ? (
-                          normalizeWatermarkAnchor(el).anchor === "top" ? (
-                            <span className="wm-handle handle-s" onPointerDown={(e) => interaction.beginResize(e, el.id, "s")} title="Adjust Height" />
-                          ) : (
-                            <span className="wm-handle handle-n" onPointerDown={(e) => interaction.beginResize(e, el.id, "n")} title="Adjust Height" />
-                          )
-                        ) : (
-                          <>
-                            <span className="wm-handle handle-nw" onPointerDown={(e) => interaction.beginResize(e, el.id, "nw")} title="Resize" />
-                            <span className="wm-handle handle-n" onPointerDown={(e) => interaction.beginResize(e, el.id, "n")} title="Adjust Height" />
-                            <span className="wm-handle handle-ne" onPointerDown={(e) => interaction.beginResize(e, el.id, "ne")} title="Resize" />
-                            <span className="wm-handle handle-e" onPointerDown={(e) => interaction.beginResize(e, el.id, "e")} title="Adjust Width" />
-                            <span className="wm-handle handle-se" onPointerDown={(e) => interaction.beginResize(e, el.id, "se")} title="Resize" />
-                            <span className="wm-handle handle-s" onPointerDown={(e) => interaction.beginResize(e, el.id, "s")} title="Adjust Height" />
-                            <span className="wm-handle handle-sw" onPointerDown={(e) => interaction.beginResize(e, el.id, "sw")} title="Resize" />
-                            <span className="wm-handle handle-w" onPointerDown={(e) => interaction.beginResize(e, el.id, "w")} title="Adjust Width" />
-                          </>
-                        )}
+                        <span className="wm-handle handle-nw" onPointerDown={(e) => interaction.beginResize(e, el.id, "nw")} title="Resize" />
+                        <span className="wm-handle handle-n" onPointerDown={(e) => interaction.beginResize(e, el.id, "n")} title="Adjust Height" />
+                        <span className="wm-handle handle-ne" onPointerDown={(e) => interaction.beginResize(e, el.id, "ne")} title="Resize" />
+                        <span className="wm-handle handle-e" onPointerDown={(e) => interaction.beginResize(e, el.id, "e")} title="Adjust Width" />
+                        <span className="wm-handle handle-se" onPointerDown={(e) => interaction.beginResize(e, el.id, "se")} title="Resize" />
+                        <span className="wm-handle handle-s" onPointerDown={(e) => interaction.beginResize(e, el.id, "s")} title="Adjust Height" />
+                        <span className="wm-handle handle-sw" onPointerDown={(e) => interaction.beginResize(e, el.id, "sw")} title="Resize" />
+                        <span className="wm-handle handle-w" onPointerDown={(e) => interaction.beginResize(e, el.id, "w")} title="Adjust Width" />
                       </div>
 
                       {/* Mini Floating Action Tooltip */}
@@ -1903,6 +1665,14 @@ export default function WatermarkCanvasEditor({
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
+                        <button
+                          type="button"
+                          className="canva-pill-action-btn"
+                          onClick={() => alignElement(el.type === "shape" ? "bottom-bar" : "bottom-right")}
+                          title="Snap to Bottom Position"
+                        >
+                          <i className="ti ti-layout-align-bottom" />
+                        </button>
                         <button
                           type="button"
                           className="canva-pill-action-btn"
@@ -1929,47 +1699,112 @@ export default function WatermarkCanvasEditor({
               );
             })}
 
-          </div>
+            {/* Empty Canvas Notice */}
+            {elements.length === 0 && (
+              <div className="wm-empty-canvas-notice">
+                <div className="wm-empty-icon-wrap">
+                  <i className="ti ti-wand"></i>
+                </div>
+                <h3>Start Designing Your Watermark</h3>
+                <p>Pick a tool on the left rail to add a brand logo, handle text, or background ribbon.</p>
+                <div className="wm-empty-quick-actions">
+                  <button
+                    type="button"
+                    className="wm-empty-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addElement("image");
+                    }}
+                    disabled={disabled}
+                  >
+                    <i className="ti ti-photo-plus" /> + Logo
+                  </button>
+                  <button
+                    type="button"
+                    className="wm-empty-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addElement("text");
+                    }}
+                    disabled={disabled}
+                  >
+                    <i className="ti ti-typography" /> + Text Handle
+                  </button>
+                  <button
+                    type="button"
+                    className="wm-empty-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addElement("shape");
+                    }}
+                    disabled={disabled}
+                  >
+                    <i className="ti ti-rectangle" /> + Shape
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 5. Persistent Bottom Controls: Preview & Zoom */}
+        {/* 5. Persistent Bottom Controls: Format & Backdrop Bar */}
         <footer className="canva-bottom-bar">
+          {/* Aspect Ratio Format Control */}
           <div className="canva-pill-segment">
-            <span className="canva-segment-label">Preview:</span>
+            <span className="canva-segment-label">Format:</span>
             <button
               type="button"
-              className={`canva-segment-item ${background === "sample-photo" ? "is-active" : ""}`}
-              onClick={() => setBackground("sample-photo")}
-              title="Show the generated sample photo"
+              className={`canva-segment-item ${aspectRatio === "1:1" ? "is-active" : ""}`}
+              onClick={() => setAspectRatio("1:1")}
+              title="Square 1:1"
             >
-              <i className="ti ti-photo" /> Sample image
+              <i className="ti ti-square" /> Square (1:1)
             </button>
+            <button
+              type="button"
+              className={`canva-segment-item ${aspectRatio === "4:3" ? "is-active" : ""}`}
+              onClick={() => setAspectRatio("4:3")}
+              title="Standard 4:3"
+            >
+              <i className="ti ti-rectangle" /> Standard (4:3)
+            </button>
+            <button
+              type="button"
+              className={`canva-segment-item ${aspectRatio === "16:9" ? "is-active" : ""}`}
+              onClick={() => setAspectRatio("16:9")}
+              title="Landscape 16:9"
+            >
+              <i className="ti ti-rectangle" /> Landscape (16:9)
+            </button>
+          </div>
+
+          {/* Canvas Backdrop Toggle */}
+          <div className="canva-pill-segment">
+            <span className="canva-segment-label">Backdrop:</span>
             <button
               type="button"
               className={`canva-segment-item ${background === "checkerboard" ? "is-active" : ""}`}
               onClick={() => setBackground("checkerboard")}
-              title="Show transparent background"
+              title="Transparent Checkerboard"
             >
               <i className="ti ti-grid-dots" /> Transparent
             </button>
-            <span className="canva-canvas-size-pill" title="Drag the canvas edges or corner to preview different image dimensions">
-              <i className="ti ti-dimensions" />
-              <span>
-                {measuredCanvasSize.width} &times; {measuredCanvasSize.height}
-              </span>
-              {canvasSize && (
-                <button
-                  type="button"
-                  className="canva-canvas-size-reset"
-                  onClick={handleResetCanvasSize}
-                  title="Reset canvas to 1:1 square"
-                  aria-label="Reset canvas size"
-                >
-                  <i className="ti ti-rotate-clockwise" />
-                </button>
-              )}
-            </span>
+            <button
+              type="button"
+              className={`canva-segment-item ${background === "sample-light" ? "is-active" : ""}`}
+              onClick={() => setBackground("sample-light")}
+              title="Light Photo Preview"
+            >
+              <i className="ti ti-sun" /> Light Photo
+            </button>
+            <button
+              type="button"
+              className={`canva-segment-item ${background === "sample-dark" ? "is-active" : ""}`}
+              onClick={() => setBackground("sample-dark")}
+              title="Dark Photo Preview"
+            >
+              <i className="ti ti-moon" /> Dark Photo
+            </button>
           </div>
 
           {/* Zoom In / Zoom Out Controls */}

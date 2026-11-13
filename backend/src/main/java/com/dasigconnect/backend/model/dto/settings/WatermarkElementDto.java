@@ -10,11 +10,12 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class WatermarkElementDto {
 
-    /** Legacy position override from the retired format-specific editor. */
+    /** Position of an element on one format's canvas, in percent of its width / height. */
     public record Position(double xPercent, double yPercent) {}
 
     /**
-     * Legacy per-format configuration retained so existing saved JSON remains readable.
+     * Per-format configuration for an element (1:1, 4:3, or 16:9).
+     * Layering (order), positioning, size, opacity, and styles are stored independently.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -37,19 +38,17 @@ public class WatermarkElementDto {
 
     private String id;
     private String type; // "image" | "text" | "shape"
-    private String anchor;
-    private double xPercent; // Horizontal inset as a percent of the square reference side
-    private double yPercent; // Vertical inset as a percent of the square reference side
-    private double widthPercent; // Width as a percent of the square reference side
-    private double heightPercent; // Height as a percent of the square reference side
+    private double xPercent; // 1:1 position, % of canvas width
+    private double yPercent; // 1:1 position, % of canvas height
+    private double widthPercent; // % of canvas HEIGHT, shared by every format
+    private double heightPercent; // % of canvas HEIGHT, shared by every format
     private double opacity = 1.0; // 0.0 - 1.0
     private Boolean hidden;
-    private Integer order;
 
-    /** Legacy position overrides; ignored by the current single-canvas layout. */
+    /** Position overrides keyed by "4:3" / "16:9". Legacy fallback. */
     private Map<String, Position> layouts;
 
-    /** Legacy format-specific configurations; ignored by the current single-canvas layout. */
+    /** Ratio-specific configurations keyed by "1:1", "4:3", "16:9". */
     private Map<String, RatioConfig> ratios;
 
     // Text specific
@@ -84,14 +83,6 @@ public class WatermarkElementDto {
 
     public void setType(String type) {
         this.type = type;
-    }
-
-    public String getAnchor() {
-        return anchor;
-    }
-
-    public void setAnchor(String anchor) {
-        this.anchor = anchor;
     }
 
     // Explicit names: Jackson's default mangling would turn "getXPercent" into "xpercent".
@@ -145,14 +136,6 @@ public class WatermarkElementDto {
 
     public void setHidden(Boolean hidden) {
         this.hidden = hidden;
-    }
-
-    public Integer getOrder() {
-        return order;
-    }
-
-    public void setOrder(Integer order) {
-        this.order = order;
     }
 
     @JsonIgnore

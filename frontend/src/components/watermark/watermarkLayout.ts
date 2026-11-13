@@ -1,19 +1,30 @@
 import type {
   AspectRatioType,
   ElementRatioConfig,
-  WatermarkAnchor,
   WatermarkElement,
 } from "../../types/watermark.types";
 
+export const MAX_WATERMARK_ELEMENTS = 3;
 export const DEFAULT_ASPECT_RATIO: AspectRatioType = "1:1";
 
-export const MAX_WATERMARK_ELEMENTS = 3;
-export const FULL_WIDTH_PERCENT = 100;
+export interface AspectRatioOption {
+  id: AspectRatioType;
+  label: string;
+  aspect: number; // width / height
+}
+
+export const ASPECT_RATIO_OPTIONS: readonly AspectRatioOption[] = [
+  { id: "1:1", label: "Square", aspect: 1 },
+  { id: "4:3", label: "Standard", aspect: 4 / 3 },
+  { id: "16:9", label: "Landscape", aspect: 16 / 9 },
+];
+
+/** Widest element that still fits the widest format (16:9). Fills any canvas. */
+export const FULL_WIDTH_PERCENT = 177.8;
 
 const MIN_BOX_WIDTH = 3;
 const MIN_BOX_HEIGHT = 1;
-export const DEFAULT_ANCHOR_INSET_PERCENT = 3;
-const SNAP_MARGIN = DEFAULT_ANCHOR_INSET_PERCENT;
+const SNAP_MARGIN = 3;
 
 export interface ElementBox {
   left: number;
@@ -31,67 +42,71 @@ export const round1 = (value: number) => Math.round(value * 10) / 10;
 export const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
-export function normalizeWatermarkAnchor(
-  el: Pick<WatermarkElement, "type" | "anchor" | "xPercent" | "yPercent" | "widthPercent" | "heightPercent">,
-): Pick<WatermarkElement, "anchor" | "xPercent" | "yPercent"> {
-  const isShape = el.type === "shape";
-  const anchor = el.anchor;
-  if (isShape) {
-    if (anchor === "top" || anchor === "bottom") {
-      return { anchor, xPercent: 0, yPercent: el.yPercent };
-    }
-    if (anchor === "top-left" || anchor === "top-right" || anchor === "bottom-left" || anchor === "bottom-right") {
-      return {
-        anchor: anchor.startsWith("bottom") ? "bottom" : "top",
-        xPercent: 0,
-        yPercent: el.yPercent,
-      };
-    }
-    const bottom = el.yPercent + el.heightPercent / 2 >= 50;
-    return {
-      anchor: bottom ? "bottom" : "top",
-      xPercent: 0,
-      yPercent: bottom ? Math.max(0, 100 - el.yPercent - el.heightPercent) : el.yPercent,
-    };
-  }
+export function aspectOf(ratio: AspectRatioType): number {
+  return ASPECT_RATIO_OPTIONS.find((option) => option.id === ratio)?.aspect ?? 1;
+}
 
-  if (anchor === "top-left" || anchor === "top-right" || anchor === "bottom-left" || anchor === "bottom-right") {
-    return { anchor, xPercent: el.xPercent, yPercent: el.yPercent };
+/** Picks the format whose proportions are closest to a real image's. */
+export function nearestAspectRatio(aspect: number): AspectRatioType {
+  if (!Number.isFinite(aspect) || aspect <= 0) return DEFAULT_ASPECT_RATIO;
+  let best = ASPECT_RATIO_OPTIONS[0];
+  for (const option of ASPECT_RATIO_OPTIONS) {
+    if (Math.abs(Math.log(aspect / option.aspect)) < Math.abs(Math.log(aspect / best.aspect))) {
+      best = option;
+    }
   }
-  const right = el.xPercent + el.widthPercent / 2 >= 50;
-  const bottom = el.yPercent + el.heightPercent / 2 >= 50;
-  return {
-    anchor: bottom ? (right ? "bottom-right" : "bottom-left") : (right ? "top-right" : "top-left"),
-    xPercent: right ? Math.max(0, 100 - el.xPercent - el.widthPercent) : el.xPercent,
-    yPercent: bottom ? Math.max(0, 100 - el.yPercent - el.heightPercent) : el.yPercent,
-  };
+  return best.id;
 }
 
 /**
- * Resolves square-reference geometry from the shared element fields. Legacy
- * format overrides remain readable only for non-geometric settings.
+ * Resolves the configuration for a given ratio. If this ratio has been edited,
+ * its saved configuration is returned. If untouched, it copies from the initial
+ * 1:1 baseline with positioning adapted to keep the same pixel position and size.
  */
 export function resolveRatioConfig(
   el: WatermarkElement,
-  _ratio: AspectRatioType,
+  ratio: AspectRatioType,
   defaultOrder = 0,
 ): ElementRatioConfig {
-  const saved = el.ratios?.["1:1"];
+  const saved = el.ratios?.[ratio];
+  if (saved) {
+    return {
+      xPercent: saved.xPercent,
+      yPercent: saved.yPercent,
+      widthPercent: saved.widthPercent ?? el.widthPercent,
+      heightPercent: saved.heightPercent ?? el.heightPercent,
+      opacity: saved.opacity ?? el.opacity ?? 1.0,
+      order: saved.order ?? defaultOrder,
+      hidden: saved.hidden ?? el.hidden ?? false,
+      textColor: saved.textColor ?? el.textColor,
+      fillColor: saved.fillColor ?? el.fillColor,
+      strokeColor: saved.strokeColor ?? el.strokeColor,
+      fontSizePercent: saved.fontSizePercent ?? el.fontSizePercent,
+      fontWeight: saved.fontWeight ?? el.fontWeight,
+      fontStyle: saved.fontStyle ?? el.fontStyle,
+      fontFamily: saved.fontFamily ?? el.fontFamily,
+    };
+  }
+
+  // Untouched ratio: adapt initial 1:1 coordinates
+  const aspect = aspectOf(ratio);
+  const initialX = ratio === "1:1" ? el.xPercent : el.xPercent / aspect;
+
   return {
-    xPercent: el.xPercent,
-    yPercent: el.yPercent,
-    widthPercent: el.widthPercent,
-    heightPercent: el.heightPercent,
+    xPercent: round1(initialX),
+    yPercent: round1(el.yPercent),
+    widthPercent: round1(el.widthPercent),
+    heightPercent: round1(el.heightPercent),
     opacity: el.opacity ?? 1.0,
-    order: el.order ?? saved?.order ?? defaultOrder,
-    hidden: el.hidden ?? saved?.hidden ?? false,
-    textColor: el.textColor ?? saved?.textColor,
-    fillColor: el.fillColor ?? saved?.fillColor,
-    strokeColor: el.strokeColor ?? saved?.strokeColor,
-    fontSizePercent: el.fontSizePercent ?? saved?.fontSizePercent,
-    fontWeight: el.fontWeight ?? saved?.fontWeight,
-    fontStyle: el.fontStyle ?? saved?.fontStyle,
-    fontFamily: el.fontFamily ?? saved?.fontFamily,
+    order: defaultOrder,
+    hidden: el.hidden ?? false,
+    textColor: el.textColor,
+    fillColor: el.fillColor,
+    strokeColor: el.strokeColor,
+    fontSizePercent: el.fontSizePercent,
+    fontWeight: el.fontWeight,
+    fontStyle: el.fontStyle,
+    fontFamily: el.fontFamily,
   };
 }
 
@@ -110,11 +125,34 @@ export function updateElementForRatio(
     ...current,
     ...updates,
   };
-  const baseElement = { ...el };
-  delete baseElement.ratios;
+
+  // If 1:1 is edited, also sync base properties for legacy readers
+  const baseUpdates =
+    ratio === "1:1"
+      ? {
+          ...(updates.xPercent !== undefined ? { xPercent: round1(updates.xPercent) } : {}),
+          ...(updates.yPercent !== undefined ? { yPercent: round1(updates.yPercent) } : {}),
+          ...(updates.widthPercent !== undefined ? { widthPercent: round1(updates.widthPercent) } : {}),
+          ...(updates.heightPercent !== undefined ? { heightPercent: round1(updates.heightPercent) } : {}),
+          ...(updates.opacity !== undefined ? { opacity: updates.opacity } : {}),
+          ...(updates.hidden !== undefined ? { hidden: updates.hidden } : {}),
+          ...(updates.textColor !== undefined ? { textColor: updates.textColor } : {}),
+          ...(updates.fillColor !== undefined ? { fillColor: updates.fillColor } : {}),
+          ...(updates.strokeColor !== undefined ? { strokeColor: updates.strokeColor } : {}),
+          ...(updates.fontSizePercent !== undefined ? { fontSizePercent: updates.fontSizePercent } : {}),
+          ...(updates.fontWeight !== undefined ? { fontWeight: updates.fontWeight } : {}),
+          ...(updates.fontStyle !== undefined ? { fontStyle: updates.fontStyle } : {}),
+          ...(updates.fontFamily !== undefined ? { fontFamily: updates.fontFamily } : {}),
+        }
+      : {};
+
   return {
-    ...baseElement,
-    ...nextConfig,
+    ...el,
+    ...baseUpdates,
+    ratios: {
+      ...el.ratios,
+      [ratio]: nextConfig,
+    },
   };
 }
 
@@ -211,70 +249,34 @@ export function reorderElementsByDrag(
 export function computeBox(
   el: WatermarkElement,
   ratio: AspectRatioType,
-  canvasAspect = 1,
+  canvasAspect: number = aspectOf(ratio),
 ): ElementBox {
   const cfg = resolveRatioConfig(el, ratio);
-  const normalized = normalizeWatermarkAnchor({
-    ...el,
-    xPercent: cfg.xPercent,
-    yPercent: cfg.yPercent,
-    widthPercent: cfg.widthPercent,
-    heightPercent: cfg.heightPercent,
-  });
-  const baseWidth = Math.min(1, 1 / canvasAspect);
-  const baseHeight = Math.min(1, canvasAspect);
-  const isFullWidthBar = el.type === "shape" && (normalized.anchor === "top" || normalized.anchor === "bottom");
-  const insetPercent = isFullWidthBar ? 0 : DEFAULT_ANCHOR_INSET_PERCENT;
-  const xOffset = clamp(insetPercent * baseWidth, 0, 45);
-  const yOffset = clamp(insetPercent * baseHeight, 0, 45);
-  const maxWidth = isFullWidthBar ? 100 : Math.max(MIN_BOX_WIDTH, 100 - xOffset * 2);
-  const maxHeight = isFullWidthBar ? 100 : Math.max(MIN_BOX_HEIGHT, 100 - yOffset * 2);
-  const width = isFullWidthBar ? 100 : clamp(cfg.widthPercent * baseWidth, MIN_BOX_WIDTH, maxWidth);
-  const height = clamp(cfg.heightPercent * baseHeight, MIN_BOX_HEIGHT, maxHeight);
-  const isRightAnchored = normalized.anchor === "top-right" || normalized.anchor === "bottom-right";
-  const isBottomAnchored = normalized.anchor === "bottom" || normalized.anchor === "bottom-left" || normalized.anchor === "bottom-right";
-  const isTopAnchored = normalized.anchor === "top" || normalized.anchor === "top-left" || normalized.anchor === "top-right";
+  const width = Math.min(cfg.widthPercent / canvasAspect, 100);
+  const height = Math.min(cfg.heightPercent, 100);
   return {
-    left: isFullWidthBar
-      ? 0
-      : isRightAnchored
-        ? 100 - xOffset - width
-        : normalized.anchor === "top" || normalized.anchor === "bottom"
-          ? (100 - width) / 2
-          : xOffset,
-    top: isBottomAnchored ? 100 - yOffset - height : isTopAnchored ? yOffset : (100 - height) / 2,
+    left: clamp(cfg.xPercent, 0, 100 - width),
+    top: clamp(cfg.yPercent, 0, 100 - height),
     width,
     height,
   };
 }
 
 /**
- * Writes an edited box back to the element while keeping its anchor inset fixed.
+ * Writes an edited box back to the element for ONE ratio only.
  */
 export function applyBox(
   el: WatermarkElement,
   ratio: AspectRatioType,
   box: ElementBox,
-  canvasAspect = 1,
+  canvasAspect: number = aspectOf(ratio),
 ): WatermarkElement {
-  const config = resolveRatioConfig(el, ratio);
-  const normalized = normalizeWatermarkAnchor({
-    ...el,
-    xPercent: config.xPercent,
-    yPercent: config.yPercent,
-    widthPercent: config.widthPercent,
-    heightPercent: config.heightPercent,
+  return updateElementForRatio(el, ratio, {
+    xPercent: round1(box.left),
+    yPercent: round1(box.top),
+    widthPercent: round1(box.width * canvasAspect),
+    heightPercent: round1(box.height),
   });
-  const baseWidth = Math.min(1, 1 / canvasAspect);
-  const baseHeight = Math.min(1, canvasAspect);
-  const isFullWidthBar = el.type === "shape" && (normalized.anchor === "top" || normalized.anchor === "bottom");
-  const updated = updateElementForRatio(el, ratio, {
-    xPercent: isFullWidthBar ? 0 : DEFAULT_ANCHOR_INSET_PERCENT,
-    yPercent: isFullWidthBar ? 0 : DEFAULT_ANCHOR_INSET_PERCENT,
-    widthPercent: isFullWidthBar ? 100 : round1(box.width / baseWidth),
-    heightPercent: round1(box.height / baseHeight),
-  });
-  return { ...updated, anchor: normalized.anchor };
 }
 
 export function moveBox(box: ElementBox, dx: number, dy: number): ElementBox {
@@ -285,55 +287,16 @@ export function moveBox(box: ElementBox, dx: number, dy: number): ElementBox {
   };
 }
 
-export function resizeBox(
-  box: ElementBox,
-  handle: ResizeHandle,
-  dx: number,
-  dy: number,
-  anchor?: WatermarkAnchor,
-): ElementBox {
+export function resizeBox(box: ElementBox, handle: ResizeHandle, dx: number, dy: number): ElementBox {
   let left = box.left;
   let top = box.top;
   let right = box.left + box.width;
   let bottom = box.top + box.height;
 
-  const isRightAnchored = anchor === "top-right" || anchor === "bottom-right";
-  const isLeftAnchored = anchor === "top-left" || anchor === "bottom-left";
-  const isTopAnchored = anchor === "top" || anchor === "top-left" || anchor === "top-right";
-  const isBottomAnchored = anchor === "bottom" || anchor === "bottom-left" || anchor === "bottom-right";
-
-  if (anchor === "top" || anchor === "bottom") {
-    left = 0;
-    right = 100;
-  } else if (isLeftAnchored) {
-    const minRight = left + MIN_BOX_WIDTH;
-    const maxRight = 100 - left;
-    if (handle.includes("e")) right = clamp(right + dx, minRight, maxRight);
-    else if (handle.includes("w")) right = clamp(right - dx, minRight, maxRight);
-  } else if (isRightAnchored) {
-    const minLeft = 100 - right;
-    const maxLeft = right - MIN_BOX_WIDTH;
-    if (handle.includes("w")) left = clamp(left + dx, minLeft, maxLeft);
-    else if (handle.includes("e")) left = clamp(left - dx, minLeft, maxLeft);
-  } else {
-    if (handle.includes("e")) right = clamp(right + dx, left + MIN_BOX_WIDTH, 100);
-    if (handle.includes("w")) left = clamp(left + dx, 0, right - MIN_BOX_WIDTH);
-  }
-
-  if (isTopAnchored) {
-    const minBottom = top + MIN_BOX_HEIGHT;
-    const maxBottom = anchor === "top" ? 100 : 100 - top;
-    if (handle.includes("s")) bottom = clamp(bottom + dy, minBottom, maxBottom);
-    else if (handle.includes("n")) bottom = clamp(bottom - dy, minBottom, maxBottom);
-  } else if (isBottomAnchored) {
-    const minTop = anchor === "bottom" ? 0 : 100 - bottom;
-    const maxTop = bottom - MIN_BOX_HEIGHT;
-    if (handle.includes("n")) top = clamp(top + dy, minTop, maxTop);
-    else if (handle.includes("s")) top = clamp(top - dy, minTop, maxTop);
-  } else {
-    if (handle.includes("s")) bottom = clamp(bottom + dy, top + MIN_BOX_HEIGHT, 100);
-    if (handle.includes("n")) top = clamp(top + dy, 0, bottom - MIN_BOX_HEIGHT);
-  }
+  if (handle.includes("e")) right = clamp(right + dx, left + MIN_BOX_WIDTH, 100);
+  if (handle.includes("w")) left = clamp(left + dx, 0, right - MIN_BOX_WIDTH);
+  if (handle.includes("s")) bottom = clamp(bottom + dy, top + MIN_BOX_HEIGHT, 100);
+  if (handle.includes("n")) top = clamp(top + dy, 0, bottom - MIN_BOX_HEIGHT);
 
   return { left, top, width: right - left, height: bottom - top };
 }
