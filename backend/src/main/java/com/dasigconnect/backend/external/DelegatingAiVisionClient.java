@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Primary
-public class DelegatingAiVisionClient implements AiVisionClient {
+public class DelegatingAiVisionClient implements AiVisionClient, MediaClassificationClient {
 
     private static final Logger log = LoggerFactory.getLogger(DelegatingAiVisionClient.class);
 
@@ -27,10 +27,10 @@ public class DelegatingAiVisionClient implements AiVisionClient {
     public DelegatingAiVisionClient(
             GeminiVisionClient geminiVisionClient,
             ClaudeVisionClient claudeVisionClient,
-            @Value("${app.ai.provider:gemini}") String activeProvider) {
+            @Value("${app.ai.provider:claude}") String activeProvider) {
         this.geminiVisionClient = geminiVisionClient;
         this.claudeVisionClient = claudeVisionClient;
-        this.activeProvider = activeProvider == null ? "gemini" : activeProvider.trim().toLowerCase();
+        this.activeProvider = activeProvider == null ? "claude" : activeProvider.trim().toLowerCase();
     }
 
     public AiVisionClient activeClient() {
@@ -135,6 +135,18 @@ public class DelegatingAiVisionClient implements AiVisionClient {
     @Override
     public String providerName() {
         return activeClient().providerName();
+    }
+
+    @Override
+    public String modelName() {
+        AiVisionClient active = activeClient();
+        if (active instanceof ClaudeVisionClient claude) {
+            return claude.modelName();
+        }
+        if (active instanceof GeminiVisionClient gemini) {
+            return gemini.modelName();
+        }
+        return providerName();
     }
 }
 
