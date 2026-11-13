@@ -412,7 +412,7 @@
    ========================================================================== */
 .canva-drawer {
   position: absolute;
-  left: 76px;
+  left: 0;
   top: 0;
   bottom: 0;
   width: 300px;
@@ -561,7 +561,7 @@
   width: 32px;
   height: 12px;
   background: #1877f2;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .shape-gradient-preview .mini-gradient {
@@ -1173,29 +1173,220 @@
   transform: scale(1.18);
 }
 
-.canva-custom-color-row {
+.canva-color-dropdown {
+  width: 224px;
+}
+
+.canva-custom-picker {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  padding-top: 6px;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
   border-top: 1px solid #f1f5f9;
 }
 
-.canva-custom-color-row input[type="color"] {
-  border: none;
-  width: 24px;
-  height: 24px;
+.canva-spectrum-box {
+  position: relative;
+  width: 100%;
+  height: 112px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.canva-spectrum-white {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, #ffffff, transparent);
+}
+
+.canva-spectrum-black {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, #000000, transparent);
+}
+
+.canva-spectrum-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.canva-hue-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #ff0000 0%,
+    #ffff00 17%,
+    #00ff00 33%,
+    #00ffff 50%,
+    #0000ff 67%,
+    #ff00ff 83%,
+    #ff0000 100%
+  );
+  outline: none;
   cursor: pointer;
-  background: transparent;
+}
+
+.canva-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1877f2;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+}
+
+.canva-hue-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1877f2;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+}
+
+.canva-hex-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canva-hex-swatch {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.canva-hex-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.canva-hex-input:focus {
+  border-color: #1877f2;
+  background: #ffffff;
 }
 
 .canva-align-dropdown {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.canva-anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.canva-align-dropdown .canva-anchor-option {
+  min-height: 38px;
+  justify-content: flex-start;
+  padding: 5px 7px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.canva-align-dropdown .canva-anchor-option.is-active {
+  border-color: #1877f2;
+  background: #eff6ff;
+  color: #1877f2;
+}
+
+.canva-anchor-preview {
+  position: relative;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 16px;
+  border: 1px solid #94a3b8;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.canva-anchor-preview::after {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.canva-anchor-preview-top-left::after {
+  top: 2px;
+  left: 2px;
+}
+
+.canva-anchor-preview-top-right::after {
+  top: 2px;
+  right: 2px;
+}
+
+.canva-anchor-preview-bottom-left::after {
+  bottom: 2px;
+  left: 2px;
+}
+
+.canva-anchor-preview-bottom-right::after {
+  right: 2px;
+  bottom: 2px;
+}
+
+.canva-anchor-preview-top::after,
+.canva-anchor-preview-bottom::after {
+  left: 3px;
+  right: 3px;
+  width: auto;
+  height: 3px;
+  border-radius: 0;
+}
+
+.canva-anchor-preview-top::after {
+  top: 2px;
+}
+
+.canva-anchor-preview-bottom::after {
+  bottom: 2px;
+}
+
+.canva-anchor-hint {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .canva-align-dropdown button {
@@ -1237,40 +1428,165 @@
   overflow: auto;
   position: relative;
   background: #f1f5f9;
+  min-height: 0;
+  container-type: size;
+}
+
+.canva-frame-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 14px;
+  box-sizing: border-box;
 }
 
 .canva-frame {
   position: relative;
   flex: none;
-  height: 410px;
-  max-height: 410px;
-  width: calc(410px * var(--canva-aspect-num, 1));
-  max-width: 100%;
-  aspect-ratio: var(--canva-aspect, 1 / 1);
-  border-radius: 10px;
+  box-sizing: border-box;
+  width: min(86cqi, 620px, 78cqh);
+  height: min(86cqi, 620px, 78cqh);
+  max-height: 82cqh;
+  max-width: 90cqi;
+  aspect-ratio: 1 / 1;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid #cbd5e1;
+  border: 2px solid #1683f8;
   box-shadow: none;
-  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1), aspect-ratio 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.16s ease, height 0.16s ease;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
   container-type: size;
 }
 
-.canva-frame.wm-aspect-1-1 {
-  --canva-aspect: 1 / 1;
-  --canva-aspect-num: 1;
+.canva-frame.is-resizing-canvas {
+  transition: none;
 }
 
-.canva-frame.wm-aspect-4-3 {
-  --canva-aspect: 4 / 3;
-  --canva-aspect-num: 1.333333;
+/* DevTools-Style Responsive Canvas Resize Handles */
+.wm-canvas-resize-handle {
+  position: absolute;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 35;
+  touch-action: none;
+  user-select: none;
 }
 
-.canva-frame.wm-aspect-16-9 {
-  --canva-aspect: 16 / 9;
-  --canva-aspect-num: 1.777778;
+.wm-canvas-resize-e,
+.wm-canvas-resize-w {
+  top: 24px;
+  bottom: 24px;
+  width: 14px;
+  cursor: ew-resize;
+}
+
+.wm-canvas-resize-e {
+  right: 0;
+}
+
+.wm-canvas-resize-w {
+  left: 0;
+}
+
+.wm-canvas-resize-s,
+.wm-canvas-resize-n {
+  left: 24px;
+  right: 24px;
+  height: 14px;
+  cursor: ns-resize;
+}
+
+.wm-canvas-resize-s {
+  bottom: 0;
+}
+
+.wm-canvas-resize-n {
+  top: 0;
+}
+
+.wm-canvas-resize-grip {
+  display: block;
+  border-radius: 999px;
+  background: #94a3b8;
+  border: 1px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.wm-canvas-resize-e .wm-canvas-resize-grip,
+.wm-canvas-resize-w .wm-canvas-resize-grip {
+  width: 6px;
+  height: 42px;
+}
+
+.wm-canvas-resize-s .wm-canvas-resize-grip,
+.wm-canvas-resize-n .wm-canvas-resize-grip {
+  width: 42px;
+  height: 6px;
+}
+
+.wm-canvas-resize-handle:hover .wm-canvas-resize-grip,
+.canva-frame-shell.is-resizing-canvas .wm-canvas-resize-grip {
+  background: #1877f2;
+}
+
+.wm-canvas-resize-e:hover .wm-canvas-resize-grip,
+.wm-canvas-resize-w:hover .wm-canvas-resize-grip {
+  transform: scaleY(1.12);
+}
+
+.wm-canvas-resize-s:hover .wm-canvas-resize-grip,
+.wm-canvas-resize-n:hover .wm-canvas-resize-grip {
+  transform: scaleX(1.12);
+}
+
+.wm-canvas-resize-se {
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+}
+
+.wm-canvas-resize-corner-grip {
+  width: 12px;
+  height: 12px;
+  border-right: 3px solid #64748b;
+  border-bottom: 3px solid #64748b;
+  border-radius: 0 0 2px 0;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.wm-canvas-resize-se:hover .wm-canvas-resize-corner-grip,
+.canva-frame-shell.is-resizing-canvas .wm-canvas-resize-corner-grip {
+  border-color: #1877f2;
+  transform: scale(1.1);
+}
+
+.wm-canvas-size-hud {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+  z-index: 60;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Canvas Backdrops */
@@ -1285,30 +1601,217 @@
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
 }
 
-.canva-frame.wm-bg-sample-light {
-  background: #f8fafc;
-}
-
-.canva-frame.wm-bg-sample-dark {
-  background: #090d16;
-}
-
-.wm-canvas-sample-bg {
+.wm-canvas-sample-image {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   pointer-events: none;
-  background-size: cover;
-  background-position: center;
+  user-select: none;
 }
 
-.wm-sample-light-gradient {
-  background: linear-gradient(135deg, #e0e7ff 0%, #fae8ff 50%, #dbeafe 100%);
-  opacity: 0.95;
+.wm-anchor-image-input {
+  display: none;
 }
 
-.wm-sample-dark-gradient {
-  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #030712 100%);
-  opacity: 0.95;
+.wm-anchor-control {
+  position: absolute;
+  z-index: 35;
+  pointer-events: none;
+}
+
+.wm-anchor-control.is-open {
+  z-index: 45;
+}
+
+.wm-corner-anchor {
+  width: clamp(56px, 13%, 78px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed rgba(226, 232, 240, 0.9);
+  background: rgba(148, 163, 184, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.25);
+}
+
+.canva-frame.wm-bg-sample-photo .wm-corner-anchor {
+  border-color: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.wm-corner-anchor-top-left {
+  top: 3%;
+  left: 3%;
+  top: calc(3 * min(1cqi, 1cqb));
+  left: calc(3 * min(1cqi, 1cqb));
+}
+
+.wm-corner-anchor-top-right {
+  top: 3%;
+  right: 3%;
+  top: calc(3 * min(1cqi, 1cqb));
+  right: calc(3 * min(1cqi, 1cqb));
+}
+
+.wm-corner-anchor-bottom-left {
+  bottom: 3%;
+  left: 3%;
+  bottom: calc(3 * min(1cqi, 1cqb));
+  left: calc(3 * min(1cqi, 1cqb));
+}
+
+.wm-corner-anchor-bottom-right {
+  right: 3%;
+  bottom: 3%;
+  right: calc(3 * min(1cqi, 1cqb));
+  bottom: calc(3 * min(1cqi, 1cqb));
+}
+
+.wm-anchor-add {
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 3px;
+  background: #64748b;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.35), 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.wm-anchor-add:hover:not(:disabled),
+.wm-anchor-add[aria-expanded="true"]:not(:disabled) {
+  background: #1877f2;
+  transform: scale(1.05);
+}
+
+.wm-anchor-add:disabled {
+  background: rgba(100, 116, 139, 0.45);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: not-allowed;
+}
+
+.wm-edge-anchor {
+  left: 0;
+  right: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wm-edge-anchor::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1.5px dashed rgba(226, 232, 240, 0.9);
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.55));
+}
+
+.wm-edge-anchor-top {
+  top: 9%;
+}
+
+.wm-edge-anchor-bottom {
+  bottom: 9%;
+}
+
+.wm-edge-anchor .wm-anchor-add {
+  z-index: 1;
+}
+
+.wm-anchor-menu {
+  position: absolute;
+  z-index: 30;
+  width: 204px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16), 0 4px 10px rgba(24, 119, 242, 0.12);
+  pointer-events: auto;
+}
+
+.wm-anchor-menu strong {
+  padding: 4px 8px 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.wm-anchor-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.wm-anchor-menu button i {
+  font-size: 16px;
+  color: #1877f2;
+  flex-shrink: 0;
+}
+
+.wm-anchor-menu button:hover {
+  background: #eff6ff;
+  color: #145fc3;
+}
+
+.wm-anchor-menu-top-left {
+  top: calc(100% + 6px);
+  left: 0;
+}
+
+.wm-anchor-menu-top-right {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.wm-anchor-menu-bottom-left {
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+
+.wm-anchor-menu-bottom-right {
+  right: 0;
+  bottom: calc(100% + 6px);
+}
+
+.wm-edge-menu-top {
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.wm-edge-menu-bottom {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 /* ==========================================================================
@@ -1316,7 +1819,7 @@
    ========================================================================== */
 .wm-canvas-element {
   position: absolute;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   display: flex;
@@ -1332,7 +1835,7 @@
 }
 
 .wm-canvas-element:active {
-  cursor: grabbing;
+  cursor: pointer;
 }
 
 .wm-canvas-element.wm-type-text:active {
@@ -1612,7 +2115,7 @@
 }
 
 /* ==========================================================================
-   6. Persistent Bottom Control Bar (Format & Backdrop)
+   6. Persistent Bottom Control Bar (Preview & Zoom)
    ========================================================================== */
 .canva-bottom-bar {
   display: flex;
@@ -1766,6 +2269,50 @@
   outline-offset: 2px;
 }
 
+.canva-canvas-size-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.canva-canvas-size-pill i {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.canva-canvas-size-reset {
+  border: none;
+  background: #e2e8f0;
+  color: #1e293b;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.canva-canvas-size-reset:hover {
+  background: #1877f2;
+  color: #ffffff;
+}
+
+.canva-canvas-size-reset:hover i {
+  color: #ffffff;
+}
+
 /* ==========================================================================
    7. Responsive Breakpoints
    ========================================================================== */
@@ -1775,10 +2322,22 @@
     min-height: auto;
   }
 
+  .canva-studio-main {
+    flex: 1 1 0;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .canva-workspace {
+    min-height: 0;
+  }
+
   /* Clean Horizontal Navigation Rail across the top */
   .canva-rail {
     width: 100%;
     flex: 0 0 auto;
+    height: auto;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
@@ -1788,6 +2347,7 @@
     box-sizing: border-box;
     gap: 8px;
     background: #ffffff;
+    z-index: 90;
   }
 
   .canva-rail-top {
@@ -1850,11 +2410,11 @@
     z-index: 120;
   }
 
-  /* Flyout Drawer appears cleanly under the horizontal rail */
+  /* Flyout Drawer appears cleanly under the header */
   .canva-drawer {
     left: 0;
     right: 0;
-    top: 68px;
+    top: 0;
     width: 100%;
     max-height: 300px;
     border-right: none;
@@ -1906,7 +2466,15 @@
 
   /* Canvas Stage on Mobile */
   .canva-stage-wrap {
+    flex: 1 1 0;
+    min-height: 0;
     padding: 16px 12px;
+    container-type: size;
+  }
+
+  .canva-frame {
+    width: min(100%, 82cqh);
+    max-height: 82cqh;
   }
 
   /* Bottom Controls: Horizontal Swipeable Pills */
@@ -1949,6 +2517,39 @@
 }
 
 @media (max-width: 560px) {
+  .canva-studio-header {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .canva-studio-header .sub-back-btn {
+    gap: 0;
+  }
+
+  .canva-studio-header .sub-back-btn span,
+  .canva-header-ratio-badge {
+    display: none;
+  }
+
+  .canva-header-center {
+    min-width: 0;
+  }
+
+  .canva-header-center .canva-header-title {
+    font-size: 15px;
+  }
+
+  .canva-header-right {
+    gap: 0;
+  }
+
+  .canva-header-save-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
   .canva-rail {
     padding: 6px 10px;
     gap: 4px;
@@ -1979,17 +2580,18 @@
   .canva-bottom-bar {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 6px;
+    padding: 8px;
   }
 
   .canva-pill-segment {
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
   }
 
   .canva-segment-item {
     padding: 4px 10px;
-    min-height: 28px;
+    min-height: 40px;
     font-size: 11px;
   }
 
@@ -2001,5 +2603,16 @@
 
   .canva-rail-btn i {
     font-size: 17px;
+  }
+
+  .canva-tool-btn,
+  .canva-stepper-btn,
+  .canva-zoom-btn,
+  .canva-layer-icon-btn {
+    min-height: 40px;
+  }
+
+  .canva-layer-icon-btn {
+    min-width: 40px;
   }
 }

@@ -1,81 +1,137 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { EngagementRecommendations } from "../../../api/submissionApi";
 import "./EngagementRecommendationsPanel.css";
 
-/** Weekday / date / time parts for a slot tile, in the viewer's locale. */
-function slotParts(value: string) {
+function slotTime(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return { weekday: "", day: value, time: "" };
-  return {
-    weekday: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date),
-    day: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date),
-    time: new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date),
-  };
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Manila",
+  }).format(date);
 }
 
-/**
- * Suggested publishing times as a row of calendar-style tiles (weekday,
- * date, time; a "Top pick" badge on the best-scoring slot when Page history
- * separates them; a relative
- * engagement bar when the suggestions come from real Page history). Picking one fills the
- * Date / Time fields below it. The explanation (where the suggestions come
- * from, and that any valid custom time is fine) sits behind the ⓘ toggle,
- * and the "why" line only appears for the selected tile — so the step reads
- * as decisions, with the guidance one tap away.
- */
+function slotDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(date);
+}
+
+function headingDateLabel(dateStr?: string, isDefaultDate?: boolean) {
+  if (!dateStr) return "";
+  const parsed = new Date(`${dateStr}T12:00:00+08:00`);
+  if (Number.isNaN(parsed.getTime())) return dateStr;
+  const formatted = new Intl.DateTimeFormat("en-PH", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(parsed);
+  return isDefaultDate ? `Today, ${formatted}` : formatted;
+}
+
+const ROWS_PER_PAGE = 4;
+
+function useAvailabilityColumns() {
+  const getColumns = () => {
+    if (window.matchMedia("(max-width: 420px)").matches) return 2;
+    if (window.matchMedia("(max-width: 720px)").matches) return 3;
+    return 4;
+  };
+  const [columns, setColumns] = useState(getColumns);
+
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 420px)");
+    const tablet = window.matchMedia("(max-width: 720px)");
+    const updateColumns = () => setColumns(getColumns());
+    mobile.addEventListener("change", updateColumns);
+    tablet.addEventListener("change", updateColumns);
+    return () => {
+      mobile.removeEventListener("change", updateColumns);
+      tablet.removeEventListener("change", updateColumns);
+    };
+  }, []);
+
+  return columns;
+}
+
 export function EngagementRecommendationsPanel({
   loading,
   recommendations,
   selectedAt,
+  date,
+  isDefaultDate = false,
   onSelect,
 }: {
   loading: boolean;
   recommendations: EngagementRecommendations | null;
   selectedAt?: string;
+  date?: string;
+  isDefaultDate?: boolean;
   onSelect: (scheduledAt: string) => void;
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
   const infoId = useId();
+  const columns = useAvailabilityColumns();
+  const pageSize = columns * ROWS_PER_PAGE;
+  const slotsCacheKey = recommendations?.slots
+    .map((slot) => `${slot.scheduledAt}:${slot.score}`)
+    .join("|") ?? "";
+  const bestSlotIndex = recommendations?.slots.reduce(
+    (bestIndex, slot, index, slots) => slot.score > slots[bestIndex].score ? index : bestIndex,
+    0,
+  ) ?? 0;
+
+  useEffect(() => {
+    setPageIndex(Math.floor(bestSlotIndex / pageSize));
+  }, [bestSlotIndex, slotsCacheKey, pageSize]);
 
   if (loading) {
     return (
       <div className="sub-engagement-panel sub-engagement-loading" aria-live="polite">
         <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
-        <span>Finding the best times to post…</span>
+        <span>Checking available times…</span>
       </div>
     );
   }
-  if (!recommendations || recommendations.slots.length === 0) return null;
+  if (!recommendations) return null;
 
-  const historical = recommendations.source === "HISTORICAL";
   const selectedTime = selectedAt ? new Date(selectedAt).getTime() : NaN;
   const selectedSlot = recommendations.slots.find(
     (slot) => new Date(slot.scheduledAt).getTime() === selectedTime,
   );
-  const scores = recommendations.slots.map((slot) => slot.score);
-  const maxScore = Math.max(...scores, 0);
-  // "Top pick" only when real Page history actually separates the slots; with
-  // general guidance every slot scores the same, so a badge would be arbitrary.
-  const topSlot =
-    historical && maxScore > Math.min(...scores)
-      ? recommendations.slots.find((slot) => slot.score === maxScore)
-      : undefined;
+  const bestSlot = recommendations.slots[bestSlotIndex];
+  const totalPages = Math.max(1, Math.ceil(recommendations.slots.length / pageSize));
+  const currentPage = Math.min(pageIndex, totalPages - 1);
+  const visibleSlots = recommendations.slots.slice(
+    currentPage * pageSize,
+    (currentPage + 1) * pageSize,
+  );
+
+  const dateLabel = headingDateLabel(date, isDefaultDate);
 
   return (
     <div className="sub-engagement-panel">
       <div className="sub-engagement-heading">
         <span className="sub-engagement-title">
-          <i className="ti ti-chart-line" aria-hidden="true" /> Suggested times
-        </span>
-        <span className={`sub-engagement-source${historical ? " is-historical" : ""}`}>
-          {historical ? `Based on ${recommendations.sampleSize} posts` : "General guidance"}
+          <i className="ti ti-calendar-clock" aria-hidden="true" /> Available times
+          {dateLabel && (
+            <span className="sub-engagement-date-tag">{dateLabel}</span>
+          )}
         </span>
         <button
           type="button"
           className="sub-engagement-info-btn"
           aria-expanded={infoOpen}
           aria-controls={infoId}
-          aria-label="About suggested times"
+          aria-label="About available times"
           onClick={() => setInfoOpen((open) => !open)}
         >
           <i className={`ti ${infoOpen ? "ti-x" : "ti-info-circle"}`} aria-hidden="true" />
@@ -84,69 +140,83 @@ export function EngagementRecommendationsPanel({
 
       {infoOpen && (
         <div id={infoId} className="sub-engagement-info">
-          <p>
-            {recommendations.notice ||
-              (historical
-                ? `Picked from when your Page's last ${recommendations.sampleSize} Facebook posts got the most reactions, comments, and shares.`
-                : "Based on general weekday-evening guidance. Suggestions improve as more Facebook history is collected.")}
-          </p>
-          <p>
-            Tap a suggestion to fill in the date and time, or choose any valid time yourself.
-            {historical && " The bar under each time shows how its engagement compares."}
-          </p>
+          <p>{recommendations.notice || "Open calendar times for this date."}</p>
+          <p>Times that are already booked or too close to another scheduled post are hidden automatically.</p>
+          <p>The highlighted Best available time is when your audience is most likely to be active.</p>
         </div>
       )}
 
-      <div className="sub-engagement-tiles">
-        {recommendations.slots.map((slot) => {
-          const selected = slot === selectedSlot;
-          const top = slot === topSlot;
-          const { weekday, day, time } = slotParts(slot.scheduledAt);
-          const strength = maxScore > 0 ? Math.max(0.15, slot.score / maxScore) : 0;
-          return (
-            <button
-              type="button"
-              key={slot.scheduledAt}
-              className={`sub-engagement-tile${selected ? " is-selected" : ""}${top ? " is-top" : ""}`}
-              aria-pressed={selected}
-              aria-label={`${weekday} ${day}, ${time}${top ? ", top pick" : ""}. ${slot.windowLabel}${
-                slot.warnings[0] ? `. Note: ${slot.warnings[0]}` : ""
-              }`}
-              title={[slot.windowLabel, ...slot.warnings].join(" — ")}
-              onClick={() => onSelect(slot.scheduledAt)}
-            >
-              {top && (
-                <span className="sub-engagement-tile-badge" aria-hidden="true">
-                  <i className="ti ti-star-filled" /> Top pick
-                </span>
-              )}
-              {slot.warnings.length > 0 && (
-                <i className="ti ti-alert-triangle sub-engagement-tile-warn" aria-hidden="true" />
-              )}
-              <span className="sub-engagement-tile-weekday" aria-hidden="true">{weekday}</span>
-              <span className="sub-engagement-tile-day" aria-hidden="true">{day}</span>
-              <span className="sub-engagement-tile-time" aria-hidden="true">{time}</span>
-              {historical && (
-                <span className="sub-engagement-tile-meter" aria-hidden="true">
-                  <span style={{ width: `${Math.round(strength * 100)}%` }} />
-                </span>
-              )}
-              {selected && (
-                <i className="ti ti-circle-check-filled sub-engagement-tile-check" aria-hidden="true" />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {recommendations.slots.length === 0 ? (
+        <div className="sub-engagement-empty" role="status">
+          <i className="ti ti-calendar-off" aria-hidden="true" />
+          <span>No available times for this date.</span>
+        </div>
+      ) : (
+        <div className="sub-engagement-tiles">
+          {visibleSlots.map((slot) => {
+            const selected = slot === selectedSlot;
+            const best = slot === bestSlot;
+            const time = slotTime(slot.scheduledAt);
+            const slotDay = slotDateLabel(slot.scheduledAt);
+            return (
+              <button
+                type="button"
+                key={slot.scheduledAt}
+                className={`sub-engagement-tile${best ? " is-top" : ""}${selected ? " is-selected" : ""}`}
+                aria-pressed={selected}
+                aria-label={`${slotDay ? `${slotDay}, ` : ""}${time}, available${best ? ", best available time" : ""}${selected ? ", selected" : ""}`}
+                title={best ? slot.windowLabel : "Available calendar time"}
+                onClick={() => onSelect(slot.scheduledAt)}
+              >
+                {best && (
+                  <span className="sub-engagement-tile-badge">
+                    <i className="ti ti-star-filled" aria-hidden="true" /> Best available
+                  </span>
+                )}
+                {slotDay && <span className="sub-engagement-tile-date">{slotDay}</span>}
+                <span className="sub-engagement-tile-time">{time}</span>
+                <span className="sub-engagement-tile-status">Available</span>
+                {selected && (
+                  <i className="ti ti-circle-check-filled sub-engagement-tile-check" aria-hidden="true" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <nav className="sub-engagement-pagination" aria-label="Available time pages">
+          <button
+            type="button"
+            className="sub-engagement-page-btn"
+            disabled={currentPage === 0}
+            aria-label="Previous available times page"
+            onClick={() => setPageIndex((page) => Math.max(0, page - 1))}
+          >
+            <i className="ti ti-chevron-left" aria-hidden="true" />
+          </button>
+          <span className="sub-engagement-page-status" aria-live="polite">
+            {currentPage + 1} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className="sub-engagement-page-btn"
+            disabled={currentPage >= totalPages - 1}
+            aria-label="Next available times page"
+            onClick={() => setPageIndex((page) => Math.min(totalPages - 1, page + 1))}
+          >
+            <i className="ti ti-chevron-right" aria-hidden="true" />
+          </button>
+        </nav>
+      )}
 
       {selectedSlot && (
         <p className="sub-engagement-why" aria-live="polite">
-          <i className="ti ti-trending-up" aria-hidden="true" />
+          <i className="ti ti-circle-check" aria-hidden="true" />
           <span>
-            {selectedSlot.windowLabel}
-            {selectedSlot.warnings[0] && (
-              <em className="sub-engagement-why-warn">{selectedSlot.warnings[0]}</em>
-            )}
+            {slotTime(selectedSlot.scheduledAt)} is available for the selected date.
+            {selectedSlot === bestSlot ? " It is also the benchmark-based best available time." : ""}
           </span>
         </p>
       )}

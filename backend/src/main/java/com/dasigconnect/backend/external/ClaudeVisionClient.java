@@ -20,9 +20,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -68,9 +73,179 @@ public class ClaudeVisionClient implements AiVisionClient {
     @Value("${anthropic.api.model:claude-haiku-4-5-20251001}")
     private String model;
 
+    @Value("${anthropic.api.token-limit:0}")
+    private long configuredTokenLimit;
+
     /** Used as Bearer token when fetching images from a private Supabase bucket. */
     @Value("${app.supabase.service-role-key:}")
     private String supabaseServiceRoleKey;
+
+    private final AtomicInteger tokensLimit = new AtomicInteger(0);
+    private final AtomicInteger tokensRemaining = new AtomicInteger(0);
+    private final AtomicReference<Instant> tokensResetAt = new AtomicReference<>(null);
+    private final AtomicLong totalInputTokensUsed = new AtomicLong(0);
+    private final AtomicLong totalOutputTokensUsed = new AtomicLong(0);
+    private final AtomicBoolean creditsExhausted = new AtomicBoolean(false);
+    private final AtomicBoolean rateLimited = new AtomicBoolean(false);
+
+    public record QuotaStatus(
+            int remaining,
+            int limit,
+            Instant resetAt,
+            boolean creditsExhausted,
+            boolean rateLimited,
+            long totalTokensUsed,
+            long inputTokensUsed,
+            long outputTokensUsed,
+            double estimatedCostUsd,
+            long configuredTokenLimit) {}
+
+    public QuotaStatus getQuotaStatus() {
+        Instant reset = tokensResetAt.get();
+        if (reset != null && Instant.now().isAfter(reset)) {
+            rateLimited.set(false);
+            if (tokensLimit.get() > 0) {
+                tokensRemaining.set(tokensLimit.get());
+            }
+            tokensResetAt.set(null);
+        }
+
+        long inTokens = totalInputTokensUsed.get();
+        long outTokens = totalOutputTokensUsed.get();
+        long used = inTokens + outTokens;
+        // Claude 3.5 Haiku pricing: $0.80 / 1M input tokens, $4.00 / 1M output tokens
+        double estimatedCost = (inTokens * 0.0000008) + (outTokens * 0.000004);
+
+        if (configuredTokenLimit > 0) {
+            int cap = (int) Math.min(Integer.MAX_VALUE, configuredTokenLimit);
+            int left = creditsExhausted.get() ? 0 : (int) Math.max(0L, cap - used);
+            return new QuotaStatus(
+                    left,
+                    cap,
+                    tokensResetAt.get(),
+                    creditsExhausted.get(),
+                    rateLimited.get(),
+                    used,
+                    inTokens,
+                    outTokens,
+                    estimatedCost,
+                    configuredTokenLimit);
+        }
+
+        // Live Anthropic rate limit header (12M tokens/min) is throughput capacity, not a credit quota.
+        // We only return limit > 0 when an explicit token limit budget is configured via ANTHROPIC_TOKEN_LIMIT
+        // so that System Health does NOT display a misleading 100% credit quota bar for prepaid accounts.
+        return new QuotaStatus(
+                creditsExhausted.get() ? 0 : -1,
+                creditsExhausted.get() ? 1 : 0,
+                tokensResetAt.get(),
+                creditsExhausted.get(),
+                rateLimited.get(),
+                used,
+                inTokens,
+                outTokens,
+                estimatedCost,
+                0);
+    }
+
+    /**
+     * Queries Anthropic's free count_tokens endpoint when no rate-limit headers have
+     * been captured yet in this session so System Health can surface live token limits
+     * and billing/credit status without consuming completion tokens.
+     */
+    public void probeQuotaIfUnset() {
+        if (apiKey == null || apiKey.isBlank()) return;
+        if (tokensLimit.get() > 0 || creditsExhausted.get()) return;
+        try {
+            String activeModel = (model == null || model.isBlank()) ? "claude-haiku-4-5-20251001" : model;
+            String payload = objectMapper.writeValueAsString(java.util.Map.of(
+                    "model", activeModel,
+                    "messages", List.of(java.util.Map.of("role", "user", "content", "ping"))));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.anthropic.com/v1/messages/count_tokens"))
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", ANTHROPIC_VERSION)
+                    .header("content-type", "application/json")
+                    .timeout(Duration.ofSeconds(4))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
+        } catch (Exception ex) {
+            log.debug("Claude quota probe skipped: {}", ex.getMessage());
+        }
+    }
+
+    private void recordApiResponse(HttpResponse<String> response) {
+        if (response == null) return;
+        int status = response.statusCode();
+        if (status >= 200 && status < 300) {
+            creditsExhausted.set(false);
+            rateLimited.set(false);
+            parseRateLimitHeaders(response);
+            recordTokenUsage(response.body());
+            return;
+        }
+
+        String body = response.body() == null ? "" : response.body().toLowerCase();
+        if (status == 402
+                || body.contains("credit balance")
+                || body.contains("purchase credits")
+                || body.contains("insufficient_quota")
+                || body.contains("billing")) {
+            creditsExhausted.set(true);
+            tokensRemaining.set(0);
+        } else if (status == 429) {
+            rateLimited.set(true);
+            tokensRemaining.set(0);
+            parseRateLimitHeaders(response);
+            if (tokensResetAt.get() == null) {
+                long retrySeconds = response.headers().firstValue("retry-after")
+                        .map(val -> {
+                            try {
+                                return Long.parseLong(val.trim());
+                            } catch (NumberFormatException ignored) {
+                                return 60L;
+                            }
+                        })
+                        .orElse(60L);
+                tokensResetAt.set(Instant.now().plusSeconds(Math.max(1L, retrySeconds)));
+            }
+        }
+    }
+
+    private void parseRateLimitHeaders(HttpResponse<String> response) {
+        response.headers().firstValue("anthropic-ratelimit-tokens-limit").ifPresent(val -> {
+            try {
+                int parsed = Integer.parseInt(val.trim());
+                if (parsed > 0) tokensLimit.set(parsed);
+            } catch (NumberFormatException ignored) {}
+        });
+        response.headers().firstValue("anthropic-ratelimit-tokens-remaining").ifPresent(val -> {
+            try {
+                int parsed = Integer.parseInt(val.trim());
+                tokensRemaining.set(Math.max(0, parsed));
+            } catch (NumberFormatException ignored) {}
+        });
+        response.headers().firstValue("anthropic-ratelimit-tokens-reset").ifPresent(val -> {
+            try {
+                tokensResetAt.set(Instant.parse(val.trim()));
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void recordTokenUsage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) return;
+        try {
+            JsonNode usage = objectMapper.readTree(responseBody).path("usage");
+            if (!usage.isMissingNode()) {
+                long inTokens = usage.path("input_tokens").asLong(0);
+                long outTokens = usage.path("output_tokens").asLong(0);
+                if (inTokens > 0) totalInputTokensUsed.addAndGet(inTokens);
+                if (outTokens > 0) totalOutputTokensUsed.addAndGet(outTokens);
+            }
+        } catch (Exception ignored) {}
+    }
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -183,6 +358,7 @@ public class ClaudeVisionClient implements AiVisionClient {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.warn("Claude API returned status {}: {}", response.statusCode(), response.body());
                 throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
@@ -273,6 +449,7 @@ public class ClaudeVisionClient implements AiVisionClient {
         HttpResponse<String> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
         } catch (java.net.http.HttpTimeoutException e) {
             throw new ClaudeApiException("Claude API timed out after 30 seconds.");
         } catch (Exception e) {
@@ -547,20 +724,26 @@ public class ClaudeVisionClient implements AiVisionClient {
             Selected tone: "%s"
 
             Tone definitions:
-            - professional: polished, official, clear, and suitable for public-sector posts.
-            - community: warm, inclusive, student-facing, and participation-oriented.
-            - energetic: upbeat, action-driven, and suitable for event promotion.
+            - professional: polished, credible, and modern public-sector voice — clear, authoritative, yet engaging and easy to read on Facebook.
+            - community: warm, relatable, student- and community-centered — celebrating shared pride, connection, and participation.
+            - energetic: upbeat, hype-building, and action-driven — great for event promotion and momentum.
+
+            Facebook caption style & formatting:
+            - Write the way high-performing, modern Facebook Page posts are written — natural, engaging, and human, never like a stiff press release or formal memo.
+            - Open with a scroll-stopping hook (first line) that grabs attention before Facebook's "See more" cut-off.
+            - Use short, scannable paragraphs with clean line breaks (blank lines between thoughts) rather than one dense wall of text.
+            - Use tasteful, relevant emojis as visual anchors where natural (without overdoing it).
+            - End with a light, natural engagement CTA (e.g., inviting reactions, comments, shares, or tagging peers) when appropriate, followed by 2-3 relevant hashtags on a clean final line (unless the contributor specifies otherwise).
 
             Rules for the caption:
-            - Keep the caption appropriate for DASIG/DOST public-sector communication.
-            - Stay relevant to the event, institution, media, draft caption, and contributor prompt.
+            - Focus directly on the actual subject shown in the attached image(s)/media, the Event title, and any contributor prompt. Never ignore them to write a generic organizational mission or "about us" post.
+            - Only mention the institution name as the host/poster when relevant; do not let the institution name override the actual topic of the photo or event title.
             - Use the saved event date and institution name when the contributor asks \
             for them or when they improve specificity.
             - Do not invent missing event dates, institution names, names, awards, \
             numbers, or official claims.
-            - If no contributor length or word-count instruction is provided, default to a concise Facebook caption.
+            - If no contributor length or word-count instruction is provided, default to a concise, punchy Facebook caption.
             - Never exceed %d words.
-            - If no contributor hashtag instruction is provided, include 2-3 relevant hashtags.
             - No offensive, discriminatory, sexual, violent, or otherwise inappropriate content.
 
             Return ONLY a valid JSON array with exactly 1 object, no markdown, no explanation:
@@ -722,6 +905,7 @@ public class ClaudeVisionClient implements AiVisionClient {
         HttpResponse<String> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
         } catch (java.net.http.HttpTimeoutException e) {
             throw new ClaudeApiException("Claude classification timed out.");
         } catch (Exception e) {

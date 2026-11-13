@@ -9,13 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
   getEngagementRecommendations,
   getSubmission,
   validateGuardRails,
-  type EngagementRecommendations,
   type GuardRailResult,
   type SavedMediaAsset,
   type SubmissionStatus,
@@ -434,8 +433,34 @@ export default function ValidationQueueScreen({
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
-  const [engagementRecs, setEngagementRecs] = useState<EngagementRecommendations | null>(null);
-  const [engagementLoading, setEngagementLoading] = useState(false);
+  const shouldLoadEngagementRecommendations =
+    editMode && editTab === "schedule" && Boolean(selected) && Boolean(editForm.scheduledDate);
+  const engagementRecommendationsQuery = useQuery({
+    queryKey: queryKeys.submissions.engagementRecommendations({
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: selected?.institutionId ?? null,
+      submissionId: selected?.id ?? null,
+      date: editForm.scheduledDate || null,
+    }),
+    queryFn: ({ signal }) =>
+      getEngagementRecommendations(
+        selected?.institutionId ?? null,
+        selected?.id ?? null,
+        editForm.scheduledDate || null,
+        signal,
+      ).then((response) => (response.data.available ? response.data : null)),
+    enabled: shouldLoadEngagementRecommendations,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const engagementRecs = shouldLoadEngagementRecommendations
+    ? engagementRecommendationsQuery.data ?? null
+    : null;
+  const engagementLoading =
+    shouldLoadEngagementRecommendations &&
+    (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(user, selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
@@ -589,7 +614,28 @@ export default function ValidationQueueScreen({
     ? locks[selected.id] ?? null
     : null;
 
-  const mediaAssets = selected?.mediaAssets ?? [];
+  const currentMediaAssets: SavedMediaAsset[] = useMemo(() => {
+    if (editMode) {
+      return editForm.media.map((item, idx): SavedMediaAsset => ({
+        id: item.assetId || item.key || `edit-media-${idx}`,
+        storageUrl: item.previewUrl,
+        fileName: item.fileName,
+        fileType: item.isImage ? "jpg" : "mp4",
+        fileSizeBytes: 0,
+        caption: item.caption,
+        skipWatermark: item.skipWatermark,
+      }));
+    }
+    return selected?.mediaAssets ?? [];
+  }, [editMode, editForm.media, selected?.mediaAssets]);
+
+  useEffect(() => {
+    if (mediaIndex >= currentMediaAssets.length && currentMediaAssets.length > 0) {
+      setMediaIndex(currentMediaAssets.length - 1);
+    }
+  }, [currentMediaAssets.length, mediaIndex]);
+
+  const mediaAssets = currentMediaAssets;
   const isSelfReview =
     Boolean(selected?.contributorEmail) &&
     selected?.contributorEmail?.toLowerCase() === user.email.toLowerCase();
@@ -1345,7 +1391,7 @@ export default function ValidationQueueScreen({
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
     const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
     if (generated) {
-      toast.success("AI caption generated! Review and refine, or click Approve.");
+      toast.success("AI caption generated! Review and refine, or click Use.");
       return generated;
     } else if (aiCaption.notice) {
       toast.error(aiCaption.notice);
@@ -1356,42 +1402,18 @@ export default function ValidationQueueScreen({
     }
   }
 
-  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+  function handleAiCaptionApprove(
+    caption: string,
+    tone: CaptionTone,
+    action: "use" | "use_then_edited" = "use",
+  ) {
     applyEditCaption(caption);
-    aiCaption.logApply(tone, "use");
+    aiCaption.logApply(tone, action);
     setCaptionPromptOpen(false);
-    toast.success("AI caption approved and placed in your caption box!");
+    toast.success("AI caption applied to your caption box!");
   }
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
-  useEffect(() => {
-    if (!editMode || editTab !== "schedule" || !selected) {
-      return;
-    }
-    const controller = new AbortController();
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setEngagementLoading(true);
-      getEngagementRecommendations(selected.institutionId, controller.signal)
-        .then((res) => {
-          if (active) setEngagementRecs(res.data.available ? res.data : null);
-        })
-        .catch((err: unknown) => {
-          if (active && (err as { name?: string })?.name !== "CanceledError") {
-            setEngagementRecs(null);
-          }
-        })
-        .finally(() => {
-          if (active) setEngagementLoading(false);
-        });
-    });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [editMode, editTab, selected]);
-
   function applyRecommendedSlot(scheduledAt: string) {
     const slot = new Date(scheduledAt);
     if (Number.isNaN(slot.getTime())) return;
@@ -2290,13 +2312,14 @@ export default function ValidationQueueScreen({
                               <Suspense fallback={null}>
                                 <AiCaptionSuggestion
                                   variants={aiCaption.variants}
-                                  onApply={(caption, tone, action) => {
+                                  onApply={(caption, tone, action, qualityRating) => {
                                     applyEditCaption(caption);
-                                    aiCaption.logApply(tone, action);
+                                    aiCaption.logApply(tone, action, qualityRating);
                                   }}
                                   onDismissOne={aiCaption.logDismissOne}
                                   onDismissAll={aiCaption.dismissAll}
                                   onRegenerate={aiCaption.regenerate}
+                                  onOpenDialog={() => setCaptionPromptOpen(true)}
                                 />
                               </Suspense>
                             )}
@@ -2353,7 +2376,7 @@ export default function ValidationQueueScreen({
                               items={editForm.media.map(editMediaItemToPickerItem)}
                               onItemsChange={(next) => {
                                 if (next.length === 0) {
-                                  toast.error("Keep at least one media asset.");
+                                  toast.error("At least 1 media must be selected.");
                                   return;
                                 }
                                 setEditForm((f) => reconcileEditMedia(f, next));
@@ -2440,14 +2463,6 @@ export default function ValidationQueueScreen({
                             </div>
                           ) : (
                             <>
-                          <Suspense fallback={null}>
-                            <EngagementRecommendationsPanel
-                              loading={engagementLoading}
-                              recommendations={engagementRecs}
-                              selectedAt={editScheduledAtIso || undefined}
-                              onSelect={applyRecommendedSlot}
-                            />
-                          </Suspense>
                           {scheduleDiffersFromContributor && (
                             <button
                               type="button"
@@ -2481,10 +2496,21 @@ export default function ValidationQueueScreen({
                                 placeholder="Pick a time"
                                 startHour={lookups?.postingWindowStartHour ?? 8}
                                 endHour={lookups?.postingWindowEndHour ?? 20}
+                                enforceRange={lookups?.guardrailsEnforced ?? true}
                                 onChange={(value) => setEditForm((f) => ({ ...f, scheduledTime: value }))}
                               />
                             </div>
                           </div>
+                          {editForm.scheduledDate && (
+                            <Suspense fallback={null}>
+                              <EngagementRecommendationsPanel
+                                loading={engagementLoading}
+                                recommendations={engagementRecs}
+                                selectedAt={editScheduledAtIso || undefined}
+                                onSelect={applyRecommendedSlot}
+                              />
+                            </Suspense>
+                          )}
 
                           {scheduleChanged && (
                             <div className="val-edit-gr">
@@ -3090,7 +3116,23 @@ export default function ValidationQueueScreen({
           excludeIds={editForm.media
             .map((m) => m.assetId)
             .filter((x): x is string => Boolean(x))}
+          totalMediaCount={editForm.media.length}
           onAdd={addLibraryAssets}
+          onRemove={(assetId) => {
+            if (editForm.media.length <= 1) {
+              toast.warning("At least 1 media must be selected.");
+              return;
+            }
+            setEditForm((f) => {
+              const nextMedia = f.media.filter((m) => m.assetId !== assetId);
+              const initialSet = new Set(f.initialAssetIds ?? []);
+              const removedAssetIds = initialSet.has(assetId)
+                ? [...new Set([...f.removedAssetIds, assetId])]
+                : f.removedAssetIds;
+              return { ...f, media: nextMedia, removedAssetIds };
+            });
+            toast.info("Media deselected from post.");
+          }}
           onClose={() => setLibraryPickerOpen(false)}
         />
       )}
@@ -3116,10 +3158,26 @@ export default function ValidationQueueScreen({
           excludeIds={editForm.media
             .map((m) => m.assetId)
             .filter((x): x is string => Boolean(x))}
+          totalMediaCount={editForm.media.length}
           eventTitle={editForm.eventTitle}
           caption={editForm.caption}
           tags={editCaptionHashtags.map((h) => h.slice(1))}
           onAdd={addLibraryAssets}
+          onRemove={(assetId) => {
+            if (editForm.media.length <= 1) {
+              toast.warning("At least 1 media must be selected.");
+              return;
+            }
+            setEditForm((f) => {
+              const nextMedia = f.media.filter((m) => m.assetId !== assetId);
+              const initialSet = new Set(f.initialAssetIds ?? []);
+              const removedAssetIds = initialSet.has(assetId)
+                ? [...new Set([...f.removedAssetIds, assetId])]
+                : f.removedAssetIds;
+              return { ...f, media: nextMedia, removedAssetIds };
+            });
+            toast.info("Media deselected from post.");
+          }}
           onClose={() => setAiSuggestionsOpen(false)}
         />
       )}
@@ -3131,6 +3189,7 @@ export default function ValidationQueueScreen({
             state={aiCaption.state}
             hasImageAssets={editHasImage}
             existingCaption={editForm.caption}
+            initialVariant={aiCaption.variants?.[0] ?? aiCaption.lastGeneratedVariant}
             onClose={() => setCaptionPromptOpen(false)}
             onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
             onApprove={handleAiCaptionApprove}
@@ -3641,6 +3700,219 @@ function SubmissionDetailsPanel({
   );
 }
 
+function FacebookMultiMediaGrid({
+  mediaAssets,
+  showWatermark,
+  watermarkConfig,
+  onSelectMedia,
+}: {
+  mediaAssets: SavedMediaAsset[];
+  showWatermark: boolean;
+  watermarkConfig?: WatermarkConfiguration | null;
+  onSelectMedia: (index: number) => void;
+}) {
+  const count = mediaAssets.length;
+  if (count <= 1) return null;
+
+  if (count === 2) {
+    return (
+      <div className="val-fb-collage val-fb-collage--2">
+        {mediaAssets.slice(0, 2).map((item, idx) => (
+          <div
+            key={item.id}
+            className="val-fb-collage-cell"
+            onClick={() => onSelectMedia(idx)}
+            role="button"
+            tabIndex={0}
+            title={`${item.fileName} (Click to view full photo)`}
+          >
+            {isImage(item.fileType) ? (
+              <img src={item.storageUrl} alt={item.fileName} />
+            ) : (
+              <div className="val-fb-video-wrapper">
+                <video src={item.storageUrl} muted playsInline />
+                <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+              </div>
+            )}
+            {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
+              <WatermarkOverlay elements={watermarkConfig.elements} />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (count === 3) {
+    return (
+      <div className="val-fb-collage val-fb-collage--3">
+        <div
+          className="val-fb-collage-cell val-fb-collage-cell--featured"
+          onClick={() => onSelectMedia(0)}
+          role="button"
+          tabIndex={0}
+          title={`${mediaAssets[0].fileName} (Click to view full photo)`}
+        >
+          {isImage(mediaAssets[0].fileType) ? (
+            <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
+          ) : (
+            <div className="val-fb-video-wrapper">
+              <video src={mediaAssets[0].storageUrl} muted playsInline />
+              <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+            </div>
+          )}
+          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
+            <WatermarkOverlay elements={watermarkConfig.elements} />
+          )}
+        </div>
+        <div className="val-fb-collage-row">
+          {mediaAssets.slice(1, 3).map((item, idx) => (
+            <div
+              key={item.id}
+              className="val-fb-collage-cell"
+              onClick={() => onSelectMedia(idx + 1)}
+              role="button"
+              tabIndex={0}
+              title={`${item.fileName} (Click to view full photo)`}
+            >
+              {isImage(item.fileType) ? (
+                <img src={item.storageUrl} alt={item.fileName} />
+              ) : (
+                <div className="val-fb-video-wrapper">
+                  <video src={item.storageUrl} muted playsInline />
+                  <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+                </div>
+              )}
+              {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
+                <WatermarkOverlay elements={watermarkConfig.elements} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (count === 4) {
+    return (
+      <div className="val-fb-collage val-fb-collage--4">
+        <div
+          className="val-fb-collage-cell val-fb-collage-cell--featured"
+          onClick={() => onSelectMedia(0)}
+          role="button"
+          tabIndex={0}
+          title={`${mediaAssets[0].fileName} (Click to view full photo)`}
+        >
+          {isImage(mediaAssets[0].fileType) ? (
+            <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
+          ) : (
+            <div className="val-fb-video-wrapper">
+              <video src={mediaAssets[0].storageUrl} muted playsInline />
+              <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+            </div>
+          )}
+          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
+            <WatermarkOverlay elements={watermarkConfig.elements} />
+          )}
+        </div>
+        <div className="val-fb-collage-row">
+          {mediaAssets.slice(1, 4).map((item, idx) => (
+            <div
+              key={item.id}
+              className="val-fb-collage-cell"
+              onClick={() => onSelectMedia(idx + 1)}
+              role="button"
+              tabIndex={0}
+              title={`${item.fileName} (Click to view full photo)`}
+            >
+              {isImage(item.fileType) ? (
+                <img src={item.storageUrl} alt={item.fileName} />
+              ) : (
+                <div className="val-fb-video-wrapper">
+                  <video src={item.storageUrl} muted playsInline />
+                  <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+                </div>
+              )}
+              {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
+                <WatermarkOverlay elements={watermarkConfig.elements} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="val-fb-collage val-fb-collage--5plus">
+      <div
+        className="val-fb-collage-cell val-fb-collage-cell--featured"
+        onClick={() => onSelectMedia(0)}
+        role="button"
+        tabIndex={0}
+        title={`${mediaAssets[0].fileName} (Click to view full photo)`}
+      >
+        {isImage(mediaAssets[0].fileType) ? (
+          <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
+        ) : (
+          <div className="val-fb-video-wrapper">
+            <video src={mediaAssets[0].storageUrl} muted playsInline />
+            <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+          </div>
+        )}
+        {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
+          <WatermarkOverlay elements={watermarkConfig.elements} />
+        )}
+      </div>
+      <div className="val-fb-collage-row">
+        {mediaAssets.slice(1, 3).map((item, idx) => (
+          <div
+            key={item.id}
+            className="val-fb-collage-cell"
+            onClick={() => onSelectMedia(idx + 1)}
+            role="button"
+            tabIndex={0}
+            title={`${item.fileName} (Click to view full photo)`}
+          >
+            {isImage(item.fileType) ? (
+              <img src={item.storageUrl} alt={item.fileName} />
+            ) : (
+              <div className="val-fb-video-wrapper">
+                <video src={item.storageUrl} muted playsInline />
+                <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
+              </div>
+            )}
+            {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
+              <WatermarkOverlay elements={watermarkConfig.elements} />
+            )}
+          </div>
+        ))}
+        <div
+          className="val-fb-collage-cell val-fb-collage-cell--more"
+          onClick={() => onSelectMedia(3)}
+          role="button"
+          tabIndex={0}
+          title={`View all ${count} photos`}
+        >
+          {isImage(mediaAssets[3].fileType) ? (
+            <img src={mediaAssets[3].storageUrl} alt={mediaAssets[3].fileName} />
+          ) : (
+            <div className="val-fb-video-wrapper">
+              <video src={mediaAssets[3].storageUrl} muted playsInline />
+            </div>
+          )}
+          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[3].fileType) && !mediaAssets[3].skipWatermark && (
+            <WatermarkOverlay elements={watermarkConfig.elements} />
+          )}
+          <div className="val-fb-collage-more-overlay">
+            +{count - 3}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FacebookPostPreviewCard({
   submission,
   editMode,
@@ -3662,7 +3934,9 @@ function FacebookPostPreviewCard({
   showWatermarkPreview?: boolean;
   onToggleWatermark?: () => void;
 }) {
-  const selectedMedia = mediaAssets[mediaIndex];
+  const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
+  const safeIndex = mediaAssets.length > 0 ? Math.min(mediaIndex, mediaAssets.length - 1) : 0;
+  const selectedMedia = mediaAssets[safeIndex];
   const pageName = submission.institutionName || "DasigConnect";
   const displayCaption = editMode ? editForm.caption : (submission.caption || submission.eventTitle);
   // Only tags publishing adds after the caption — the caption's own hashtags
@@ -3703,6 +3977,28 @@ function FacebookPostPreviewCard({
         </div>
 
         <div className="val-fb-header-actions">
+          {mediaAssets.length > 1 && (
+            <div className="val-fb-view-toggle" role="group" aria-label="Media layout">
+              <button
+                type="button"
+                className={`val-fb-view-btn ${viewMode === "grid" ? "active" : ""}`}
+                onClick={() => setViewMode("grid")}
+                title="Facebook multi-photo collage layout"
+              >
+                <i className="ti ti-layout-grid" />
+                <span>Grid</span>
+              </button>
+              <button
+                type="button"
+                className={`val-fb-view-btn ${viewMode === "carousel" ? "active" : ""}`}
+                onClick={() => setViewMode("carousel")}
+                title="Single photo with navigation arrows"
+              >
+                <i className="ti ti-arrows-left-right" />
+                <span>Arrows</span>
+              </button>
+            </div>
+          )}
           {watermarkConfig?.enabled && onToggleWatermark && (
             <button
               type="button"
@@ -3734,61 +4030,81 @@ function FacebookPostPreviewCard({
       </div>
 
       {/* 3. Media Frame with Dynamic Facebook Aspect-Ratio Handling */}
-      <div className="val-fb-media-frame">
-        {selectedMedia ? (
-          isImage(selectedMedia.fileType) ? (
-            <FacebookPostImage
-              src={selectedMedia.storageUrl}
-              alt={selectedMedia.fileName}
-              showWatermark={showWatermarkPreview}
-              watermarkConfig={watermarkConfig}
-              skipWatermark={selectedMedia.skipWatermark}
-            />
+      {mediaAssets.length > 1 && viewMode === "grid" ? (
+        <FacebookMultiMediaGrid
+          mediaAssets={mediaAssets}
+          showWatermark={showWatermarkPreview}
+          watermarkConfig={watermarkConfig}
+          onSelectMedia={(idx) => {
+            onMediaIndexChange(idx);
+            setViewMode("carousel");
+          }}
+        />
+      ) : (
+        <div className="val-fb-media-frame">
+          {selectedMedia ? (
+            isImage(selectedMedia.fileType) ? (
+              <FacebookPostImage
+                src={selectedMedia.storageUrl}
+                alt={selectedMedia.fileName}
+                showWatermark={showWatermarkPreview}
+                watermarkConfig={watermarkConfig}
+                skipWatermark={selectedMedia.skipWatermark}
+              />
+            ) : (
+              <div className="val-fb-video-wrapper">
+                <video src={selectedMedia.storageUrl} controls playsInline />
+              </div>
+            )
           ) : (
-            <div className="val-fb-video-wrapper">
-              <video src={selectedMedia.storageUrl} controls playsInline />
+            <div className="val-fb-no-media">
+              <i className="ti ti-photo-off" />
+              <span>No media attached</span>
             </div>
-          )
-        ) : (
-          <div className="val-fb-no-media">
-            <i className="ti ti-photo-off" />
-            <span>No media attached</span>
-          </div>
-        )}
+          )}
 
-        {mediaAssets.length > 1 && (
-          <>
-            <button
-              className="val-fb-arrow left"
-              type="button"
-              aria-label="Previous media"
-              onClick={() =>
-                onMediaIndexChange((mediaIndex - 1 + mediaAssets.length) % mediaAssets.length)
-              }
-            >
-              <i className="ti ti-chevron-left" />
-            </button>
-            <button
-              className="val-fb-arrow right"
-              type="button"
-              aria-label="Next media"
-              onClick={() => onMediaIndexChange((mediaIndex + 1) % mediaAssets.length)}
-            >
-              <i className="ti ti-chevron-right" />
-            </button>
-            <div className="val-fb-counter">
-              {mediaIndex + 1} / {mediaAssets.length}
-            </div>
-          </>
-        )}
-      </div>
+          {mediaAssets.length > 1 && (
+            <>
+              <button
+                className="val-fb-arrow left"
+                type="button"
+                aria-label="Previous media"
+                onClick={() =>
+                  onMediaIndexChange((safeIndex - 1 + mediaAssets.length) % mediaAssets.length)
+                }
+              >
+                <i className="ti ti-chevron-left" />
+              </button>
+              <button
+                className="val-fb-arrow right"
+                type="button"
+                aria-label="Next media"
+                onClick={() => onMediaIndexChange((safeIndex + 1) % mediaAssets.length)}
+              >
+                <i className="ti ti-chevron-right" />
+              </button>
+              <div className="val-fb-counter">
+                {safeIndex + 1} / {mediaAssets.length}
+              </div>
+              <button
+                type="button"
+                className="val-fb-grid-pill"
+                onClick={() => setViewMode("grid")}
+                title="Switch back to Facebook grid layout"
+              >
+                <i className="ti ti-layout-grid" /> Grid view
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Multi-Photo Carousel Dots / Thumbnails */}
-      {mediaAssets.length > 1 && (
+      {mediaAssets.length > 1 && viewMode === "carousel" && (
         <div className="val-fb-thumbs">
           {mediaAssets.map((asset, index) => (
             <button
-              className={`val-fb-thumb ${index === mediaIndex ? "active" : ""}`}
+              className={`val-fb-thumb ${index === safeIndex ? "active" : ""}`}
               key={asset.id}
               type="button"
               onClick={() => onMediaIndexChange(index)}

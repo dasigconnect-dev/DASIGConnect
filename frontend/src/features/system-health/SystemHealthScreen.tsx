@@ -45,7 +45,8 @@ export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
-  const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
+  const [runningJobKeys, setRunningJobKeys] = useState<Set<string>>(() => new Set());
+  const [runningAllJobs, setRunningAllJobs] = useState(false);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
   const [manualEntryTokenId, setManualEntryTokenId] = useState<string | null>(null);
   const [manualTokenValue, setManualTokenValue] = useState("");
@@ -129,7 +130,11 @@ export default function SystemHealthScreen({ user }: Props) {
   }
 
   async function handleRunJob(job: BackgroundJobHealth) {
-    setRunningJobKey(job.key);
+    setRunningJobKeys((prev) => {
+      const next = new Set(prev);
+      next.add(job.key);
+      return next;
+    });
     const async = ASYNC_JOB_KEYS.has(job.key);
     try {
       await runSystemHealthJob(job.key);
@@ -142,7 +147,49 @@ export default function SystemHealthScreen({ user }: Props) {
     } catch {
       toast.error(`Unable to ${async ? "start" : "run"} ${job.jobName}.`);
     } finally {
-      setRunningJobKey(null);
+      setRunningJobKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(job.key);
+        return next;
+      });
+    }
+  }
+
+  async function handleRunAllJobs(jobsToRun: BackgroundJobHealth[]) {
+    const candidates = jobsToRun.filter((j) => !runningJobKeys.has(j.key));
+    if (candidates.length === 0) return;
+
+    setRunningAllJobs(true);
+    setRunningJobKeys((prev) => {
+      const next = new Set(prev);
+      for (const job of candidates) next.add(job.key);
+      return next;
+    });
+
+    try {
+      const results = await Promise.allSettled(
+        candidates.map(async (job) => {
+          try {
+            await runSystemHealthJob(job.key);
+          } finally {
+            setRunningJobKeys((prev) => {
+              const next = new Set(prev);
+              next.delete(job.key);
+              return next;
+            });
+          }
+        }),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["system-health"] });
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = candidates.length - failed;
+      if (failed === 0) {
+        toast.success(`Triggered all ${succeeded} background jobs.`);
+      } else {
+        toast.warning(`Triggered ${succeeded} jobs; ${failed} failed to start.`);
+      }
+    } finally {
+      setRunningAllJobs(false);
     }
   }
 
@@ -658,15 +705,18 @@ export default function SystemHealthScreen({ user }: Props) {
                   </Section>
                 )}
 
-                {/* 1. Generative AI Vision Models & Quotas */}
+                {/* 1. Generative AI Vision Models, Embeddings & Quotas */}
                 <Section
-                  title="AI Vision & Multimodal Intelligence"
+                  title="AI Vision, Embeddings & Quotas"
                   icon="ti ti-sparkles"
-                  subtitle="Active multimodal vision models, daily generation credit quotas, and provider failover"
+                  subtitle="Primary & fallback multimodal vision models, Voyage vector embeddings, token/credit quotas, and provider failover"
                 >
                   <div className="sys-ai-services-grid">
                     {summary.externalServices
-                      .filter((s) => s.service.toLowerCase().includes("gemini") || s.service.toLowerCase().includes("claude"))
+                      .filter((s) => {
+                        const name = s.service.toLowerCase();
+                        return name.includes("gemini") || name.includes("claude") || name.includes("voyage");
+                      })
                       .map((item) => (
                         <AiServiceCard item={item} key={item.service} />
                       ))}
@@ -681,7 +731,10 @@ export default function SystemHealthScreen({ user }: Props) {
                 >
                   <div className="sys-infra-services-grid">
                     {summary.externalServices
-                      .filter((s) => !s.service.toLowerCase().includes("gemini") && !s.service.toLowerCase().includes("claude"))
+                      .filter((s) => {
+                        const name = s.service.toLowerCase();
+                        return !name.includes("gemini") && !name.includes("claude") && !name.includes("voyage");
+                      })
                       .map((item) => (
                         <InfraServiceCard item={item} key={item.service} />
                       ))}
@@ -720,37 +773,58 @@ export default function SystemHealthScreen({ user }: Props) {
                       </div>
                     </div>
 
-                    <div className="um-search-wrap">
-                      <i className="ti ti-search um-search-icon" aria-hidden="true" />
-                      <input
-                        className="um-search-input"
-                        type="search"
-                        placeholder="Search jobs..."
-                        value={jobSearch}
-                        onChange={(e) => setJobSearch(e.target.value)}
-                        aria-label="Search background jobs"
-                      />
-                      {jobSearch && (
+                    <div className="sys-jobs-toolbar-actions">
+                      <div className="um-search-wrap sys-jobs-search-wrap">
+                        <i className="ti ti-search um-search-icon" aria-hidden="true" />
+                        <input
+                          className="um-search-input"
+                          type="search"
+                          placeholder="Search jobs..."
+                          value={jobSearch}
+                          onChange={(e) => setJobSearch(e.target.value)}
+                          aria-label="Search background jobs"
+                        />
+                        {jobSearch && (
+                          <button
+                            type="button"
+                            className="um-search-clear"
+                            onClick={() => setJobSearch("")}
+                            aria-label="Clear search"
+                            style={{
+                              position: "absolute",
+                              right: 12,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              color: "var(--d-muted, #94a3b8)",
+                              cursor: "pointer",
+                              padding: 4,
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <i className="ti ti-x" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+
+                      {filteredJobs.length > 0 && (
                         <button
                           type="button"
-                          className="um-search-clear"
-                          onClick={() => setJobSearch("")}
-                          aria-label="Clear search"
-                          style={{
-                            position: "absolute",
-                            right: 12,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none",
-                            border: "none",
-                            color: "var(--d-muted, #94a3b8)",
-                            cursor: "pointer",
-                            padding: 4,
-                            display: "flex",
-                            alignItems: "center",
-                          }}
+                          className="sys-btn sys-btn-primary sys-btn-sm sys-jobs-run-all-btn"
+                          disabled={runningAllJobs}
+                          onClick={() => void handleRunAllJobs(filteredJobs)}
+                          title="Trigger all listed background jobs concurrently"
                         >
-                          <i className="ti ti-x" aria-hidden="true" />
+                          <i className={runningAllJobs ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
+                          <span>
+                            {runningAllJobs
+                              ? "Running All..."
+                              : jobSearch !== "" || jobStatusFilter !== "ALL"
+                                ? `Run Listed (${filteredJobs.length})`
+                                : `Run All Jobs (${filteredJobs.length})`}
+                          </span>
                         </button>
                       )}
                     </div>
@@ -759,7 +833,7 @@ export default function SystemHealthScreen({ user }: Props) {
 
                 <JobTable
                   jobs={filteredJobs}
-                  runningJobKey={runningJobKey}
+                  runningJobKeys={runningJobKeys}
                   hasFilters={jobSearch !== "" || jobStatusFilter !== "ALL"}
                   onClearFilters={() => {
                     setJobSearch("");
@@ -908,8 +982,8 @@ function getMetricBenchmark(item: OperationalMetric): string {
 
 function getServiceCategory(serviceName: string): string {
   const name = serviceName.toLowerCase();
-  if (name.includes("gemini")) return "Multimodal AI Vision";
-  if (name.includes("claude") || name.includes("anthropic")) return "AI Vision (Fallback)";
+  if (name.includes("claude") || name.includes("anthropic")) return "Multimodal AI Vision";
+  if (name.includes("gemini")) return "AI Vision (Fallback)";
   if (name.includes("voyage")) return "Vector Embeddings";
   if (name.includes("facebook") || name.includes("meta")) return "Graph API Publishing";
   if (name.includes("postgres") || name.includes("database") || name.includes("sql")) return "Relational DB";
@@ -949,51 +1023,135 @@ function StorageCard({ item }: { item: StorageMetric }) {
   );
 }
 
+function parseClaudeUsage(detail: string | null): { tokens: number; cost: string } {
+  if (!detail) return { tokens: 0, cost: "~$0.000" };
+  const tokensMatch = detail.match(/([\d,]+)\s*(?:tokens\s+used|used)/i);
+  const costMatch = detail.match(/(~?\$[\d.]+)\s*spent/i);
+  const tokens = tokensMatch ? parseInt(tokensMatch[1].replace(/,/g, ""), 10) : 0;
+  let cost = costMatch ? costMatch[1] : "";
+  if (!cost) {
+    cost = `~$${(tokens * 0.0000015).toFixed(3)}`;
+  }
+  if (!cost.startsWith("~") && !cost.startsWith("$")) {
+    cost = `~${cost}`;
+  }
+  return { tokens, cost };
+}
+
 function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
   const hasQuota = item.quotaLimit !== null && item.quotaLimit !== undefined && item.quotaLimit > 0;
   const quotaRemaining = item.quotaRemaining ?? 0;
   const quotaLimit = item.quotaLimit ?? 1;
   const percentLeft = Math.min(100, Math.max(0, Math.round((quotaRemaining / quotaLimit) * 100)));
-  const isGemini = item.service.toLowerCase().includes("gemini");
+  const nameLower = item.service.toLowerCase();
+  const isClaude = nameLower.includes("claude") || nameLower.includes("anthropic");
+  const isGemini = nameLower.includes("gemini");
+  const isVoyage = nameLower.includes("voyage");
+  const detailLower = (item.detail || "").toLowerCase();
+  const isStandby = !isVoyage && (detailLower.includes("standby") || (isGemini && detailLower.includes("auto-fallback to claude")));
+  const isPrimary = !isVoyage && !isStandby;
+  const lowThreshold = Math.max(5, Math.round(quotaLimit * 0.1));
+  const claudeUsage = isClaude ? parseClaudeUsage(item.detail) : null;
+
+  const roleTag = isVoyage
+    ? "Media Search"
+    : isPrimary
+      ? "Primary AI"
+      : "Backup AI";
+
+  const displayTitle = isClaude
+    ? "Claude AI"
+    : isGemini
+      ? "Gemini AI"
+      : isVoyage
+        ? "Voyage AI"
+        : item.service;
+
+  const friendlyDetail =
+    item.status !== "HEALTHY"
+      ? item.detail || "Service needs attention."
+      : isClaude
+        ? "Generates captions, proofreading, and photo analysis."
+        : isGemini
+          ? isStandby
+            ? "Automatically takes over if Claude is unavailable."
+            : "Generates captions, proofreading, and photo analysis."
+          : isVoyage
+            ? "Powers smart media search and image matching."
+            : item.detail || "Connected and responsive";
+
+  const iconClass = isVoyage
+    ? "ti ti-vector-triangle"
+    : isGemini
+      ? "ti ti-brand-google"
+      : "ti ti-sparkles";
+
+  const iconVariant = isVoyage ? "is-voyage" : isGemini ? "is-gemini" : "";
 
   return (
     <div className={`card-wrap sys-ai-card sys-ai-${item.status.toLowerCase()}`}>
       <div className="sys-ai-card-top">
         <div className="sys-ai-header-left">
-          <span className="sys-ai-icon-box">
-            <i className="ti ti-sparkles" aria-hidden="true" />
+          <span className={`sys-ai-icon-box ${iconVariant}`}>
+            <i className={iconClass} aria-hidden="true" />
           </span>
           <div>
             <div className="sys-ai-tag-row">
-              <span className="sys-service-category-tag">
-                {isGemini ? "Primary Vision Provider" : "Standby Failover Vision"}
-              </span>
+              <span className="sys-service-category-tag">{roleTag}</span>
             </div>
-            <h3 className="sys-ai-title">{item.service}</h3>
+            <h3 className="sys-ai-title">{displayTitle}</h3>
           </div>
         </div>
         <StatusBadge status={item.status} />
       </div>
 
-      <p className="sys-ai-detail">{item.detail || "Connected and responsive"}</p>
+      <p className="sys-ai-detail" title={item.detail || undefined}>{friendlyDetail}</p>
 
-      {hasQuota ? (
+      {isClaude && claudeUsage ? (
+        <div className="sys-claude-usage-block">
+          <div className="sys-service-quota-block">
+            <div className="sys-quota-header-row">
+              <span className="sys-quota-label">
+                <i className="ti ti-coins" aria-hidden="true" /> Session AI Tokens
+              </span>
+              <span className="sys-quota-pill is-healthy">
+                <strong>{claudeUsage.tokens.toLocaleString()}</strong> tokens used
+              </span>
+            </div>
+            <div className="sys-quota-header-row">
+              <span className="sys-quota-label">
+                <i className="ti ti-receipt-2" aria-hidden="true" /> Estimated Spend
+              </span>
+              <span className="sys-quota-pill is-healthy sys-spend-pill">
+                <strong>{claudeUsage.cost}</strong>
+              </span>
+            </div>
+          </div>
+          {item.status !== "HEALTHY" && (
+            <div className="sys-ai-standby-block is-warning">
+              <i className="ti ti-alert-triangle" aria-hidden="true" />
+              <span>Credits exhausted ($0 balance) · Routed to Gemini fallback</span>
+            </div>
+          )}
+        </div>
+      ) : hasQuota ? (
         <div className="sys-service-quota-block">
           <div className="sys-quota-header-row">
             <span className="sys-quota-label">
-              <i className="ti ti-coins" aria-hidden="true" /> Daily API Free-Tier Quota
+              <i className="ti ti-coins" aria-hidden="true" />{" "}
+              {isClaude ? "Token Quota" : "Daily Free Quota"}
             </span>
             <span
               className={`sys-quota-pill ${
-                quotaRemaining === 0 ? "is-empty" : quotaRemaining <= 5 ? "is-low" : "is-healthy"
+                quotaRemaining === 0 ? "is-empty" : quotaRemaining <= lowThreshold ? "is-low" : "is-healthy"
               }`}
             >
-              <strong>{quotaRemaining}</strong> / {quotaLimit} Left ({percentLeft}%)
+              <strong>{quotaRemaining.toLocaleString()}</strong> / {quotaLimit.toLocaleString()} left ({percentLeft}%)
             </span>
           </div>
           <div
             className={`sys-meter sys-meter-quota sys-meter-${
-              quotaRemaining === 0 ? "unhealthy" : quotaRemaining <= 5 ? "warning" : "healthy"
+              quotaRemaining === 0 ? "unhealthy" : quotaRemaining <= lowThreshold ? "warning" : "healthy"
             }`}
             aria-label={`${quotaRemaining}/${quotaLimit} credits remaining`}
           >
@@ -1002,8 +1160,22 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
         </div>
       ) : (
         <div className="sys-ai-standby-block">
-          <i className="ti ti-shield-check" aria-hidden="true" />
-          <span>Active fallback provider — processes captions when Gemini quota is exhausted.</span>
+          <i className={item.status === "HEALTHY" ? "ti ti-shield-check" : "ti ti-alert-triangle"} aria-hidden="true" />
+          <span>
+            {isVoyage
+              ? item.status === "HEALTHY"
+                ? "Ready · Text & visual search active"
+                : "Unavailable · Media search degraded"
+              : isClaude
+                ? item.status === "HEALTHY"
+                  ? "Standby ready · Activates automatically on failover"
+                  : "Credits exhausted ($0 balance) · Routed to Gemini fallback"
+                : isPrimary
+                  ? item.status === "HEALTHY"
+                    ? "Credits active · Live limit updates on AI requests"
+                    : "Action needed · Check Claude credits or key"
+                  : "Standby ready · Activates automatically on failover"}
+          </span>
         </div>
       )}
 
@@ -1017,10 +1189,24 @@ function AiServiceCard({ item }: { item: ExternalServiceHealth }) {
           </div>
         )}
 
-        {isGemini && (
+        {isPrimary && (
           <span className="sys-service-fallback-badge">
             <i className="ti ti-arrows-exchange" aria-hidden="true" />
-            Auto-routing to Claude Active
+            {isClaude ? "Backup: Gemini AI" : "Backup: Claude AI"}
+          </span>
+        )}
+
+        {isStandby && (
+          <span className="sys-service-fallback-badge">
+            <i className="ti ti-shield" aria-hidden="true" />
+            Auto-Failover Ready
+          </span>
+        )}
+
+        {isVoyage && (
+          <span className="sys-service-fallback-badge">
+            <i className="ti ti-search" aria-hidden="true" />
+            Media Indexing
           </span>
         )}
       </div>
@@ -1053,18 +1239,17 @@ function InfraServiceCard({ item }: { item: ExternalServiceHealth }) {
 
 function JobTable({
   jobs,
-  runningJobKey,
+  runningJobKeys,
   hasFilters,
   onClearFilters,
   onRun,
 }: {
   jobs: BackgroundJobHealth[];
-  runningJobKey: string | null;
+  runningJobKeys: Set<string>;
   hasFilters: boolean;
   onClearFilters: () => void;
   onRun: (job: BackgroundJobHealth) => void;
 }) {
-  const anyRunning = runningJobKey !== null;
 
   return (
     <div className="um-data-card um-table-card is-directory" style={{ marginTop: 0 }}>
@@ -1106,7 +1291,7 @@ function JobTable({
             </thead>
             <tbody>
               {jobs.map((job) => {
-                const running = runningJobKey === job.key;
+                const running = runningJobKeys.has(job.key);
                 return (
                   <tr key={job.key}>
                     <td style={{ paddingLeft: "24px" }}>
@@ -1135,7 +1320,7 @@ function JobTable({
                         type="button"
                         className="sys-btn sys-btn-ghost sys-btn-sm"
                         onClick={() => onRun(job)}
-                        disabled={anyRunning}
+                        disabled={running}
                         title={`Run ${formatJobName(job.jobName)} now instead of waiting for its schedule`}
                       >
                         <i className={running ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
@@ -1253,7 +1438,7 @@ function TokenTable({
                       <div className="sys-page-cell">
                         <i className="ti ti-brand-facebook" aria-hidden="true" />
                         <div>
-                          <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                          <strong>{token.pageName || "DASIG Central Visayas"}</strong>
                           <span style={{ display: "block", fontSize: "11px", color: "var(--color-text-secondary, #64748b)", marginTop: "2px" }}>
                             ID: {token.pageId}
                           </span>
@@ -1368,7 +1553,7 @@ function TokenTable({
                             <span>Save</span>
                           </button>
                           <span className="sys-manual-token-hint">
-                            Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                            Must already be a Page Access Token for {token.pageName || "DASIG Central Visayas"} — this cannot change which page is connected.
                           </span>
                         </div>
                       </td>
@@ -1395,7 +1580,8 @@ function tokenStatusToHealth(status: TokenStatus["tokenStatus"]): HealthStatus {
 }
 
 function labelStatus(status: HealthStatus) {
-  return status.toLowerCase().replace("_", " ");
+  const lower = status.toLowerCase().replace("_", " ");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
 function overallStatusHeadline(status: HealthStatus) {

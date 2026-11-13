@@ -72,6 +72,11 @@ public class TokenManagementService {
     private HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @Value("${app.facebook.page-name:DASIG Central Visayas}")
+    private String configuredPageName = "DASIG Central Visayas";
+
+    private final java.util.concurrent.ConcurrentHashMap<String, String> pageNameCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     public TokenManagementService(
             FacebookPageTokenRepository pageTokenRepository,
             TokenEncryptionService tokenEncryptionService,
@@ -93,8 +98,42 @@ public class TokenManagementService {
     public List<TokenStatusDto> getAllTokenStatuses() {
         return pageTokenRepository.findAll()
                 .stream()
-                .map(TokenStatusDto::from)
+                .map(token -> {
+                    TokenStatusDto dto = TokenStatusDto.from(token);
+                    dto.setPageName(resolvePageName(token));
+                    return dto;
+                })
                 .toList();
+    }
+
+    private String resolvePageName(FacebookPageToken token) {
+        String pageId = token.getPageId();
+        if (pageId == null || pageId.isBlank()) {
+            return configuredPageName != null ? configuredPageName : "DASIG Central Visayas";
+        }
+        if (pageNameCache.containsKey(pageId)) {
+            return pageNameCache.get(pageId);
+        }
+        if (token.isActive() && token.getEncryptedToken() != null && !token.getEncryptedToken().isBlank()) {
+            try {
+                String decrypted = tokenEncryptionService.decryptToken(token.getEncryptedToken());
+                String url = String.format(META_PAGE_TOKEN_URL, apiVersion, pageId)
+                        + "?fields=name&access_token=" + encode(decrypted);
+                JsonNode node = getJson(url);
+                String name = node.path("name").asText(null);
+                if (name != null && !name.isBlank()) {
+                    pageNameCache.put(pageId, name);
+                    return name;
+                }
+            } catch (Exception ex) {
+                log.debug("Could not resolve page name from Facebook Graph API for page {}: {}", pageId, ex.getMessage());
+            }
+        }
+        String fallback = (configuredPageName != null && !configuredPageName.isBlank())
+                ? configuredPageName
+                : "DASIG Central Visayas";
+        pageNameCache.put(pageId, fallback);
+        return fallback;
     }
 
     @Transactional(readOnly = true)
@@ -217,12 +256,14 @@ public class TokenManagementService {
 
         log.info("Admin {} manually set the Facebook page token {} (page {}).",
                 admin.userId(), tokenId, token.getPageId());
-        return TokenStatusDto.from(token);
+        TokenStatusDto dto = TokenStatusDto.from(token);
+        dto.setPageName(resolvePageName(token));
+        return dto;
     }
 
     /**
      * Confirms {@code candidateToken} actually works for {@code pageId}, via
-     * {@code GET /{page-id}?fields=id}. Facebook rejects the call outright if
+     * {@code GET /{page-id}?fields=id,name}. Facebook rejects the call outright if
      * the token is expired/invalid, and a Page Access Token can only read its
      * own page this way, so a successful response whose {@code id} doesn't
      * match {@code pageId} would mean Facebook's contract changed, not that
@@ -230,7 +271,7 @@ public class TokenManagementService {
      */
     private void assertTokenBelongsToPage(String pageId, String candidateToken) {
         String url = String.format(META_PAGE_TOKEN_URL, apiVersion, pageId)
-                + "?fields=id&access_token=" + encode(candidateToken);
+                + "?fields=id,name&access_token=" + encode(candidateToken);
         JsonNode node;
         try {
             node = getJson(url);
@@ -246,6 +287,10 @@ public class TokenManagementService {
         if (returnedId == null || !returnedId.equals(pageId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "This token is not valid for page " + pageId + ".");
+        }
+        String returnedName = node.path("name").asText(null);
+        if (returnedName != null && !returnedName.isBlank()) {
+            pageNameCache.put(pageId, returnedName);
         }
     }
 
@@ -296,7 +341,9 @@ public class TokenManagementService {
 
         log.info("Owner {} connected a different Facebook Page: {} -> {}.",
                 owner.userId(), previousPageId, trimmedPageId);
-        return TokenStatusDto.from(token);
+        TokenStatusDto dto = TokenStatusDto.from(token);
+        dto.setPageName(resolvePageName(token));
+        return dto;
     }
 
     private void deactivateOtherActiveTokens(String currentPageId) {

@@ -662,8 +662,14 @@
 .sys-perf-meter-fill {
   height: 100%;
   border-radius: 999px;
+  background: var(--d-blue, #1877f2);
   transition: width 0.3s ease;
 }
+
+.sys-perf-meter-fill.sys-meter-healthy { background: #10b981; }
+.sys-perf-meter-fill.sys-meter-warning { background: #f59e0b; }
+.sys-perf-meter-fill.sys-meter-unhealthy { background: #ef4444; }
+.sys-perf-meter-fill.sys-meter-unavailable { background: #94a3b8; }
 
 .sys-perf-card-footer {
   display: flex;
@@ -788,26 +794,32 @@
 .sys-meter-unhealthy span { background: #ef4444; }
 .sys-meter-unavailable span { background: #94a3b8; }
 
-/* ---------- AI Services Grid (2 Columns, Balanced) ---------- */
+/* ---------- AI Services Grid (3 Columns, Balanced) ---------- */
 .sys-ai-services-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   align-items: stretch;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1120px) {
+  .sys-ai-services-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
   .sys-ai-services-grid {
     grid-template-columns: 1fr;
   }
 }
 
 .sys-ai-card {
-  padding: 20px 22px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 190px;
+  justify-content: flex-start;
+  gap: 12px;
   background: var(--color-surface-0, #ffffff);
   border: 1px solid var(--color-border, #d1d9ec);
   border-radius: var(--radius-md, 12px);
@@ -836,16 +848,28 @@
 }
 
 .sys-ai-icon-box {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   background: #fef3c7;
   color: #d97706;
   border: 1px solid #fde68a;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  font-size: 19px;
   flex-shrink: 0;
+}
+
+.sys-ai-icon-box.is-gemini {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.sys-ai-icon-box.is-voyage {
+  background: #eef2ff;
+  color: #4f46e5;
+  border-color: #c7d2fe;
 }
 
 .sys-ai-tag-row {
@@ -861,7 +885,7 @@
 }
 
 .sys-ai-detail {
-  margin: 10px 0 0;
+  margin: 0;
   font-size: 12.5px;
   color: var(--color-text-secondary, #4b5563);
   line-height: 1.45;
@@ -871,14 +895,48 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 10px 12px;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   border-radius: 9px;
   font-size: 12px;
   color: #166534;
   font-weight: 550;
-  margin-top: 10px;
+  margin-top: 0;
+}
+
+.sys-ai-standby-block.is-warning {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.sys-ai-standby-block.is-warning i {
+  color: #dc2626;
+}
+
+.sys-claude-usage-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sys-claude-usage-block .sys-service-quota-block {
+  margin-top: 0;
+  gap: 8px;
+}
+
+.sys-ai-card .sys-service-quota-block {
+  margin-top: 0;
+}
+
+.sys-ai-card .sys-service-meta-footer {
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.sys-ai-card .sys-service-meta-footer:empty {
+  display: none;
 }
 
 .sys-ai-standby-block i {
@@ -1028,6 +1086,12 @@
   background: #dcfce7;
   color: #166534;
   border: 1px solid #bbf7d0;
+}
+
+.sys-quota-pill.sys-spend-pill {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
 }
 
 .sys-quota-pill.is-low {
@@ -1628,4 +1692,39 @@
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* Background Jobs Toolbar Actions (Search & Run All) */
+.sys-jobs-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.sys-jobs-search-wrap {
+  width: 220px;
+  flex-shrink: 1;
+}
+
+.sys-jobs-run-all-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 38px;
+}
+
+@media (max-width: 640px) {
+  .sys-jobs-toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sys-jobs-search-wrap {
+    width: 100% !important;
+    flex: 1 1 100%;
+  }
+  .sys-jobs-run-all-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }

@@ -8,6 +8,7 @@ This directory contains versioned release notes for all official releases of the
 
 | Version | Release Date | Summary Highlights |
 |---|---|---|
+| **[v3.4.0](./v3.4.0.md)** | `2026-11-13` | Claude primary AI with Gemini standby fallback, Voyage AI card, session token & spend visibility, Facebook page name resolution, concurrent Run All Jobs toolbar, watermark studio & caption flow polish |
 | **[v3.3.0](./v3.3.0.md)** | `2026-11-05` | Asynchronous Fast-Track publishing, Facebook Page token eye reveal & copy toggle, Canva-style full-screen Watermark Studio revamp, billing master feature flag, review queue layout stability |
 | **[v3.2.0](./v3.2.0.md)** | `2026-10-25` | Auth route redirection guards, subscription plans full-screen redesign, Gemini Vision metadata v2 taxonomy, pending admin transfer sidebar indicator badge, blinded media evaluation pool |
 | **[v3.1.0](./v3.1.0.md)** | `2026-10-19` | Commercial billing engine & PayMongo QRPh integration, multimodal AI vision captions, contributor independence (RP-01–05), mobile viewport operability (360px), and automated CI workflow |

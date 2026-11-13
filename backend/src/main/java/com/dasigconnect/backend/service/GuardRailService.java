@@ -2,8 +2,6 @@ package com.dasigconnect.backend.service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -71,9 +69,6 @@ public class GuardRailService {
      * @return GuardRailResult containing any hard blocks and/or soft warnings
      */
     public GuardRailResult validate(UUID institutionId, Instant requestedSlot, UUID excludeSubmissionId) {
-        // This is the central enforcement boundary. Every caller (composer,
-        // review/reschedule, retry, and engagement recommendations) receives a
-        // clean result while the network-wide switch is disabled.
         if (!guardRailSettingsService.enforced()) {
             return new GuardRailResult();
         }
@@ -114,20 +109,17 @@ public class GuardRailService {
             ));
         }
         // GR-H4: Posting window
-        ZonedDateTime localDateTime = requestedSlot.atZone(PAGE_ZONE);
+        java.time.ZonedDateTime localTime = requestedSlot.atZone(PAGE_ZONE);
         int startHour = guardRailSettingsService.postingWindowStartHour();
         int endHour = guardRailSettingsService.postingWindowEndHour();
-        LocalTime requestedLocalTime = localDateTime.toLocalTime().withSecond(0).withNano(0);
-        LocalTime windowStartTime = LocalTime.of(startHour, 0);
-        LocalTime windowEndTime = endHour == 24 ? LocalTime.MAX : LocalTime.of(endHour, 0);
-        if (requestedLocalTime.isBefore(windowStartTime) || requestedLocalTime.isAfter(windowEndTime)) {
+        if (localTime.getHour() < startHour || localTime.getHour() >= endHour) {
             String startAmPm = startHour < 12 ? "AM" : "PM";
             String endAmPm = endHour < 12 ? "AM" : "PM";
             int displayStart = startHour % 12 == 0 ? 12 : startHour % 12;
             int displayEnd = endHour % 12 == 0 ? 12 : endHour % 12;
             hardBlocks.add(new GuardRailViolation(
                     "GR-H4",
-                    String.format("Publish time must be between %d:00 %s and %d:00 %s.", displayStart, startAmPm, displayEnd, endAmPm)
+                    String.format("Publish time must be from %d:00 %s up to, but not including, %d:00 %s.", displayStart, startAmPm, displayEnd, endAmPm)
             ));
         }
 
@@ -145,9 +137,8 @@ public class GuardRailService {
         }
 
         // GR-S2: ≤Y posts per calendar day network-wide
-        java.time.LocalDate requestedLocalDate = localDateTime.toLocalDate();
-        Instant dayStart = requestedLocalDate.atStartOfDay(PAGE_ZONE).toInstant();
-        Instant dayEnd = requestedLocalDate.plusDays(1).atStartOfDay(PAGE_ZONE).toInstant();
+        Instant dayStart = requestedSlot.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        Instant dayEnd = dayStart.plus(Duration.ofDays(1));
         long dailyCount = slotReservationRepository.countActiveOnDay(dayStart, dayEnd, excludeSubmissionId);
         long maxPerDay = guardRailSettingsService.dailyVolumeCap();
         if (dailyCount >= maxPerDay) {
@@ -173,7 +164,7 @@ public class GuardRailService {
         Duration minLeadTime = Duration.ofHours(guardRailSettingsService.minimumLeadTimeHours());
         Duration maxLeadTime = Duration.ofDays(guardRailSettingsService.maximumLeadTimeDays());
         Duration conflictBuffer = Duration.ofMinutes(guardRailSettingsService.conflictBufferMinutes());
-        Duration suggestionStep = conflictBuffer.plusMinutes(1);
+        Duration suggestionStep = conflictBuffer.isZero() ? Duration.ofMinutes(1) : conflictBuffer;
         
         Instant minAllowed = now.plus(minLeadTime);
 
@@ -200,7 +191,7 @@ public class GuardRailService {
             // Check against nearby reserved slots
             Instant finalCandidate = candidate;
             boolean blocked = nearby.stream().anyMatch(r
-                    -> Duration.between(r.getScheduledAt(), finalCandidate).abs().compareTo(conflictBuffer) <= 0
+                    -> Duration.between(r.getScheduledAt(), finalCandidate).abs().compareTo(conflictBuffer) < 0
             );
             if (!blocked) {
                 suggestions.add(candidate);

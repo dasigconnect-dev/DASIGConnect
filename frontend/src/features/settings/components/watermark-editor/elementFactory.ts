@@ -1,16 +1,25 @@
 import type { WatermarkElement } from "../../../../types/watermark.types";
-import { FULL_WIDTH_PERCENT, fitTextHeight } from "../../../../components/watermark/watermarkLayout";
+import type { WatermarkAnchor } from "../../../../types/watermark.types";
+import {
+  DEFAULT_ANCHOR_INSET_PERCENT,
+  FULL_WIDTH_PERCENT,
+  fitTextHeight,
+} from "../../../../components/watermark/watermarkLayout";
 
 export type ShapeVariant = NonNullable<WatermarkElement["shapeType"]>;
 
 const newId = () => `el_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-export function createImageElement(imageUrl: string): WatermarkElement {
+export function createImageElement(
+  imageUrl: string,
+  anchor: WatermarkAnchor = "bottom-left",
+): WatermarkElement {
   return {
     id: newId(),
     type: "image",
-    xPercent: 78,
-    yPercent: 78,
+    anchor,
+    xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+    yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
     widthPercent: 18,
     heightPercent: 18,
     opacity: 0.9,
@@ -18,13 +27,17 @@ export function createImageElement(imageUrl: string): WatermarkElement {
   };
 }
 
-export function createTextElement(text: string): WatermarkElement {
+export function createTextElement(
+  text: string,
+  anchor: WatermarkAnchor = "bottom-right",
+): WatermarkElement {
   const fontSizePercent = 3.2;
   return {
     id: newId(),
     type: "text",
-    xPercent: 27,
-    yPercent: 88,
+    anchor,
+    xPercent: DEFAULT_ANCHOR_INSET_PERCENT,
+    yPercent: DEFAULT_ANCHOR_INSET_PERCENT,
     widthPercent: 46,
     heightPercent: fitTextHeight(text, fontSizePercent),
     opacity: 0.95,
@@ -38,16 +51,20 @@ export function createTextElement(text: string): WatermarkElement {
 }
 
 const SHAPE_DEFAULTS: Record<ShapeVariant, Pick<WatermarkElement, "yPercent" | "heightPercent" | "opacity" | "fillColor" | "strokeColor">> = {
-  rectangle: { yPercent: 86, heightPercent: 14, opacity: 0.5, fillColor: "rgba(15, 23, 42, 0.75)", strokeColor: "transparent" },
-  gradient: { yPercent: 70, heightPercent: 30, opacity: 0.85, fillColor: "#07112a", strokeColor: "transparent" },
-  line: { yPercent: 86, heightPercent: 1, opacity: 0.9, fillColor: "transparent", strokeColor: "#FFFFFF" },
+  rectangle: { yPercent: 0, heightPercent: 14, opacity: 0.5, fillColor: "rgba(15, 23, 42, 0.75)", strokeColor: "transparent" },
+  gradient: { yPercent: 0, heightPercent: 30, opacity: 0.85, fillColor: "#07112a", strokeColor: "transparent" },
+  line: { yPercent: 0, heightPercent: 1, opacity: 0.9, fillColor: "transparent", strokeColor: "#FFFFFF" },
 };
 
-/** Full-width bars: wide enough to span every format. */
-export function createShapeElement(shapeType: ShapeVariant): WatermarkElement {
+/** Ribbon and scrim elements stretch across the image's full width. */
+export function createShapeElement(
+  shapeType: ShapeVariant,
+  anchor: "top" | "bottom" = "bottom",
+): WatermarkElement {
   return {
     id: newId(),
     type: "shape",
+    anchor,
     shapeType,
     xPercent: 0,
     widthPercent: FULL_WIDTH_PERCENT,

@@ -65,7 +65,13 @@ export const queryKeys = {
       scopedKey("submissions", { ...params, view: "templates" }),
     albumNames: (params: { role: string; userId?: string | null; institutionId: string }) =>
       scopedKey("submissions", { ...params, view: "album-names" }),
-    engagementRecommendations: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+    engagementRecommendations: (params: {
+      role: string;
+      userId?: string | null;
+      institutionId?: string | null;
+      submissionId?: string | null;
+      date?: string | null;
+    }) =>
       scopedKey("submissions", { ...params, view: "engagement-recommendations" }),
   },
   calendarEvents: {

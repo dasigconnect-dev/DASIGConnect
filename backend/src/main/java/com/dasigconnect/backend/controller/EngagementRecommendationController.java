@@ -5,6 +5,7 @@ import com.dasigconnect.backend.model.dto.engagement.EngagementRecommendationDto
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.EngagementRecommendationService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +26,11 @@ public class EngagementRecommendationController {
     @GetMapping
     public ResponseEntity<ApiResponse<EngagementRecommendationDto>> recommendations(
             @RequestParam(required = false) java.util.UUID institutionId,
+            @RequestParam(required = false) java.util.UUID submissionId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate date,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(service.recommend(user, institutionId)));
+        return ResponseEntity.ok(ApiResponse.success(
+                service.recommend(user, institutionId, submissionId, date)));
     }
 }
