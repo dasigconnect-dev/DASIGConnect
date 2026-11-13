@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import type { AspectRatioType, WatermarkElement } from "../../../../types/watermark.types";
+import type { AspectRatioType, WatermarkAnchor, WatermarkElement } from "../../../../types/watermark.types";
 import {
-  aspectOf,
   applyBox,
   computeBox,
-  moveBox,
+  normalizeWatermarkAnchor,
   resizeBox,
   type ElementBox,
   type ResizeHandle,
 } from "../../../../components/watermark/watermarkLayout";
 
-const DRAG_THRESHOLD_PX = 3;
+const DRAG_THRESHOLD_PX = 2;
 
-interface DragSession {
+interface ResizeSession {
   id: string;
-  handle: ResizeHandle | null; // null = move
+  handle: ResizeHandle;
+  anchor?: WatermarkAnchor;
   startX: number;
   startY: number;
   startBox: ElementBox;
@@ -25,36 +25,39 @@ interface DragSession {
 interface Options {
   frameRef: RefObject<HTMLDivElement | null>;
   ratio: AspectRatioType;
+  canvasAspect?: number;
   elements: WatermarkElement[];
   onChange: (elements: WatermarkElement[]) => void;
   disabled: boolean;
 }
 
 /**
- * Pointer-driven move / resize of canvas elements. Every edit is written back
- * through `applyBox`, so a drag only changes the position of the CURRENT format.
+ * Pointer-driven resize of anchored canvas elements. Elements stay locked to
+ * their selected edge or corner anchor while their dimensions are resized.
  */
-export function useCanvasInteraction({ frameRef, ratio, elements, onChange, disabled }: Options) {
-  const sessionRef = useRef<DragSession | null>(null);
+export function useCanvasInteraction({ frameRef, ratio, canvasAspect = 1, elements, onChange, disabled }: Options) {
+  const sessionRef = useRef<ResizeSession | null>(null);
 
   // Latest values for the window-level listeners (registered once).
-  const latest = useRef({ ratio, elements, onChange });
+  const latest = useRef({ ratio, canvasAspect, elements, onChange });
   useEffect(() => {
-    latest.current = { ratio, elements, onChange };
+    latest.current = { ratio, canvasAspect, elements, onChange };
   });
 
-  const begin = useCallback(
-    (event: ReactPointerEvent, id: string, handle: ResizeHandle | null) => {
+  const beginResize = useCallback(
+    (event: ReactPointerEvent, id: string, handle: ResizeHandle) => {
       if (disabled) return;
       const target = latest.current.elements.find((el) => el.id === id);
       if (!target) return;
       event.stopPropagation();
+      const normalized = normalizeWatermarkAnchor(target);
       sessionRef.current = {
         id,
         handle,
+        anchor: normalized.anchor,
         startX: event.clientX,
         startY: event.clientY,
-        startBox: computeBox(target, latest.current.ratio),
+        startBox: computeBox(target, latest.current.ratio, latest.current.canvasAspect),
         moved: false,
       };
     },
@@ -77,14 +80,17 @@ export function useCanvasInteraction({ frameRef, ratio, elements, onChange, disa
       const dx = (dxPx / rect.width) * 100;
       const dy = (dyPx / rect.height) * 100;
 
-      const nextBox = session.handle
-        ? resizeBox(session.startBox, session.handle, dx, dy)
-        : moveBox(session.startBox, dx, dy);
+      const nextBox = resizeBox(session.startBox, session.handle, dx, dy, session.anchor);
 
-      const { ratio: currentRatio, elements: currentElements, onChange: emit } = latest.current;
+      const {
+        ratio: currentRatio,
+        canvasAspect: currentAspect,
+        elements: currentElements,
+        onChange: emit,
+      } = latest.current;
       emit(
         currentElements.map((el) =>
-          el.id === session.id ? applyBox(el, currentRatio, nextBox, aspectOf(currentRatio)) : el,
+          el.id === session.id ? applyBox(el, currentRatio, nextBox, currentAspect) : el,
         ),
       );
     }
@@ -104,7 +110,6 @@ export function useCanvasInteraction({ frameRef, ratio, elements, onChange, disa
   }, [frameRef]);
 
   return {
-    beginMove: (event: ReactPointerEvent, id: string) => begin(event, id, null),
-    beginResize: (event: ReactPointerEvent, id: string, handle: ResizeHandle) => begin(event, id, handle),
+    beginResize,
   };
 }
