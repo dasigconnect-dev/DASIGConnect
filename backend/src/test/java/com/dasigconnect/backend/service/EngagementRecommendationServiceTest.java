@@ -154,7 +154,7 @@ class EngagementRecommendationServiceTest {
                 .atZone(EngagementRecommendationService.PAGE_ZONE).toLocalTime()).isEqualTo(LocalTime.MIDNIGHT);
         assertThat(result.slots().getLast().scheduledAt()
                 .atZone(EngagementRecommendationService.PAGE_ZONE).toLocalTime()).isEqualTo(LocalTime.of(23, 30));
-        assertThat(result.notice()).contains("full day", "30-minute steps", "Reviewer coverage");
+        assertThat(result.notice()).contains("open posting times", "Reviewers are typically active");
     }
 
     @Test

@@ -20,9 +20,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -68,9 +73,164 @@ public class ClaudeVisionClient implements AiVisionClient {
     @Value("${anthropic.api.model:claude-haiku-4-5-20251001}")
     private String model;
 
+    @Value("${anthropic.api.token-limit:0}")
+    private long configuredTokenLimit;
+
     /** Used as Bearer token when fetching images from a private Supabase bucket. */
     @Value("${app.supabase.service-role-key:}")
     private String supabaseServiceRoleKey;
+
+    private final AtomicInteger tokensLimit = new AtomicInteger(0);
+    private final AtomicInteger tokensRemaining = new AtomicInteger(0);
+    private final AtomicReference<Instant> tokensResetAt = new AtomicReference<>(null);
+    private final AtomicLong totalInputTokensUsed = new AtomicLong(0);
+    private final AtomicLong totalOutputTokensUsed = new AtomicLong(0);
+    private final AtomicBoolean creditsExhausted = new AtomicBoolean(false);
+    private final AtomicBoolean rateLimited = new AtomicBoolean(false);
+
+    public record QuotaStatus(
+            int remaining,
+            int limit,
+            Instant resetAt,
+            boolean creditsExhausted,
+            boolean rateLimited,
+            long totalTokensUsed,
+            long configuredTokenLimit) {}
+
+    public QuotaStatus getQuotaStatus() {
+        Instant reset = tokensResetAt.get();
+        if (reset != null && Instant.now().isAfter(reset)) {
+            rateLimited.set(false);
+            if (tokensLimit.get() > 0) {
+                tokensRemaining.set(tokensLimit.get());
+            }
+            tokensResetAt.set(null);
+        }
+
+        long used = totalInputTokensUsed.get() + totalOutputTokensUsed.get();
+        if (configuredTokenLimit > 0) {
+            int cap = (int) Math.min(Integer.MAX_VALUE, configuredTokenLimit);
+            int left = creditsExhausted.get() ? 0 : (int) Math.max(0L, cap - used);
+            return new QuotaStatus(
+                    left,
+                    cap,
+                    tokensResetAt.get(),
+                    creditsExhausted.get(),
+                    rateLimited.get(),
+                    used,
+                    configuredTokenLimit);
+        }
+
+        int liveLimit = tokensLimit.get();
+        int liveRemaining = creditsExhausted.get() ? 0 : tokensRemaining.get();
+        return new QuotaStatus(
+                liveLimit > 0 ? liveRemaining : (creditsExhausted.get() ? 0 : -1),
+                liveLimit > 0 ? liveLimit : (creditsExhausted.get() ? 1 : 0),
+                tokensResetAt.get(),
+                creditsExhausted.get(),
+                rateLimited.get(),
+                used,
+                0);
+    }
+
+    /**
+     * Queries Anthropic's free count_tokens endpoint when no rate-limit headers have
+     * been captured yet in this session so System Health can surface live token limits
+     * and billing/credit status without consuming completion tokens.
+     */
+    public void probeQuotaIfUnset() {
+        if (apiKey == null || apiKey.isBlank()) return;
+        if (tokensLimit.get() > 0 || creditsExhausted.get()) return;
+        try {
+            String activeModel = (model == null || model.isBlank()) ? "claude-haiku-4-5-20251001" : model;
+            String payload = objectMapper.writeValueAsString(java.util.Map.of(
+                    "model", activeModel,
+                    "messages", List.of(java.util.Map.of("role", "user", "content", "ping"))));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.anthropic.com/v1/messages/count_tokens"))
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", ANTHROPIC_VERSION)
+                    .header("content-type", "application/json")
+                    .timeout(Duration.ofSeconds(4))
+                    .POST(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
+        } catch (Exception ex) {
+            log.debug("Claude quota probe skipped: {}", ex.getMessage());
+        }
+    }
+
+    private void recordApiResponse(HttpResponse<String> response) {
+        if (response == null) return;
+        int status = response.statusCode();
+        if (status >= 200 && status < 300) {
+            creditsExhausted.set(false);
+            rateLimited.set(false);
+            parseRateLimitHeaders(response);
+            recordTokenUsage(response.body());
+            return;
+        }
+
+        String body = response.body() == null ? "" : response.body().toLowerCase();
+        if (status == 402
+                || body.contains("credit balance")
+                || body.contains("purchase credits")
+                || body.contains("insufficient_quota")
+                || body.contains("billing")) {
+            creditsExhausted.set(true);
+            tokensRemaining.set(0);
+        } else if (status == 429) {
+            rateLimited.set(true);
+            tokensRemaining.set(0);
+            parseRateLimitHeaders(response);
+            if (tokensResetAt.get() == null) {
+                long retrySeconds = response.headers().firstValue("retry-after")
+                        .map(val -> {
+                            try {
+                                return Long.parseLong(val.trim());
+                            } catch (NumberFormatException ignored) {
+                                return 60L;
+                            }
+                        })
+                        .orElse(60L);
+                tokensResetAt.set(Instant.now().plusSeconds(Math.max(1L, retrySeconds)));
+            }
+        }
+    }
+
+    private void parseRateLimitHeaders(HttpResponse<String> response) {
+        response.headers().firstValue("anthropic-ratelimit-tokens-limit").ifPresent(val -> {
+            try {
+                int parsed = Integer.parseInt(val.trim());
+                if (parsed > 0) tokensLimit.set(parsed);
+            } catch (NumberFormatException ignored) {}
+        });
+        response.headers().firstValue("anthropic-ratelimit-tokens-remaining").ifPresent(val -> {
+            try {
+                int parsed = Integer.parseInt(val.trim());
+                tokensRemaining.set(Math.max(0, parsed));
+            } catch (NumberFormatException ignored) {}
+        });
+        response.headers().firstValue("anthropic-ratelimit-tokens-reset").ifPresent(val -> {
+            try {
+                tokensResetAt.set(Instant.parse(val.trim()));
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void recordTokenUsage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) return;
+        try {
+            JsonNode usage = objectMapper.readTree(responseBody).path("usage");
+            if (!usage.isMissingNode()) {
+                long inTokens = usage.path("input_tokens").asLong(0);
+                long outTokens = usage.path("output_tokens").asLong(0);
+                if (inTokens > 0) totalInputTokensUsed.addAndGet(inTokens);
+                if (outTokens > 0) totalOutputTokensUsed.addAndGet(outTokens);
+            }
+        } catch (Exception ignored) {}
+    }
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -183,6 +343,7 @@ public class ClaudeVisionClient implements AiVisionClient {
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.warn("Claude API returned status {}: {}", response.statusCode(), response.body());
                 throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
@@ -273,6 +434,7 @@ public class ClaudeVisionClient implements AiVisionClient {
         HttpResponse<String> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
         } catch (java.net.http.HttpTimeoutException e) {
             throw new ClaudeApiException("Claude API timed out after 30 seconds.");
         } catch (Exception e) {
@@ -728,6 +890,7 @@ public class ClaudeVisionClient implements AiVisionClient {
         HttpResponse<String> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            recordApiResponse(response);
         } catch (java.net.http.HttpTimeoutException e) {
             throw new ClaudeApiException("Claude classification timed out.");
         } catch (Exception e) {

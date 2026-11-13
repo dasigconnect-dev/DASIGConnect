@@ -21,6 +21,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dasigconnect.backend.external.ClaudeVisionClient;
+import com.dasigconnect.backend.external.DelegatingAiVisionClient;
 import com.dasigconnect.backend.external.GeminiVisionClient;
 import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
 import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
@@ -88,10 +90,29 @@ public class SystemHealthService {
     private final String mailApiBaseUrl;
 
     private GeminiVisionClient geminiVisionClient;
+    private ClaudeVisionClient claudeVisionClient;
+    private DelegatingAiVisionClient delegatingAiVisionClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setGeminiVisionClient(GeminiVisionClient geminiVisionClient) {
         this.geminiVisionClient = geminiVisionClient;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setClaudeVisionClient(ClaudeVisionClient claudeVisionClient) {
+        this.claudeVisionClient = claudeVisionClient;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDelegatingAiVisionClient(DelegatingAiVisionClient delegatingAiVisionClient) {
+        this.delegatingAiVisionClient = delegatingAiVisionClient;
+    }
+
+    private boolean isClaudePrimary() {
+        if (delegatingAiVisionClient != null) {
+            return "claude".equalsIgnoreCase(delegatingAiVisionClient.providerName());
+        }
+        return true;
     }
 
     public SystemHealthService(
@@ -177,9 +198,14 @@ public class SystemHealthService {
         services.add(databaseHealth());
         services.add(mediaObjectStorageHealth());
         services.add(facebookTokenHealth());
-        services.add(geminiHealth());
-        services.add(claudeHealth());
-        services.add(httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey));
+        if (isClaudePrimary()) {
+            services.add(claudeHealth());
+            services.add(geminiHealth());
+        } else {
+            services.add(geminiHealth());
+            services.add(claudeHealth());
+        }
+        services.add(voyageHealth());
         services.add(emailHealth());
         return services;
     }
@@ -193,13 +219,15 @@ public class SystemHealthService {
         GeminiVisionClient.QuotaStatus quota
                 = geminiVisionClient != null ? geminiVisionClient.getQuotaStatus() : null;
 
+        boolean claudePrimary = isClaudePrimary();
         if (quota != null && quota.isExceeded()) {
             Long secondsRemaining = quota.resetAt() != null
                     ? Math.max(0, Duration.between(Instant.now(), quota.resetAt()).getSeconds())
                     : null;
             String durationStr = secondsRemaining != null ? formatDuration(secondsRemaining) : "a few hours";
-            String detail = String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.",
-                    quota.limit(), durationStr);
+            String detail = claudePrimary
+                    ? String.format("Standby quota exceeded (0/%d credits remaining). Resets in %s.", quota.limit(), durationStr)
+                    : String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.", quota.limit(), durationStr);
             return new ExternalServiceHealthDto(
                     "Google Gemini API", HealthStatus.WARNING, detail,
                     Instant.now(), quota.resetAt(), secondsRemaining,
@@ -224,8 +252,9 @@ public class SystemHealthService {
                         : 20400L;
                 Instant resetAt = quota != null && quota.resetAt() != null ? quota.resetAt() : Instant.now().plusSeconds(secondsRemaining);
                 int limit = quota != null ? quota.limit() : 20;
-                String detail = String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.",
-                        limit, formatDuration(secondsRemaining));
+                String detail = claudePrimary
+                        ? String.format("Standby quota exceeded (0/%d credits remaining). Resets in %s.", limit, formatDuration(secondsRemaining))
+                        : String.format("Quota exceeded (0/%d credits remaining). Resets in %s. Auto-fallback to Claude is active.", limit, formatDuration(secondsRemaining));
                 return new ExternalServiceHealthDto(
                         "Google Gemini API", HealthStatus.WARNING, detail,
                         Instant.now(), resetAt, secondsRemaining,
@@ -238,9 +267,16 @@ public class SystemHealthService {
             Instant resetAt = quota != null ? quota.resetAt() : null;
             Long secondsRemaining = resetAt != null ? Math.max(0, Duration.between(Instant.now(), resetAt).getSeconds()) : null;
             String model = geminiVisionClient != null ? geminiVisionClient.modelName() : "gemini-3.8-flash";
-            String detail = status == HealthStatus.HEALTHY
-                    ? String.format("Connected — Model: %s (%d/%d credits remaining). Auto-fallback to Claude active.", model, remaining, limit)
-                    : "Service endpoint reported an unhealthy response.";
+            String detail;
+            if (status != HealthStatus.HEALTHY) {
+                detail = "Service endpoint reported an unhealthy response.";
+            } else if (claudePrimary) {
+                detail = String.format("Connected (Standby failover) — Model: %s (%d/%d credits remaining). Used automatically if Claude fails.",
+                        model, remaining, limit);
+            } else {
+                detail = String.format("Connected — Model: %s (%d/%d credits remaining). Auto-fallback to Claude active.",
+                        model, remaining, limit);
+            }
             return new ExternalServiceHealthDto(
                     "Google Gemini API", status, detail,
                     Instant.now(), resetAt, secondsRemaining,
@@ -256,13 +292,96 @@ public class SystemHealthService {
         if (anthropicApiKey == null || anthropicApiKey.isBlank()) {
             return service("Anthropic Claude Vision API", HealthStatus.UNAVAILABLE, "API key is not configured.", null, null);
         }
+
+        if (claudeVisionClient != null) {
+            claudeVisionClient.probeQuotaIfUnset();
+        }
+        boolean claudePrimary = isClaudePrimary();
+        String fallbackNote = claudePrimary ? "Auto-fallback to Gemini is active." : "Standby failover provider.";
+        ClaudeVisionClient.QuotaStatus quota = claudeVisionClient != null ? claudeVisionClient.getQuotaStatus() : null;
+        String model = claudeVisionClient != null ? claudeVisionClient.modelName() : "claude-haiku-4-5-20251001";
+
+        if (quota != null && quota.creditsExhausted()) {
+            int limit = Math.max(1, quota.limit());
+            String detail = String.format("Credits exhausted (0 credits remaining, %d tokens used). %s",
+                    quota.totalTokensUsed(), fallbackNote);
+            return new ExternalServiceHealthDto(
+                    "Anthropic Claude Vision API", HealthStatus.WARNING, detail,
+                    Instant.now(), quota.resetAt(), null,
+                    0, limit, quota.resetAt());
+        }
+
+        if (quota != null && quota.rateLimited()) {
+            Long secondsRemaining = quota.resetAt() != null
+                    ? Math.max(0, Duration.between(Instant.now(), quota.resetAt()).getSeconds())
+                    : null;
+            String durationStr = secondsRemaining != null ? formatDuration(secondsRemaining) : "a moment";
+            int limit = Math.max(1, quota.limit());
+            String detail = String.format("Token rate limit reached (0/%d tokens remaining). Resets in %s. %s",
+                    limit, durationStr, fallbackNote);
+            return new ExternalServiceHealthDto(
+                    "Anthropic Claude Vision API", HealthStatus.WARNING, detail,
+                    Instant.now(), quota.resetAt(), secondsRemaining,
+                    0, limit, quota.resetAt());
+        }
+
         ExternalServiceHealthDto probe = httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey);
-        String detail = probe.status() == HealthStatus.HEALTHY
-                ? "Connected and active (fallback enabled)."
-                : probe.detail();
+        if (probe.status() != HealthStatus.HEALTHY) {
+            return new ExternalServiceHealthDto(
+                    "Anthropic Claude Vision API", probe.status(), probe.detail(),
+                    Instant.now(), null, null, null, null, null);
+        }
+
+        if (quota != null && quota.limit() > 0) {
+            Long secondsRemaining = quota.resetAt() != null
+                    ? Math.max(0, Duration.between(Instant.now(), quota.resetAt()).getSeconds())
+                    : null;
+            if (quota.remaining() <= 0) {
+                String detail = String.format("Token budget exhausted (0/%d tokens remaining, %d used). %s",
+                        quota.limit(), quota.totalTokensUsed(), fallbackNote);
+                return new ExternalServiceHealthDto(
+                        "Anthropic Claude Vision API", HealthStatus.WARNING, detail,
+                        Instant.now(), quota.resetAt(), secondsRemaining,
+                        0, quota.limit(), quota.resetAt());
+            }
+            String detail = claudePrimary
+                    ? String.format("Connected — Model: %s (%d/%d tokens remaining, %d used). Auto-fallback to Gemini active.",
+                            model, quota.remaining(), quota.limit(), quota.totalTokensUsed())
+                    : String.format("Connected (Standby failover) — Model: %s (%d/%d tokens remaining).",
+                            model, quota.remaining(), quota.limit());
+            return new ExternalServiceHealthDto(
+                    "Anthropic Claude Vision API", HealthStatus.HEALTHY, detail,
+                    Instant.now(), quota.resetAt(), secondsRemaining,
+                    quota.remaining(), quota.limit(), quota.resetAt());
+        }
+
+        long used = quota != null ? quota.totalTokensUsed() : 0L;
+        String detail = claudePrimary
+                ? String.format("Connected — Model: %s (%d tokens used this session). Auto-fallback to Gemini active.", model, used)
+                : String.format("Connected and active (Standby failover, %d tokens used).", used);
         return new ExternalServiceHealthDto(
-                "Anthropic Claude Vision API", probe.status(), detail,
+                "Anthropic Claude Vision API", HealthStatus.HEALTHY, detail,
                 Instant.now(), null, null, null, null, null);
+    }
+
+    private ExternalServiceHealthDto voyageHealth() {
+        if (voyageApiKey == null || voyageApiKey.isBlank()) {
+            return service("Voyage AI API", HealthStatus.UNAVAILABLE, "Voyage AI API key is not configured.", null, null);
+        }
+        ExternalServiceHealthDto probe = httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey);
+        if (probe.status() != HealthStatus.HEALTHY) {
+            return probe;
+        }
+        return new ExternalServiceHealthDto(
+                "Voyage AI API",
+                HealthStatus.HEALTHY,
+                "Connected — Models: voyage-4-lite (text) & voyage-multimodal-3.5 (visual) · 1024-d semantic embeddings.",
+                probe.checkedAt(),
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     /**
