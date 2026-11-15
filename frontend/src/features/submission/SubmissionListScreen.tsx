@@ -174,6 +174,10 @@ export default function SubmissionListScreen({ user }: { user: User }) {
 
         <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
           <div className="sub-registry-toolbar">
+            <div className="mobile-swipe-hint" aria-hidden="true">
+              <span>swipe</span>
+              <i className="ti ti-arrow-right" />
+            </div>
             <div ref={statusTabsRef} className="sub-status-tabs" role="group" aria-label="Filter submissions by status">
               {STATUS_TABS.map((tab) => (
                 <button
