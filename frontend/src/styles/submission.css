@@ -5182,6 +5182,7 @@ textarea.sub-finput {
     padding: 16px;
     background: rgba(12, 29, 61, 0.48);
     backdrop-filter: blur(2px);
+    animation: subModalBackdropIn 0.18s ease-out both;
   }
   .sub-picker-modal-backdrop .sub-date-popover,
   .sub-picker-modal-backdrop .sub-time-popover {
@@ -5197,6 +5198,15 @@ textarea.sub-finput {
     padding: 16px;
     border-radius: 16px;
     box-shadow: 0 24px 56px rgba(12, 29, 61, 0.28);
+    animation: subModalPanelIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes subModalBackdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes subModalPanelIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
   .sub-time-controls {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
