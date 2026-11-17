@@ -6,11 +6,13 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
@@ -300,6 +302,47 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
+  const [showWatermarkExitConfirm, setShowWatermarkExitConfirm] = useState(false);
+
+  const isWatermarkDirty = useMemo(
+    () =>
+      Boolean(watermarkQuery.data) &&
+      JSON.stringify(watermarkElements) !== JSON.stringify(watermarkQuery.data?.elements || []),
+    [watermarkElements, watermarkQuery.data],
+  );
+
+  useEffect(() => {
+    if (!isStudioOpen || !isWatermarkDirty) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isStudioOpen, isWatermarkDirty]);
+
+  function handleRequestCloseStudio() {
+    if (isWatermarkDirty) {
+      setShowWatermarkExitConfirm(true);
+      return;
+    }
+    closeStudio();
+  }
+
+  function handleDiscardWatermarkAndExit() {
+    setWatermarkElements(watermarkQuery.data?.elements || []);
+    setShowWatermarkExitConfirm(false);
+    closeStudio();
+  }
+
+  async function handleSaveWatermarkAndExit() {
+    const saved = await saveWatermark();
+    if (saved) {
+      setShowWatermarkExitConfirm(false);
+      closeStudio();
+    }
+  }
+
   // Hydrate editable forms once from query data so background refetches do not
   // replace in-progress edits.
   useEffect(() => {
@@ -484,7 +527,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
-  async function saveWatermark() {
+  async function saveWatermark(): Promise<boolean> {
     setSaving("watermark");
     try {
       const { data } = await saveWatermarkConfiguration({
@@ -498,12 +541,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       watermarkErrorNotifiedRef.current = false;
       await invalidateWatermarkSettingsDependencies();
       toast.success("Watermark settings saved.");
+      return true;
     } catch (err: unknown) {
       // The axios response interceptor (authApi.ts) collapses the backend's
       // { error: { code, message } } envelope down to a plain string at
       // response.data.error -- there is no response.data.message.
       const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       toast.error(errorMsg || "Unable to save watermark configuration.");
+      return false;
     } finally {
       setSaving(null);
     }
@@ -621,13 +666,67 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 onChange={setWatermarkElements}
                 disabled={saving === "watermark" || watermarkLoading}
                 institutionName="DASIG Central Visayas"
-                onBack={closeStudio}
+                onBack={handleRequestCloseStudio}
                 onSave={() => void saveWatermark()}
                 isSaving={saving === "watermark"}
               />
             </Suspense>
           </WatermarkStudioBoundary>
         )}
+        {showWatermarkExitConfirm &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className="canva-exit-modal-backdrop"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="wm-exit-title"
+              onClick={(event) => {
+                if (event.target === event.currentTarget && saving !== "watermark") {
+                  setShowWatermarkExitConfirm(false);
+                }
+              }}
+            >
+              <div className="canva-exit-modal">
+                <div className="canva-exit-modal-icon" aria-hidden="true">
+                  <i className="ti ti-alert-triangle" />
+                </div>
+                <h2 id="wm-exit-title" className="canva-exit-modal-title">
+                  Unsaved Watermark Changes
+                </h2>
+                <p className="canva-exit-modal-desc">
+                  You have unsaved edits in Watermark Studio. Would you like to save your changes before leaving, or discard them?
+                </p>
+                <div className="canva-exit-modal-actions">
+                  <button
+                    type="button"
+                    className="canva-exit-btn canva-exit-btn--ghost"
+                    disabled={saving === "watermark"}
+                    onClick={() => setShowWatermarkExitConfirm(false)}
+                  >
+                    Keep Editing
+                  </button>
+                  <button
+                    type="button"
+                    className="canva-exit-btn canva-exit-btn--danger"
+                    disabled={saving === "watermark"}
+                    onClick={handleDiscardWatermarkAndExit}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    className="canva-exit-btn canva-exit-btn--primary"
+                    disabled={saving === "watermark"}
+                    onClick={() => void handleSaveWatermarkAndExit()}
+                  >
+                    {saving === "watermark" ? "Saving..." : "Save & Exit"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
     );
   }
