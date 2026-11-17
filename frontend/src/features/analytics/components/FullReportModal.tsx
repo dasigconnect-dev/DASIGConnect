@@ -474,12 +474,12 @@ export default function FullReportModal({
               {downloadError}
             </span>
           )}
-          <button type="button" className="notif-btn notif-btn-ghost notif-btn-sm" onClick={onClose}>
+          <button type="button" className="analytics-modal-btn analytics-modal-btn--ghost" onClick={onClose}>
             <span>Close</span>
           </button>
           <button
             type="button"
-            className="notif-btn notif-btn-primary notif-btn-sm"
+            className="analytics-modal-btn analytics-modal-btn--primary"
             onClick={() => void handleDownload()}
             disabled={busy || loading}
           >

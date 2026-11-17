@@ -115,7 +115,7 @@
   animation: dc-toast-out 200ms ease-in both;
 }
 
-.dc-toast-item.success { background: #15803D; }
+.dc-toast-item.success { background: #16A34A; }
 .dc-toast-item.error   { background: #DC2626; }
 .dc-toast-item.warning { background: #D97706; }
 .dc-toast-item.info    { background: var(--d-blue, #1877f2); }
@@ -456,4 +456,26 @@
 .optimized-image-missing i {
   font-size: 22px;
   opacity: 0.8;
+}
+
+.mobile-swipe-hint {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-swipe-hint {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    width: 100%;
+    margin: 0 0 -4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1877f2;
+  }
+
+  .mobile-swipe-hint i {
+    font-size: 13px;
+  }
 }
