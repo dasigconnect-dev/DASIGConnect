@@ -1248,55 +1248,6 @@
   box-sizing: border-box;
 }
 
-.analytics-modal-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 0 18px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
-  white-space: nowrap;
-}
-
-.analytics-modal-btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.analytics-modal-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.analytics-modal-btn--ghost {
-  background: #ffffff;
-  border-color: var(--d-border, #cbd5e1);
-  color: var(--d-text, #1e293b);
-}
-
-.analytics-modal-btn--ghost:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #94a3b8;
-}
-
-.analytics-modal-btn--primary {
-  background: var(--d-blue, #1877f2);
-  border-color: var(--d-blue, #1877f2);
-  color: #ffffff;
-  box-shadow: 0 6px 16px rgba(24, 119, 242, 0.22);
-}
-
-.analytics-modal-btn--primary:hover:not(:disabled) {
-  background: #1565d8;
-  border-color: #1565d8;
-}
-
 /* ── Responsive Adaptations ──────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .analytics-kpi-strip-wrap {
