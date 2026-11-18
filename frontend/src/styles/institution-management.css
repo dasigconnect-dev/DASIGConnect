@@ -1472,19 +1472,6 @@
     font-size: 12px !important;
   }
 
-  .im-registry-toolbar .im-status-tabs {
-    overflow-x: visible !important;
-    padding: 0 !important;
-    gap: 8px !important;
-  }
-
-  .im-registry-toolbar .im-status-tab {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-    justify-content: center !important;
-    padding: 0 10px !important;
-  }
-
   .im-search-wrap {
     width: 100% !important;
     max-width: 100% !important;

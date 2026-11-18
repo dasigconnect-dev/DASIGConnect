@@ -443,6 +443,10 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
         {/* Card 1: Filter Tabs & Search Toolbar */}
         <div className="card-wrap notif-toolbar-card" style={{ marginBottom: "16px" }}>
           <div className="dash-card-toolbar notif-card-toolbar">
+            <div className="mobile-swipe-hint" aria-hidden="true">
+              <span>swipe</span>
+              <i className="ti ti-arrow-right" />
+            </div>
             <div className="im-status-tabs notif-status-tabs" role="group" aria-label="Filter notifications by category">
               {displayFilters.map((f) => (
                 <button

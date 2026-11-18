@@ -1684,6 +1684,10 @@ export default function ValidationQueueScreen({
           </div>
 
           <div className="val-toolbar-card">
+            <div className="mobile-swipe-hint" aria-hidden="true">
+              <span>swipe</span>
+              <i className="ti ti-arrow-right" />
+            </div>
             <div
               className={`val-tabs ${isQueueExpanded ? "val-tabs--expanded" : ""}`}
               role="tablist"
