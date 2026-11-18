@@ -6144,7 +6144,7 @@
   }
   .val-page .val-tabs {
     gap: 8px;
-    padding: 2px 2px 6px;
+    padding: 2px 2px 12px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
