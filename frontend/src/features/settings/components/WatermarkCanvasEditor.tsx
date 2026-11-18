@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useIsMobileViewport } from "../../submission/hooks/usePopoverCollision";
 import type {
   AspectRatioType,
   WatermarkAnchor,
@@ -73,6 +75,7 @@ export default function WatermarkCanvasEditor({
   const [openAnchorMenu, setOpenAnchorMenu] = useState<WatermarkAnchor | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
+  const isMobile = useIsMobileViewport(860);
   const [showAlignMenu, setShowAlignMenu] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
@@ -240,7 +243,7 @@ export default function WatermarkCanvasEditor({
   useEffect(() => {
     function handleDocClick(e: MouseEvent) {
       const target = e.target as HTMLElement;
-      if (!target.closest(".canva-popover-anchor")) {
+      if (!target.closest(".canva-popover-anchor") && !target.closest(".canva-mobile-modal-card")) {
         setShowColorPicker(false);
         setShowFontPicker(false);
         setShowAlignMenu(false);
@@ -252,6 +255,21 @@ export default function WatermarkCanvasEditor({
     document.addEventListener("mousedown", handleDocClick);
     return () => document.removeEventListener("mousedown", handleDocClick);
   }, []);
+
+  function renderMobileModal(content: ReactNode, onClose: () => void) {
+    if (!isMobile || typeof document === "undefined") return content;
+    return createPortal(
+      <div
+        className="canva-mobile-modal-backdrop"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
+        <div className="canva-mobile-modal-card">{content}</div>
+      </div>,
+      document.body,
+    );
+  }
 
   // Add Element Handlers
   function getAvailableAnchor(type: WatermarkElementType): WatermarkAnchor | null {
@@ -677,30 +695,32 @@ export default function WatermarkCanvasEditor({
                   <i className="ti ti-chevron-down" />
                 </button>
 
-                {showFontPicker && (
-                  <div className="canva-floating-menu canva-font-dropdown">
-                    <div className="canva-dropdown-title">Font Family</div>
-                    <div className="canva-font-list">
-                      {FONT_OPTIONS.map((f) => (
-                        <button
-                          key={f.value}
-                          type="button"
-                          className={`canva-font-item ${(selectedCfg.fontFamily || "inherit") === f.value ? "is-selected" : ""}`}
-                          style={{ fontFamily: f.value }}
-                          onClick={() => {
-                            updateSelected({ fontFamily: f.value });
-                            setShowFontPicker(false);
-                          }}
-                        >
-                          <span>{f.label}</span>
-                          {(selectedCfg.fontFamily || "inherit") === f.value && (
-                            <i className="ti ti-check" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {showFontPicker &&
+                  renderMobileModal(
+                    <div className="canva-floating-menu canva-font-dropdown">
+                      <div className="canva-dropdown-title">Font Family</div>
+                      <div className="canva-font-list">
+                        {FONT_OPTIONS.map((f) => (
+                          <button
+                            key={f.value}
+                            type="button"
+                            className={`canva-font-item ${(selectedCfg.fontFamily || "inherit") === f.value ? "is-selected" : ""}`}
+                            style={{ fontFamily: f.value }}
+                            onClick={() => {
+                              updateSelected({ fontFamily: f.value });
+                              setShowFontPicker(false);
+                            }}
+                          >
+                            <span>{f.label}</span>
+                            {(selectedCfg.fontFamily || "inherit") === f.value && (
+                              <i className="ti ti-check" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>,
+                    () => setShowFontPicker(false),
+                  )}
               </div>
 
               {/* Font Size Stepper */}
@@ -753,18 +773,20 @@ export default function WatermarkCanvasEditor({
                   <i className="ti ti-chevron-down" />
                 </button>
 
-                {showColorPicker && (
-                  <ColorPickerMenu
-                    title="Text Color"
-                    color={selectedCfg.textColor || "#FFFFFF"}
-                    presets={COLOR_PRESETS}
-                    onChange={(color) => updateSelected({ textColor: color })}
-                    onSelectPreset={(color) => {
-                      updateSelected({ textColor: color });
-                      setShowColorPicker(false);
-                    }}
-                  />
-                )}
+                {showColorPicker &&
+                  renderMobileModal(
+                    <ColorPickerMenu
+                      title="Text Color"
+                      color={selectedCfg.textColor || "#FFFFFF"}
+                      presets={COLOR_PRESETS}
+                      onChange={(color) => updateSelected({ textColor: color })}
+                      onSelectPreset={(color) => {
+                        updateSelected({ textColor: color });
+                        setShowColorPicker(false);
+                      }}
+                    />,
+                    () => setShowColorPicker(false),
+                  )}
               </div>
 
               {/* Bold Toggle */}
@@ -961,38 +983,40 @@ export default function WatermarkCanvasEditor({
                   <i className="ti ti-chevron-down" />
                 </button>
 
-                {showColorPicker && (
-                  <ColorPickerMenu
-                    title={
-                      selectedElement.shapeType === "line"
-                        ? "Line Color"
-                        : selectedElement.shapeType === "gradient"
-                          ? "Gradient Color"
-                          : "Fill Color"
-                    }
-                    color={
-                      selectedElement.shapeType === "line"
-                        ? selectedCfg.strokeColor || "#FFFFFF"
-                        : selectedCfg.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "#0f172a")
-                    }
-                    presets={COLOR_PRESETS}
-                    onChange={(color) =>
-                      updateSelected(
+                {showColorPicker &&
+                  renderMobileModal(
+                    <ColorPickerMenu
+                      title={
                         selectedElement.shapeType === "line"
-                          ? { strokeColor: color }
-                          : { fillColor: color }
-                      )
-                    }
-                    onSelectPreset={(color) => {
-                      updateSelected(
+                          ? "Line Color"
+                          : selectedElement.shapeType === "gradient"
+                            ? "Gradient Color"
+                            : "Fill Color"
+                      }
+                      color={
                         selectedElement.shapeType === "line"
-                          ? { strokeColor: color }
-                          : { fillColor: color }
-                      );
-                      setShowColorPicker(false);
-                    }}
-                  />
-                )}
+                          ? selectedCfg.strokeColor || "#FFFFFF"
+                          : selectedCfg.fillColor || (selectedElement.shapeType === "gradient" ? "#07112a" : "#0f172a")
+                      }
+                      presets={COLOR_PRESETS}
+                      onChange={(color) =>
+                        updateSelected(
+                          selectedElement.shapeType === "line"
+                            ? { strokeColor: color }
+                            : { fillColor: color }
+                        )
+                      }
+                      onSelectPreset={(color) => {
+                        updateSelected(
+                          selectedElement.shapeType === "line"
+                            ? { strokeColor: color }
+                            : { fillColor: color }
+                        );
+                        setShowColorPicker(false);
+                      }}
+                    />,
+                    () => setShowColorPicker(false),
+                  )}
               </div>
 
               {/* Height / Thickness Stepper with Slider */}
