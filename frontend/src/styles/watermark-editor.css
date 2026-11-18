@@ -2511,7 +2511,7 @@
     scrollbar-width: thin;
     scrollbar-color: #1877f2 rgba(226, 232, 240, 0.7);
     -webkit-overflow-scrolling: touch;
-    padding: 2px 16px 6px 2px;
+    padding: 2px 16px 12px 2px;
   }
 
   .canva-pill-segment::-webkit-scrollbar {
@@ -2800,4 +2800,24 @@
 
 .canva-exit-btn--primary:hover:not(:disabled) {
   background: #1565d8;
+}
+
+@media (max-width: 560px) {
+  .canva-exit-modal {
+    padding: 18px 16px;
+  }
+
+  .canva-exit-modal-actions {
+    flex-wrap: nowrap;
+    justify-content: stretch;
+    gap: 6px;
+  }
+
+  .canva-exit-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
 }
