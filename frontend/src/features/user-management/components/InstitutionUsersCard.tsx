@@ -163,6 +163,10 @@ export default function InstitutionUsersCard({
       <div className={`um-filter-bar um-users-filter-bar${showFilterPills ? '' : ' is-search-only'}`}>
         {showFilterPills && (
           <>
+          <div className="mobile-swipe-hint" aria-hidden="true">
+            <span>swipe</span>
+            <i className="ti ti-arrow-right" />
+          </div>
           <div className="um-filter-pills-wrap">
             {showRoleControls && (
               <div className="um-filter-pills" role="group" aria-label="Filter by role">

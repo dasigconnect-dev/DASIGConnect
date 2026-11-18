@@ -5042,7 +5042,7 @@ textarea.sub-finput {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    padding-bottom: 12px;
+    padding-bottom: 6px;
   }
   .sub-search-wrap {
     width: 100%;
@@ -7016,7 +7016,7 @@ section.sub-form-section.sub-field-pulse {
   }
   .sub-list-page .sub-status-tabs {
     position: relative; /* offsetParent for the active-tab auto-scroll */
-    padding-bottom: 12px;
+    padding-bottom: 6px;
     scroll-snap-type: x proximity;
     scroll-padding-inline: 24px;
     scrollbar-width: thin;
