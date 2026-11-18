@@ -1,10 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import {
-  useIsMobileViewport,
-  usePickerDismiss,
-  usePopoverCollision,
-} from "../hooks/usePopoverCollision";
+import { useEffect, useMemo, useState } from "react";
+import { usePopoverCollision } from "../hooks/usePopoverCollision";
 import { buildCalendarDays, dateToInputValue, formatLongDate, parseInputDate } from "../utils";
 
 export function CalendarDateField({
@@ -23,17 +18,29 @@ export function CalendarDateField({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const isMobile = useIsMobileViewport(900);
-  const closePicker = useCallback(() => setOpen(false), []);
   const { rootRef, popoverRef, placement, maxHeight } =
-    usePopoverCollision(open && !isMobile, 375);
+    usePopoverCollision(open, 375);
   const selectedDate = useMemo(() => parseInputDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const base = selectedDate || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
 
-  usePickerDismiss(open, closePicker, rootRef, popoverRef);
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, rootRef]);
 
   useEffect(() => {
     if (selectedDate) {
@@ -60,89 +67,6 @@ export function CalendarDateField({
     setOpen(false);
   }
 
-  const popoverContent = open && !readOnly && (
-    <div
-      className="sub-date-popover"
-      ref={popoverRef}
-      role="dialog"
-      aria-modal={isMobile || undefined}
-      aria-label={placeholder}
-      style={isMobile ? undefined : { maxHeight }}
-    >
-      <div className="sub-date-popover-head">
-        <button
-          type="button"
-          className="sub-date-nav"
-          onClick={() => moveMonth(-1)}
-          aria-label="Previous month"
-        >
-          <i className="ti ti-chevron-left"></i>
-        </button>
-        <div>
-          <div className="sub-date-month">
-            {visibleMonth.toLocaleDateString(undefined, {
-              month: "long",
-              year: "numeric",
-            })}
-          </div>
-          <div className="sub-date-hint">Pick a calendar date</div>
-        </div>
-        <button
-          type="button"
-          className="sub-date-nav"
-          onClick={() => moveMonth(1)}
-          aria-label="Next month"
-        >
-          <i className="ti ti-chevron-right"></i>
-        </button>
-      </div>
-
-      <div className="sub-date-weekdays" aria-hidden="true">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <span key={day}>{day}</span>
-        ))}
-      </div>
-
-      <div className="sub-date-grid">
-        {days.map((day) => {
-          const isPast = minValue ? day.value < minValue : false;
-          return (
-            <button
-              key={day.value}
-              className={[
-                "sub-date-day",
-                day.inMonth ? "" : "muted",
-                day.value === value ? "selected" : "",
-                day.value === todayValue ? "today" : "",
-                isPast ? "past" : "",
-              ].join(" ")}
-              type="button"
-              disabled={isPast}
-              onClick={() => selectDate(day.value)}
-            >
-              {day.date.getDate()}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="sub-date-actions">
-        <button
-          type="button"
-          onClick={() => {
-            onChange("");
-            setOpen(false);
-          }}
-        >
-          Clear
-        </button>
-        <button type="button" onClick={() => selectDate(todayValue)}>
-          Today
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <div
       className={`sub-date-field ${open ? "is-open" : ""} ${placement}`}
@@ -165,19 +89,87 @@ export function CalendarDateField({
         <i className="ti ti-calendar-event"></i>
       </button>
 
-      {isMobile && popoverContent && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              className="sub-picker-modal-backdrop"
-              onClick={(event) => {
-                if (event.target === event.currentTarget) setOpen(false);
+      {open && !readOnly && (
+        <div
+          className="sub-date-popover"
+          ref={popoverRef}
+          role="dialog"
+          aria-label={placeholder}
+          style={{ maxHeight }}
+        >
+          <div className="sub-date-popover-head">
+            <button
+              type="button"
+              className="sub-date-nav"
+              onClick={() => moveMonth(-1)}
+              aria-label="Previous month"
+            >
+              <i className="ti ti-chevron-left"></i>
+            </button>
+            <div>
+              <div className="sub-date-month">
+                {visibleMonth.toLocaleDateString(undefined, {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </div>
+              <div className="sub-date-hint">Pick a calendar date</div>
+            </div>
+            <button
+              type="button"
+              className="sub-date-nav"
+              onClick={() => moveMonth(1)}
+              aria-label="Next month"
+            >
+              <i className="ti ti-chevron-right"></i>
+            </button>
+          </div>
+
+          <div className="sub-date-weekdays" aria-hidden="true">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+
+          <div className="sub-date-grid">
+            {days.map((day) => {
+              const isPast = minValue ? day.value < minValue : false;
+              return (
+                <button
+                  key={day.value}
+                  className={[
+                    "sub-date-day",
+                    day.inMonth ? "" : "muted",
+                    day.value === value ? "selected" : "",
+                    day.value === todayValue ? "today" : "",
+                    isPast ? "past" : "",
+                  ].join(" ")}
+                  type="button"
+                  disabled={isPast}
+                  onClick={() => selectDate(day.value)}
+                >
+                  {day.date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="sub-date-actions">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
               }}
             >
-              {popoverContent}
-            </div>,
-            document.body,
-          )
-        : popoverContent}
+              Clear
+            </button>
+            <button type="button" onClick={() => selectDate(todayValue)}>
+              Today
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1940,13 +1940,11 @@ button.um-user-avatar:focus-visible {
     width: 100%;
     max-width: 100%;
   }
-  .um-users-filter-bar,
-  .um-data-card.is-directory .um-users-filter-bar {
+  .um-users-filter-bar {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
-    padding: 10px 14px;
+    gap: 12px;
   }
   .um-users-filter-bar .um-filter-group { padding: 0; }
   .um-filter-pills-wrap {
@@ -1954,25 +1952,10 @@ button.um-user-avatar:focus-visible {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    padding-bottom: 10px;
+    padding-bottom: 4px;
     scrollbar-width: thin;
-    scrollbar-color: #1877f2 rgba(226, 232, 240, 0.7);
-  }
-  .um-filter-pills-wrap::-webkit-scrollbar {
-    -webkit-appearance: none;
-    display: block;
-    height: 4px;
-  }
-  .um-filter-pills-wrap::-webkit-scrollbar-track {
-    background: rgba(226, 232, 240, 0.7);
-    border-radius: 999px;
-  }
-  .um-filter-pills-wrap::-webkit-scrollbar-thumb {
-    background: #1877f2;
-    border-radius: 999px;
   }
   .um-filter-pills-wrap .um-filter-pills {
-    flex-wrap: nowrap;
     flex-shrink: 0;
   }
   .um-users-filter-bar .um-search-wrap {
@@ -1984,6 +1967,7 @@ button.um-user-avatar:focus-visible {
   .um-search-input {
     font-size: 16px;
   }
+  .um-filter-pills { flex-wrap: wrap; }
   .um-composer-header,
   .um-section-head {
     flex-direction: column;
@@ -2007,6 +1991,7 @@ button.um-user-avatar:focus-visible {
     justify-content: center;
   }
   .um-data-card.is-directory .um-data-card-header { padding: 18px; }
+  .um-data-card.is-directory .um-users-filter-bar { padding: 14px 18px; }
   .um-data-card.is-directory .um-table th:first-child,
   .um-data-card.is-directory .um-table td:first-child { padding-left: 16px; }
   .um-table-wrap {

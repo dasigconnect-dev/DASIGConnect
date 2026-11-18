@@ -162,7 +162,6 @@ export default function InstitutionUsersCard({
 
       <div className={`um-filter-bar um-users-filter-bar${showFilterPills ? '' : ' is-search-only'}`}>
         {showFilterPills && (
-          <>
           <div className="um-filter-pills-wrap">
             {showRoleControls && (
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
@@ -198,7 +197,6 @@ export default function InstitutionUsersCard({
               ))}
             </div>
           </div>
-          </>
         )}
 
         <div className="um-search-wrap">

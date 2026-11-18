@@ -6144,24 +6144,13 @@
   }
   .val-page .val-tabs {
     gap: 8px;
-    padding: 2px 2px 12px;
+    padding: 2px 2px 6px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: #1877f2 rgba(226, 232, 240, 0.7);
+    scrollbar-width: none;
   }
   .val-page .val-tabs::-webkit-scrollbar {
-    -webkit-appearance: none;
-    display: block;
-    height: 4px;
-  }
-  .val-page .val-tabs::-webkit-scrollbar-track {
-    background: rgba(226, 232, 240, 0.7);
-    border-radius: 999px;
-  }
-  .val-page .val-tabs::-webkit-scrollbar-thumb {
-    background: #1877f2;
-    border-radius: 999px;
+    display: none;
   }
   .val-page .val-tabs button {
     min-height: 36px;

@@ -115,7 +115,7 @@
   animation: dc-toast-out 200ms ease-in both;
 }
 
-.dc-toast-item.success { background: #16A34A; }
+.dc-toast-item.success { background: #15803D; }
 .dc-toast-item.error   { background: #DC2626; }
 .dc-toast-item.warning { background: #D97706; }
 .dc-toast-item.info    { background: var(--d-blue, #1877f2); }
