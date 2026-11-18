@@ -1954,7 +1954,7 @@ button.um-user-avatar:focus-visible {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-bottom: 10px;
     scrollbar-width: thin;
     scrollbar-color: #1877f2 rgba(226, 232, 240, 0.7);
   }
