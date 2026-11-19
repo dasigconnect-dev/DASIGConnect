@@ -136,6 +136,8 @@ export const queryKeys = {
   ai: {
     similarMedia: (params: { submissionId: string }) =>
       scopedKey("ai", { ...params, view: "similar-media" }),
+    mediaSuggestions: (params: { submissionId: string; contextKey: string }) =>
+      scopedKey("ai", { ...params, view: "media-suggestions" }),
   },
   settings: {
     page: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>

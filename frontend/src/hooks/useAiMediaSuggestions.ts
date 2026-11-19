@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   getMediaSuggestionProcessingStatus,
   suggestMedia,
@@ -8,6 +9,7 @@ import {
   type MediaSuggestResponse,
   type MediaSuggestResult,
 } from "../api/aiApi";
+import { queryKeys } from "../lib/queryKeys";
 
 export type AiMediaSuggestState =
   | "idle"
@@ -31,6 +33,12 @@ export interface UseAiMediaSuggestionsReturn {
 // hidden behind a multi-second polling gap. The later backoff still protects
 // the status endpoint when an external provider is slow.
 const PROCESSING_RETRY_DELAYS_MS = [750, 1_000, 1_500, 2_000, 3_000, 5_000, 8_000] as const;
+const AI_MEDIA_SUGGESTION_CACHE_TTL_MS = 5 * 60_000;
+
+interface CachedMediaSuggestions {
+  response: MediaSuggestResponse;
+  cachedAt: number;
+}
 
 export function hasSufficientMediaContext(eventTitle: string, caption: string, tags: string[]) {
   return [eventTitle, caption, ...tags].join(" ").trim().length >= 10;
@@ -44,6 +52,7 @@ export function useAiMediaSuggestions(
   selectedImageAssetIds: string[] = [],
   enabled: boolean = true,
 ): UseAiMediaSuggestionsReturn {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<AiMediaSuggestState>("idle");
   const [results, setResults] = useState<MediaSuggestResult[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -101,7 +110,18 @@ export function useAiMediaSuggestions(
     }
   }, [submissionId]);
 
-  const applyResponse = useCallback((response: MediaSuggestResponse, reqKey: string) => {
+  const applyResponse = useCallback((
+    response: MediaSuggestResponse,
+    reqKey: string,
+    cacheResponse = true,
+  ) => {
+    if (cacheResponse && submissionId) {
+      queryClient.setQueryData<CachedMediaSuggestions>(
+        queryKeys.ai.mediaSuggestions({ submissionId, contextKey: reqKey }),
+        { response, cachedAt: Date.now() },
+        { updatedAt: Date.now() },
+      );
+    }
     const retriesExhausted = visualRetryRef.current.attempts >= PROCESSING_RETRY_DELAYS_MS.length;
     hasResultsRef.current = response.results.length > 0;
     setResults(response.results);
@@ -132,7 +152,31 @@ export function useAiMediaSuggestions(
         logAiInteraction(submissionId, "media_recommendation", "shown");
       }
     }
-  }, [settleCurrentInteraction, submissionId]);
+  }, [queryClient, settleCurrentInteraction, submissionId]);
+
+  // Restore a recent result immediately when the composer or AI tab is
+  // revisited. The exact post text and selected image IDs are part of the key,
+  // so suggestions are never reused for a different context.
+  useEffect(() => {
+    if (!enabled || !submissionId || !hasContext) return;
+    const cacheKey = queryKeys.ai.mediaSuggestions({ submissionId, contextKey: requestKey });
+    const cached = queryClient.getQueryData<CachedMediaSuggestions>(cacheKey);
+    if (!cached) return;
+    if (Date.now() - cached.cachedAt > AI_MEDIA_SUGGESTION_CACHE_TTL_MS) {
+      queryClient.removeQueries({ queryKey: cacheKey, exact: true });
+      return;
+    }
+
+    generatedForSubmissionRef.current = submissionId;
+    visualRetryRef.current = { key: requestKey, attempts: 0 };
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) applyResponse(cached.response, requestKey, false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyResponse, enabled, hasContext, queryClient, requestKey, submissionId]);
 
   const requestSuggestions = useCallback(async (background = false) => {
     if (!submissionId || !hasContext) return;

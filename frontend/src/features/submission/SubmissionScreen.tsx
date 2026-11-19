@@ -1066,9 +1066,25 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   function clearAssetIdParam() {
     if (!searchParams.has("assetIds")) return;
+    if ((!routeSubmissionId || routeSubmissionId === "new") && form.id) {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("assetIds");
+      window.history.replaceState(window.history.state, "", nextUrl);
+      return;
+    }
     const next = new URLSearchParams(searchParams);
     next.delete("assetIds");
     setSearchParams(next, { replace: true });
+  }
+
+  function replaceNewSubmissionUrl(submissionId: string) {
+    routedSubmissionRef.current = submissionId;
+    const nextUrl = new URL(window.location.href);
+    nextUrl.pathname = `/submissions/${submissionId}`;
+    // Updating the address bar directly keeps the mounted composer and its
+    // in-memory File objects intact. React Router will hydrate this id normally
+    // if the user refreshes or returns to the copied URL later.
+    window.history.replaceState(window.history.state, "", nextUrl);
   }
 
   async function attachPendingAssets(submissionId: string, pendingIds: string[]) {
@@ -1737,10 +1753,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
 
-      // Background autosave owns draft fields only once the draft already exists.
-      // On first save (!form.id), always run the full save so selected/uploaded media
-      // is uploaded and attached in the same flow before updating the URL.
-      if (options.fieldsOnly && form.id) {
+      // Background autosave persists the draft record first, including on the
+      // initial save. The dedicated media queue can then upload/attach files
+      // without making the composer wait for the entire media pipeline.
+      if (options.fieldsOnly) {
         setForm((current) => ({
           ...current,
           id: response.data.id,
@@ -1753,8 +1769,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         cleanDraftFieldSignatureRef.current = savedDraftFieldSignature;
         setSaveState("saved");
         if (!routeSubmissionId || routeSubmissionId === "new") {
-          routedSubmissionRef.current = response.data.id;
-          navigate(`/submissions/${response.data.id}${location.search}`, { replace: true });
+          replaceNewSubmissionUrl(response.data.id);
         }
         return response.data.id;
       }
@@ -1824,8 +1839,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       cleanMediaSignatureRef.current = getMediaSignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
       if (!routeSubmissionId || routeSubmissionId === "new") {
-        routedSubmissionRef.current = finalResponse.data.id;
-        navigate(`/submissions/${finalResponse.data.id}${location.search}`, { replace: true });
+        replaceNewSubmissionUrl(finalResponse.data.id);
       }
       return finalResponse.data.id;
     } catch (err: unknown) {
@@ -1876,9 +1890,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
-      // On first save (!form.id) or saved-media metadata changes (skipWatermark / per-image caption / order),
-      // run full save (fieldsOnly = false) so media & media details are persisted.
-      autosaveDraft(Boolean(form.id) && !retryFailedMedia && !needsSavedMediaDetailsSave);
+      // The initial save only creates the draft record; the media queue starts
+      // as soon as that id is available. Metadata-only changes on already saved
+      // media still use the full path because they do not enable that queue.
+      autosaveDraft(!retryFailedMedia && !needsSavedMediaDetailsSave);
     }, AUTO_SAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
@@ -2518,6 +2533,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   if (
     routeSubmissionId &&
     routeSubmissionId !== "new" &&
+    routedSubmissionRef.current !== routeSubmissionId &&
     (!form.id || form.id !== routeSubmissionId || hydratingId === routeSubmissionId)
   ) {
     return (
