@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +41,7 @@ import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.entity.AiInteractionLog;
+import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
@@ -74,6 +76,7 @@ public class AIRecommendationService {
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
     private static final int SUGGESTION_CANDIDATE_LIMIT = 30;
     private static final int ATTACHED_CANDIDATES_PER_ASSET = 12;
+    private static final int SUGGESTION_RESULT_LIMIT = 24;
     private static final double MIN_RELEVANCE_SCORE = 0.40;
     private static final String LEGACY_RANKING_VERSION = "legacy-v1";
     private static final String HYBRID_RANKING_VERSION = "hybrid-v2";
@@ -196,6 +199,8 @@ public class AIRecommendationService {
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         Set<UUID> attachedIds = attachedAssets.stream().map(MediaAsset::getId).collect(Collectors.toSet());
         List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        UUID retrievalInstitutionId = recommendationScopeInstitution(
+                institutionId, selectedImageAssets, user);
         Set<UUID> selectedImageIds = selectedImageAssets.stream()
                 .map(MediaAsset::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -207,14 +212,14 @@ public class AIRecommendationService {
 
         CandidateSignals visualSignals = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
-                        institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId)
+                        retrievalInstitutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId)
                 : CandidateSignals.EMPTY;
         CandidateSignals selectedMediaSemanticSignals = visualSuggestionsEnabled
                 ? loadAttachedCandidateScores(
-                        institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
+                        retrievalInstitutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId)
                 : CandidateSignals.EMPTY;
         ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
-                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
+                retrievalInstitutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
         Map<UUID, Double> semanticScores = combineSemanticScores(
                 selectedMediaSemanticSignals.similarityScores(), textSemanticLoad.scores());
 
@@ -225,9 +230,9 @@ public class AIRecommendationService {
         if (candidateIds.isEmpty()) {
             List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
                     ? List.of()
-                    : fallbackOrEmpty(institutionId, attachedIds, selectedImageAssets, dto);
+                    : fallbackOrEmpty(retrievalInstitutionId, attachedIds, selectedImageAssets, dto);
             MediaSuggestionOutcome outcome = fallback.isEmpty()
-                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                    ? emptyOutcome(retrievalInstitutionId, selectedImageIds, dto, embeddingReadiness,
                             visualSignals.failed() || selectedMediaSemanticSignals.failed()
                                     || textSemanticLoad.failed())
                     : MediaSuggestionOutcome.READY;
@@ -259,7 +264,7 @@ public class AIRecommendationService {
         List<RankedAsset> selectedRanking = hybridEnabledForInstitution ? hybridRanking : legacyRanking;
         String rankingVersion = hybridEnabledForInstitution ? HYBRID_RANKING_VERSION : LEGACY_RANKING_VERSION;
         List<MediaSuggestResultDto> rankedResults = selectedRanking.stream()
-                .limit(8)
+                .limit(SUGGESTION_RESULT_LIMIT)
                 .map(result -> MediaSuggestResultDto.from(
                         result.asset(), result.score(), result.reasons(),
                         result.signalScores(), rankingVersion))
@@ -274,9 +279,9 @@ public class AIRecommendationService {
             }
             List<MediaSuggestResultDto> fallback = hybridEnabledForInstitution
                     ? List.of()
-                    : fallbackOrEmpty(institutionId, attachedIds, selectedImageAssets, dto);
+                    : fallbackOrEmpty(retrievalInstitutionId, attachedIds, selectedImageAssets, dto);
             MediaSuggestionOutcome outcome = fallback.isEmpty()
-                    ? emptyOutcome(institutionId, selectedImageIds, dto, embeddingReadiness,
+                    ? emptyOutcome(retrievalInstitutionId, selectedImageIds, dto, embeddingReadiness,
                             visualSignals.failed() || selectedMediaSemanticSignals.failed()
                                     || textSemanticLoad.failed())
                     : MediaSuggestionOutcome.READY;
@@ -303,6 +308,8 @@ public class AIRecommendationService {
                 .map(MediaAsset::getId)
                 .collect(Collectors.toSet());
         List<MediaAsset> selectedImageAssets = resolveSelectedImageAssets(dto, attachedAssets, attachedIds);
+        UUID retrievalInstitutionId = recommendationScopeInstitution(
+                institutionId, selectedImageAssets, user);
         Set<UUID> selectedImageIds = selectedImageAssets.stream()
                 .map(MediaAsset::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -310,14 +317,14 @@ public class AIRecommendationService {
 
         long visualStarted = System.nanoTime();
         CandidateSignals visualSignals = loadAttachedCandidateScores(
-                institutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId);
+                retrievalInstitutionId, selectedImageIds, MediaAssetEmbeddingType.IMAGE, submissionId);
         long visualDurationMs = MediaAiTelemetryService.elapsedMillis(visualStarted);
 
         long semanticStarted = System.nanoTime();
         CandidateSignals selectedSemanticSignals = loadAttachedCandidateScores(
-                institutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
+                retrievalInstitutionId, selectedImageIds, MediaAssetEmbeddingType.SEMANTIC, submissionId);
         ScoreLoad textSemanticLoad = loadTextSemanticCandidateScores(
-                institutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
+                retrievalInstitutionId, selectedImageAssets, selectedTagMap, dto, submissionId);
         Map<UUID, Double> semanticScores = combineSemanticScores(
                 selectedSemanticSignals.similarityScores(), textSemanticLoad.scores());
         long semanticDurationMs = MediaAiTelemetryService.elapsedMillis(semanticStarted);
@@ -386,11 +393,10 @@ public class AIRecommendationService {
         try {
             long ready = mediaAssetEmbeddingRepository.countEmbeddingsForAssets(
                     List.copyOf(selectedImageIds), MediaAssetEmbeddingType.IMAGE);
-            boolean enrichmentProcessing = mediaProcessingJobRepository != null
-                    && mediaProcessingJobRepository.existsActiveEnrichmentJob(
-                            List.copyOf(selectedImageIds),
-                            MediaProcessingQueueService.ENRICHMENT_VERSION);
-            if (ready >= selectedImageIds.size() && !enrichmentProcessing) {
+            // Provider enrichment adds metadata but is not required for visual
+            // retrieval. Once every selected image has its current embedding,
+            // suggestions must not remain blocked behind optional enrichment.
+            if (ready >= selectedImageIds.size()) {
                 return EmbeddingReadiness.READY;
             }
             boolean failed = mediaProcessingJobRepository != null
@@ -440,7 +446,7 @@ public class AIRecommendationService {
                 .toList();
     }
 
-    private static List<RankedAsset> rankCandidates(
+    private List<RankedAsset> rankCandidates(
             List<UUID> candidateIds,
             Map<UUID, MediaAsset> assetMap,
             Set<UUID> attachedIds,
@@ -462,7 +468,8 @@ public class AIRecommendationService {
                 .filter(id -> hasCompatibleMediaFormat(assetMap.get(id), attachedAssets))
                 .filter(id -> hasRelevantRetrievalSignal(
                         semanticScores.getOrDefault(id, 0.0),
-                        visualScores.getOrDefault(id, 0.0)))
+                        visualScores.getOrDefault(id, 0.0),
+                        visualSuggestionsEnabled && !attachedAssets.isEmpty()))
                 .map(id -> hybrid
                         ? rankAssetHybrid(
                                 assetMap.get(id),
@@ -484,7 +491,7 @@ public class AIRecommendationService {
                 .filter(result -> result.score() >= MIN_RELEVANCE_SCORE)
                 .sorted(rankedAssetComparator())
                 .toList();
-        return hybrid ? diversify(ranked, 8) : ranked;
+        return hybrid ? diversify(ranked, SUGGESTION_RESULT_LIMIT) : ranked;
     }
 
     static boolean hasCompatibleMediaFormat(
@@ -535,7 +542,7 @@ public class AIRecommendationService {
         double boost;
         if (selectedTypes.contains(candidateType)) {
             boost = 0.10;
-            reasons.add(0, "Gemini detected the same format: "
+            reasons.add(0, "AI detected the same format: "
                     + displayAssetType(assetFormatType(result.asset())) + ".");
         } else {
             MediaFormatFamily candidateFamily = mediaFormatFamily(candidateType);
@@ -544,10 +551,10 @@ public class AIRecommendationService {
                     .anyMatch(family -> family != MediaFormatFamily.UNKNOWN && family == candidateFamily);
             if (!sameFamily) return result;
             boost = 0.04;
-            reasons.add(0, "Gemini detected a related photo format: "
+            reasons.add(0, "AI detected a related photo format: "
                     + displayAssetType(assetFormatType(result.asset())) + ".");
         }
-        sharedGeminiDetails(result.asset(), selectedAssets).ifPresent(reason -> reasons.add(1, reason));
+        sharedAiDetails(result.asset(), selectedAssets).ifPresent(reason -> reasons.add(1, reason));
         Map<String, Double> signalScores = new LinkedHashMap<>(result.signalScores());
         signalScores.put("format", selectedTypes.contains(candidateType) ? 1.0 : 0.70);
         return new RankedAsset(result.asset(), clamp(result.score() + boost),
@@ -559,26 +566,26 @@ public class AIRecommendationService {
         return value.isBlank() ? "Media" : value.replace('_', ' ');
     }
 
-    private static Optional<String> sharedGeminiDetails(
+    private static Optional<String> sharedAiDetails(
             MediaAsset candidate,
             List<MediaAsset> selectedAssets) {
         Set<String> selectedSignals = selectedAssets.stream()
-                .flatMap(asset -> geminiDetailValues(asset).stream())
+                .flatMap(asset -> aiDetailValues(asset).stream())
                 .map(AIRecommendationService::normalize)
                 .filter(value -> !value.isBlank())
                 .collect(Collectors.toSet());
         if (selectedSignals.isEmpty()) return Optional.empty();
 
-        List<String> shared = geminiDetailValues(candidate).stream()
+        List<String> shared = aiDetailValues(candidate).stream()
                 .filter(value -> selectedSignals.contains(normalize(value)))
                 .distinct()
                 .limit(3)
                 .toList();
         if (shared.isEmpty()) return Optional.empty();
-        return Optional.of("Gemini found shared details: " + String.join(", ", shared) + ".");
+        return Optional.of("AI found shared details: " + String.join(", ", shared) + ".");
     }
 
-    private static List<String> geminiDetailValues(MediaAsset asset) {
+    private static List<String> aiDetailValues(MediaAsset asset) {
         List<String> values = new ArrayList<>();
         addValue(values, asset.getPrimarySubject());
         addValue(values, asset.getVisualSetting());
@@ -638,8 +645,15 @@ public class AIRecommendationService {
                 && !"unknown".equals(value) && !"other".equals(value);
     }
 
-    private static boolean hasRelevantRetrievalSignal(double semanticScore, double visualScore) {
-        return Math.max(semanticScore, visualScore) >= MIN_RELEVANCE_SCORE;
+    private static boolean hasRelevantRetrievalSignal(
+            double semanticScore, double visualScore, boolean hasSelectedImages) {
+        // Selected media establishes a visual constraint. Text and metadata can
+        // re-rank visually related candidates, but cannot introduce a candidate
+        // that does not resemble any selected image.
+        if (hasSelectedImages) {
+            return visualScore >= MIN_RELEVANCE_SCORE;
+        }
+        return semanticScore >= MIN_RELEVANCE_SCORE;
     }
 
     private static boolean duplicatesSelectedAsset(MediaAsset candidate, List<MediaAsset> selectedAssets) {
@@ -1535,6 +1549,30 @@ public class AIRecommendationService {
         return submission;
     }
 
+    private static UUID recommendationScopeInstitution(
+            UUID submissionInstitutionId,
+            List<MediaAsset> selectedAssets,
+            JwtUserDetails user) {
+        boolean networkWide = "admin".equalsIgnoreCase(user.role())
+                || "moderator".equalsIgnoreCase(user.role());
+        if (!networkWide || selectedAssets.isEmpty()) {
+            return submissionInstitutionId;
+        }
+
+        Set<UUID> selectedInstitutionIds = selectedAssets.stream()
+                .map(MediaAsset::getInstitution)
+                .filter(Objects::nonNull)
+                .map(Institution::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        // A network role may compose a draft using another institution's
+        // visible library. Keep suggestions in that same library when every
+        // selected photo came from one institution; never mix tenant pools.
+        return selectedInstitutionIds.size() == 1
+                ? selectedInstitutionIds.iterator().next()
+                : submissionInstitutionId;
+    }
+
     private OptionalVector firstAvailableEmbedding(List<MediaAsset> attached) {
         for (MediaAsset asset : attached) {
             String embedding = mediaAssetEmbeddingRepository
@@ -1599,7 +1637,7 @@ public class AIRecommendationService {
                 .filter(result -> result.score() >= MIN_RELEVANCE_SCORE)
                 .map(result -> applyMediaFormatBoost(result, selectedAssets))
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
-                .limit(8)
+                .limit(SUGGESTION_RESULT_LIMIT)
                 .map(result -> MediaSuggestResultDto.from(
                         result.asset(), result.score(), result.reasons(),
                         result.signalScores(), LEGACY_RANKING_VERSION))
@@ -1615,7 +1653,8 @@ public class AIRecommendationService {
         // selected images are not attached yet or their embeddings are still processing. Returning generic
         // metadata matches would stop the frontend's bounded visual retry and
         // make those images appear to influence results when they did not.
-        if (!hasTextContext(dto)) {
+        if (!hasTextContext(dto)
+                || (visualSuggestionsEnabled && !selectedAssets.isEmpty())) {
             return List.of();
         }
         return fallbackSuggestions(institutionId, attachedIds, selectedAssets, dto);

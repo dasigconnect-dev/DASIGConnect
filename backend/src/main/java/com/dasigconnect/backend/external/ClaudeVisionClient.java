@@ -61,6 +61,7 @@ public class ClaudeVisionClient implements AiVisionClient {
     private static final int VISUAL_EMBEDDING_MAX_BYTES = 1536 * 1024;
     private static final int DEFAULT_CAPTION_MAX_TOKENS = 512;
     private static final int MAX_CAPTION_MAX_TOKENS = 4096;
+    private static final int CLASSIFICATION_MAX_TOKENS = 2048;
     public static final int MAX_REQUESTED_CAPTION_WORDS = 2000;
     private static final int MAX_WORD_COUNT_ATTEMPTS = 3;
     private static final Pattern WORD_COUNT_PATTERN = Pattern.compile(
@@ -957,7 +958,10 @@ public class ClaudeVisionClient implements AiVisionClient {
 
             var root = objectMapper.createObjectNode();
             root.put("model", model);
-            root.put("max_tokens", 768);
+            // The structured classifier contains several evidence arrays. 768
+            // tokens can cut valid JSON off mid-field, especially for images
+            // with OCR or many visible objects.
+            root.put("max_tokens", CLASSIFICATION_MAX_TOKENS);
             root.set("messages", messagesArray);
 
             return objectMapper.writeValueAsString(root);

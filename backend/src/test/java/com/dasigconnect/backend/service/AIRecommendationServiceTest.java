@@ -41,6 +41,7 @@ import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaProcessingJobRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaContextRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -149,7 +150,7 @@ class AIRecommendationServiceTest {
                 > AIRecommendationService.usageDiversityScore(5, now.minusSeconds(24 * 60 * 60), now));
     }
     @Test
-    void suggestMedia_fallsBackWhenSemanticCandidatesAreAlreadyAttached() {
+    void suggestMedia_doesNotUseMetadataFallbackWhenSelectedImageHasNoVisualMatch() {
         UUID institutionId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
         UUID attachedId = UUID.randomUUID();
@@ -207,17 +208,14 @@ class AIRecommendationServiceTest {
                 dto,
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId)
         );
-        assertEquals(1, results.size());
-        assertEquals(fallbackId, results.getFirst().getId());
-        assertTrue(results.getFirst().getMatchReasons().stream()
-                .anyMatch(reason -> reason.toLowerCase().contains("metadata matches")));
+        assertTrue(results.isEmpty());
         List<MediaSuggestResultDto> moderatorResults = service.suggestMedia(
                 submissionId,
                 dto,
                 new JwtUserDetails(UUID.randomUUID(), "moderator@test.edu", "moderator", null)
         );
-        assertEquals(1, moderatorResults.size());
-        assertEquals(fallbackId, moderatorResults.getFirst().getId());
+        assertTrue(moderatorResults.isEmpty());
+        verify(mediaAssetRepository, never()).findVisibleReadyByInstitution(eq(institutionId), any());
     }
     // ── suggestAlbum() — album Auto-Match (UC-1.7) ──────────────────────────────
     @Test
@@ -297,7 +295,7 @@ class AIRecommendationServiceTest {
         verify(voyageAIClient, never()).embedQuery(anyString());
     }
     @Test
-    void suggestMedia_oneSelectedImageReturnsVisualMatchesAndExcludesSelectedAsset() {
+    void suggestMedia_readyImageDoesNotWaitForOptionalEnrichment() {
         UUID institutionId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
@@ -307,6 +305,7 @@ class AIRecommendationServiceTest {
         SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
         MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
         MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        MediaProcessingJobRepository processingJobs = mock(MediaProcessingJobRepository.class);
         AssetTagRepository tags = mock(AssetTagRepository.class);
         VoyageAIClient voyage = mock(VoyageAIClient.class);
         when(submissions.findById(submissionId)).thenReturn(Optional.of(
@@ -315,6 +314,9 @@ class AIRecommendationServiceTest {
         when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
         when(embeddings.countEmbeddingsForAssets(
                 List.of(selected.getId()), MediaAssetEmbeddingType.IMAGE)).thenReturn(1L);
+        when(processingJobs.existsActiveEnrichmentJob(
+                List.of(selected.getId()), MediaProcessingQueueService.ENRICHMENT_VERSION))
+                .thenReturn(true);
         when(embeddings.findTopSimilarToAssetsWithScore(
                 institutionId, submissionId, MediaAssetEmbeddingType.IMAGE,
                 List.of(selected.getId()), 12, 30))
@@ -323,12 +325,14 @@ class AIRecommendationServiceTest {
                         new Object[]{related.getId().toString(), 0.90}));
         when(embeddings.findTopSimilarToAssetsWithScore(
                 institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC,
-                List.of(selected.getId()), 12, 30)).thenReturn(List.of());
+                List.of(selected.getId()), 12, 30))
+                .thenReturn(List.of());
         when(mediaAssets.findActiveByIds(anyList())).thenReturn(List.of(selected, related));
         AIRecommendationService service = new AIRecommendationService(
                 submissions, submissionMedia, mediaAssets, embeddings, tags,
                 mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
                 mock(SubmissionMediaContextRepository.class), true, false, false);
+        service.setMediaProcessingJobRepository(processingJobs);
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
         dto.setSelectedAssetIds(List.of(selected.getId()));
         AIRecommendationService.MediaSuggestionBatch batch = service.suggestMediaBatch(
@@ -367,7 +371,8 @@ class AIRecommendationServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{weak.getId().toString(), 0.35, 1.0}));
         when(embeddings.findTopSimilarToAssetsWithScore(
                 institutionId, submissionId, MediaAssetEmbeddingType.SEMANTIC,
-                List.of(selected.getId()), 12, 30)).thenReturn(List.of());
+                List.of(selected.getId()), 12, 30))
+                .thenReturn(List.<Object[]>of(new Object[]{weak.getId().toString(), 0.90, 1.0}));
         when(mediaAssets.findActiveByIds(List.of(weak.getId()))).thenReturn(List.of(weak));
         AIRecommendationService service = new AIRecommendationService(
                 submissions, submissionMedia, mediaAssets, embeddings, tags,
@@ -534,10 +539,10 @@ class AIRecommendationServiceTest {
                 new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
         assertEquals(List.of(candidate.getId()), results.stream().map(MediaSuggestResultDto::getId).toList());
         assertEquals("Infographic", results.getFirst().getAssetType());
-        assertEquals("Gemini detected the same format: Infographic.",
+        assertEquals("AI detected the same format: Infographic.",
                 results.getFirst().getMatchReasons().getFirst());
         assertThat(results.getFirst().getMatchReasons())
-                .contains("Gemini found shared details: QR code.");
+                .contains("AI found shared details: QR code.");
         assertEquals(1.0, results.getFirst().getScoreBreakdown().get("format"));
         assertEquals(0.82, results.getFirst().getScoreBreakdown().get("visual"));
         verify(embeddings, never()).findTopSimilarToAssetsWithScore(

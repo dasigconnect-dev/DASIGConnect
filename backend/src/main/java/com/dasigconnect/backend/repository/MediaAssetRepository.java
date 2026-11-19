@@ -536,7 +536,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findDraftImagesMissingClassification(Pageable pageable);
 
     /**
-     * Institution-fair Gemini metadata backfill for historical READY images.
+     * Institution-fair AI metadata backfill for historical READY images.
      * Completed jobs may be selected again when metadata is still absent, while
      * active/dead jobs for the current enrichment version remain untouched.
      */

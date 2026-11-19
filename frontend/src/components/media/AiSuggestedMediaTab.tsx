@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { UseAiMediaSuggestionsReturn } from "../../hooks/useAiMediaSuggestions";
 import { hasSufficientMediaContext } from "../../hooks/useAiMediaSuggestions";
@@ -18,6 +18,8 @@ interface AiSuggestedMediaTabProps {
   disabled?: boolean;
 }
 
+const SUGGESTIONS_PER_PAGE = 8;
+
 export default function AiSuggestedMediaTab({
   suggestions,
   submissionId,
@@ -32,6 +34,7 @@ export default function AiSuggestedMediaTab({
   disabled,
 }: AiSuggestedMediaTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
   const { state, results, fetch } = suggestions;
 
   const hasTextContext = hasSufficientMediaContext(eventTitle, caption, tags);
@@ -60,6 +63,15 @@ export default function AiSuggestedMediaTab({
     similarityScore: r.similarityScore,
     matchReasons: r.matchReasons ?? [],
   }));
+  const totalPages = Math.max(1, Math.ceil(gridAssets.length / SUGGESTIONS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * SUGGESTIONS_PER_PAGE;
+  const pageEnd = Math.min(pageStart + SUGGESTIONS_PER_PAGE, gridAssets.length);
+  const visibleGridAssets = gridAssets.slice(pageStart, pageEnd);
+
+  useEffect(() => {
+    setPage(1);
+  }, [results]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -248,14 +260,6 @@ export default function AiSuggestedMediaTab({
               </>
             ) : (
               <>
-                <span className="ast-results-copy">
-                  <span className="ast-results-label">
-                    Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
-                  </span>
-                  <span className="ast-results-method">
-                    Gemini identifies format and content; Voyage compares visual and semantic similarity.
-                  </span>
-                </span>
                 <button
                   type="button"
                   className="ast-regenerate-btn"
@@ -271,11 +275,38 @@ export default function AiSuggestedMediaTab({
           </div>
 
           <MediaAssetGrid
-            assets={gridAssets}
+            assets={visibleGridAssets}
             selectedIds={selectedIds}
             alreadyAddedIds={alreadyAddedIds}
             onToggle={handleToggleCard}
           />
+
+          {totalPages > 1 && (
+            <nav className="ast-pagination" aria-label="AI media suggestion pages">
+              <button
+                type="button"
+                className="ast-pagination-btn"
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                disabled={disabled || currentPage === 1}
+                aria-label="Previous suggestions page"
+              >
+                <i className="ti ti-chevron-left" aria-hidden />
+              </button>
+              <span className="ast-pagination-status" aria-live="polite">
+                <strong>Page {currentPage} of {totalPages}</strong>
+                <small>{pageStart + 1}–{pageEnd} of {gridAssets.length}</small>
+              </span>
+              <button
+                type="button"
+                className="ast-pagination-btn"
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                disabled={disabled || currentPage === totalPages}
+                aria-label="Next suggestions page"
+              >
+                <i className="ti ti-chevron-right" aria-hidden />
+              </button>
+            </nav>
+          )}
         </>
       )}
     </div>

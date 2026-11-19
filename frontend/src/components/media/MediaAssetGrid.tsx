@@ -20,6 +20,7 @@ interface MediaAssetGridProps {
   onToggle: (id: string) => void;
   loading?: boolean;
   skeletonCount?: number;
+  columns?: number;
 }
 
 export default function MediaAssetGrid({
@@ -29,11 +30,13 @@ export default function MediaAssetGrid({
   onToggle,
   loading = false,
   skeletonCount = 8,
+  columns,
 }: MediaAssetGridProps) {
+  const gridStyle = columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined;
   if (loading && assets.length === 0) {
     return (
       <div className="mag-scroll-wrap">
-        <div className="mag-grid">
+        <div className="mag-grid" style={gridStyle}>
           {Array.from({ length: skeletonCount }).map((_, i) => (
             <div key={i} className="mac-card mac-card--skeleton">
               <div className="mac-thumb skeleton-block" />
@@ -47,7 +50,7 @@ export default function MediaAssetGrid({
 
   return (
     <div className="mag-scroll-wrap">
-      <div className="mag-grid">
+      <div className="mag-grid" style={gridStyle}>
         {assets.map((asset) => (
           <MediaAssetCard
             key={asset.id}

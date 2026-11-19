@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-/** Generates a Voyage semantic vector from user metadata plus persisted Gemini observations. */
+/** Generates a Voyage semantic vector from user metadata plus persisted AI observations. */
 @Service
 public class MediaSemanticEmbeddingService {
 

@@ -73,9 +73,25 @@ export default function MediaLibraryTab({
   // useMediaLibraryAssets strips institutionId whenever networkView is on.
   const effectiveNetworkView = networkView && institutionFilter === "";
   const effectiveInstitutionId = networkView ? institutionFilter || undefined : institutionId;
+  const libraryRef = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(2);
+  useEffect(() => {
+    const element = libraryRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      // Match the grid's 148px minimum card width and 8px gap.
+      setColumns(Math.max(1, Math.floor((entry.contentRect.width + 8) / 156)));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const pageSize = columns * 2;
 
   const {
     assets,
+    selectedAssets,
+    page,
+    previousPage,
     loading,
     error,
     totalCount,
@@ -91,7 +107,7 @@ export default function MediaLibraryTab({
     selectedIds,
     toggleSelect,
     clearSelection,
-  } = useMediaLibraryAssets({ institutionId: effectiveInstitutionId, networkView: effectiveNetworkView });
+  } = useMediaLibraryAssets({ institutionId: effectiveInstitutionId, networkView: effectiveNetworkView, pageSize });
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -136,7 +152,7 @@ export default function MediaLibraryTab({
 
   function handleAdd() {
     if (disabled || pendingSelected.length === 0) return;
-    const toAdd = assets.filter((a) => pendingSelected.includes(a.id));
+    const toAdd = selectedAssets.filter((a) => pendingSelected.includes(a.id));
     const items: SubmissionMediaItem[] = toAdd.map((a) => ({
       clientId: `library-${a.id}`,
       source: "library" as const,
@@ -151,7 +167,7 @@ export default function MediaLibraryTab({
   }
 
   return (
-    <div className="mlt-root">
+    <div className="mlt-root" ref={libraryRef}>
       <div className="mlt-filters">
         <div className="mlt-search-wrap">
           <i className="ti ti-search mlt-search-icon" aria-hidden />
@@ -255,7 +271,8 @@ export default function MediaLibraryTab({
       ) : (
         <>
           <MediaAssetGrid
-            assets={assets.map((a): GridAsset => ({
+            columns={columns}
+            assets={assets.slice(0, pageSize).map((a): GridAsset => ({
               id: a.id,
               storageUrl: a.storageUrl,
               fileName: a.fileName,
@@ -268,7 +285,7 @@ export default function MediaLibraryTab({
             alreadyAddedIds={alreadyAddedIds}
             onToggle={handleToggleCard}
             loading={loading}
-            skeletonCount={8}
+            skeletonCount={pageSize}
           />
 
           {!loading && assets.length === 0 && !error && (
@@ -278,15 +295,30 @@ export default function MediaLibraryTab({
             </div>
           )}
 
-          {hasMore && !loading && (
-            <button
-              type="button"
-              className="mlt-load-more"
-              onClick={loadMore}
-              disabled={disabled}
-            >
-              Load more
-            </button>
+          {totalCount > 0 && (
+            <nav className="ast-pagination" aria-label="My Library pages">
+              <button
+                type="button"
+                className="ast-pagination-btn"
+                onClick={previousPage}
+                disabled={disabled || loading || page <= 1}
+                aria-label="Previous library page"
+              >
+                <i className="ti ti-chevron-left" aria-hidden />
+              </button>
+              <span aria-live="polite" aria-label={`Page ${page}`} aria-current="page">
+                {page}
+              </span>
+              <button
+                type="button"
+                className="ast-pagination-btn"
+                onClick={loadMore}
+                disabled={disabled || loading || !hasMore}
+                aria-label="Next library page"
+              >
+                <i className="ti ti-chevron-right" aria-hidden />
+              </button>
+            </nav>
           )}
         </>
       )}
