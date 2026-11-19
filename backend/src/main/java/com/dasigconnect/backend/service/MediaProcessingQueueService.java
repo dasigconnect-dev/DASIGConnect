@@ -1,5 +1,7 @@
 package com.dasigconnect.backend.service;
 
+import com.dasigconnect.backend.config.AiProviderConfiguration;
+import com.dasigconnect.backend.model.entity.MediaEmbeddingVersions;
 import com.dasigconnect.backend.model.entity.MediaProcessingJob;
 import com.dasigconnect.backend.model.entity.MediaProcessingJobStatus;
 import com.dasigconnect.backend.repository.MediaProcessingJobRepository;
@@ -21,9 +23,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class MediaProcessingQueueService {
 
     public static final String PROCESSING_VERSION = "media-retrieval-v2";
-    public static final String ENRICHMENT_VERSION = "gemini-enrichment-v2";
-    public static final String IMAGE_EMBEDDING_VERSION = "image-embedding-v1";
-    public static final String SEMANTIC_EMBEDDING_VERSION = "semantic-embedding-v2";
+    public static final String ENRICHMENT_VERSION = "ai-enrichment-v3";
+    public static final String IMAGE_EMBEDDING_VERSION = MediaEmbeddingVersions.IMAGE;
+    public static final String SEMANTIC_EMBEDDING_VERSION = MediaEmbeddingVersions.SEMANTIC;
     public static final String CONTEXT_VERSION = "submission-context-v1";
     public static final int BACKFILL_PRIORITY = 100;
     private static final int MAX_ERROR_LENGTH = 500;
@@ -42,13 +44,16 @@ public class MediaProcessingQueueService {
             @Value("${app.media-processing.lease-seconds:300}") long leaseSeconds,
             @Value("${app.media-processing.max-jobs-per-institution-per-batch:2}") int maxJobsPerInstitutionPerBatch,
             @Value("${app.media-processing.max-queue-depth:100}") int maxQueueDepth,
+            @Value("${app.ai.provider:claude}") String aiProvider,
+            @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${gemini.api.key:}") String geminiApiKey) {
         this.repository = repository;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.leaseDuration = Duration.ofSeconds(Math.max(30, leaseSeconds));
         this.maxJobsPerInstitutionPerBatch = Math.max(1, Math.min(maxJobsPerInstitutionPerBatch, 10));
         this.maxQueueDepth = Math.max(10, maxQueueDepth);
-        this.enrichmentConfigured = geminiApiKey != null && !geminiApiKey.isBlank();
+        this.enrichmentConfigured = AiProviderConfiguration.isPrimaryProviderConfigured(
+                aiProvider, anthropicApiKey, geminiApiKey);
     }
 
     public void enqueue(UUID assetId) {
@@ -86,7 +91,7 @@ public class MediaProcessingQueueService {
     }
 
     /**
-     * Draft suggestions need both Gemini's structured media type and Voyage's
+     * Draft suggestions benefit from both AI-structured media type and Voyage's
      * visual vector. Queue both durable jobs after the upload transaction so
      * format-aware ranking can distinguish infographics from event photos.
      */

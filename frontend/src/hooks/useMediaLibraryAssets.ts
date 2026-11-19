@@ -5,11 +5,13 @@ import {
   type MediaAsset,
 } from "../api/mediaApi";
 
-const PAGE_SIZE = 24;
 const DEBOUNCE_MS = 300;
 
 export interface UseMediaLibraryAssetsReturn {
   assets: MediaAsset[];
+  selectedAssets: MediaAsset[];
+  page: number;
+  previousPage: () => void;
   loading: boolean;
   error: boolean;
   totalCount: number;
@@ -28,6 +30,7 @@ export interface UseMediaLibraryAssetsReturn {
 }
 
 export interface UseMediaLibraryAssetsOptions {
+  pageSize?: number;
   /** Scope the library to a specific institution (used by network-wide admins). */
   institutionId?: string;
   /** Show assets across every institution for network-wide roles. */
@@ -39,11 +42,14 @@ export function useMediaLibraryAssets(
 ): UseMediaLibraryAssetsReturn {
   const institutionId = options?.institutionId;
   const networkView = options?.networkView ?? false;
+  const pageSize = options?.pageSize ?? 24;
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const pageRef = useRef<number>(1);
+  const [page, setPage] = useState(1);
+  const assetCache = useRef(new Map<string, MediaAsset>());
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestIdRef = useRef(0);
 
@@ -84,7 +90,7 @@ export function useMediaLibraryAssets(
             q.trim(),
             networkView ? undefined : institutionId || undefined,
             pageNum,
-            PAGE_SIZE,
+            pageSize,
             request.controller.signal,
           )
         : searchMediaAssets({
@@ -94,11 +100,13 @@ export function useMediaLibraryAssets(
             institutionId: networkView ? undefined : institutionId || undefined,
             networkView,
             page: pageNum,
-            pageSize: PAGE_SIZE,
+            pageSize,
           }, request.controller.signal);
       return requestPromise
         .then((result) => {
           if (requestRef.current?.id !== request.id) return;
+          result.items.forEach((asset) => assetCache.current.set(asset.id, asset));
+          setPage(pageNum);
           setAssets((prev) => (append ? [...prev, ...result.items] : result.items));
           setTotalCount(result.totalCount);
         })
@@ -114,7 +122,7 @@ export function useMediaLibraryAssets(
           }
         });
     },
-    [institutionId, networkView]
+    [institutionId, networkView, pageSize]
   );
 
   useEffect(() => {
@@ -134,7 +142,11 @@ export function useMediaLibraryAssets(
   }, []);
 
   function loadMore() {
-    void doFetch(debouncedSearch, mediaType, albumId, pageRef.current + 1, true);
+    void doFetch(debouncedSearch, mediaType, albumId, page + 1, false);
+  }
+
+  function previousPage() {
+    void doFetch(debouncedSearch, mediaType, albumId, Math.max(1, page - 1), false);
   }
 
   function retry() {
@@ -153,10 +165,16 @@ export function useMediaLibraryAssets(
 
   return {
     assets,
+    selectedAssets: selectedIds.flatMap((id) => {
+      const asset = assetCache.current.get(id);
+      return asset ? [asset] : [];
+    }),
+    page,
+    previousPage,
     loading,
     error,
     totalCount,
-    hasMore: assets.length < totalCount,
+    hasMore: page * pageSize < totalCount,
     search,
     setSearch,
     mediaType,
