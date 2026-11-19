@@ -13,7 +13,7 @@ import java.util.Set;
 public final class MediaMetadataTaxonomy {
 
     public static final String SCHEMA_VERSION = "media-metadata-v2";
-    public static final String PROMPT_VERSION = "gemini-image-only-v2";
+    public static final String PROMPT_VERSION = "ai-image-only-v3";
 
     public static final Set<String> ASSET_TYPES = Set.of(
             "photograph", "graphic_design", "screenshot", "document",

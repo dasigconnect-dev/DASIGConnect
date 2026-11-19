@@ -29,10 +29,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Classifies media assets using Gemini and generates Voyage AI embeddings (UC-3.3).
+ * Classifies media assets using the configured vision provider and generates Voyage AI embeddings (UC-3.3).
  *
  * Transaction discipline: each repository call runs in its own short implicit transaction.
- * No DB connection is held across external API calls (Gemini or Voyage AI).
+ * No DB connection is held across external API calls (vision provider or Voyage AI).
  * All methods are @Async — failures are logged and swallowed so upload is never blocked.
  */
 @Service
@@ -167,7 +167,7 @@ public class AIClassificationService {
     }
 
     /**
-     * Adds optional Gemini metadata without controlling retrieval readiness.
+     * Adds optional provider metadata without controlling retrieval readiness.
      * A failure is returned to the durable queue for retry, but never changes
      * the media asset status or removes already stored Voyage vectors.
      */
@@ -209,11 +209,11 @@ public class AIClassificationService {
      * use MediaProcessingWorker and the synchronous, stage-aware processAsset path.
      *
      * @param assetId    UUID of the saved MediaAsset
-     * @param storageUrl storage URL used as image input for Gemini
+     * @param storageUrl storage URL used as image input for the configured provider
      */
     @Async
     public void classifyAndEmbed(UUID assetId, String storageUrl) {
-        // Step 1: Classify via Gemini (external HTTP, no DB connection held)
+        // Step 1: Classify via the configured provider (external HTTP, no DB connection held)
         MediaClassificationDto result;
         try {
             result = classifyAndNormalize(storageUrl);

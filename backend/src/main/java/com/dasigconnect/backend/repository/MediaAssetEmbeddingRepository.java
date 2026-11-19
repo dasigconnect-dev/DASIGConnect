@@ -2,6 +2,7 @@ package com.dasigconnect.backend.repository;
 
 import com.dasigconnect.backend.model.entity.MediaAssetEmbedding;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
+import com.dasigconnect.backend.model.entity.MediaEmbeddingVersions;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -134,7 +135,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                 type == MediaAssetEmbeddingType.IMAGE
                         ? "voyage-multimodal-3.5" : "voyage-4-lite",
                 type == MediaAssetEmbeddingType.IMAGE
-                        ? "image-embedding-v1" : "semantic-embedding-v1");
+                        ? MediaEmbeddingVersions.IMAGE : MediaEmbeddingVersions.SEMANTIC);
     }
 
     @Query(value = """
@@ -185,7 +186,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                 type == MediaAssetEmbeddingType.IMAGE
                         ? "voyage-multimodal-3.5" : "voyage-4-lite",
                 type == MediaAssetEmbeddingType.IMAGE
-                        ? "image-embedding-v1" : "semantic-embedding-v1",
+                        ? MediaEmbeddingVersions.IMAGE : MediaEmbeddingVersions.SEMANTIC,
                 limit);
     }
 
@@ -364,7 +365,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                 embeddingType == MediaAssetEmbeddingType.IMAGE
                         ? "voyage-multimodal-3.5" : "voyage-4-lite",
                 embeddingType == MediaAssetEmbeddingType.IMAGE
-                        ? "image-embedding-v1" : "semantic-embedding-v1",
+                        ? MediaEmbeddingVersions.IMAGE : MediaEmbeddingVersions.SEMANTIC,
                 perImageLimit,
                 resultLimit);
     }

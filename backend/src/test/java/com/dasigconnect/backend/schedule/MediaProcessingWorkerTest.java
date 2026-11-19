@@ -37,14 +37,14 @@ class MediaProcessingWorkerTest {
     private final SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
 
     private MediaProcessingWorker worker(boolean configured) {
-        return worker(configured ? "gemini" : "", configured ? "voyage" : "");
+        return worker(configured ? "anthropic" : "", configured ? "voyage" : "");
     }
 
-    private MediaProcessingWorker worker(String geminiApiKey, String voyageApiKey) {
+    private MediaProcessingWorker worker(String anthropicApiKey, String voyageApiKey) {
         return new MediaProcessingWorker(
                 queue, assets, classification, imageEmbedding, retrievalEmbedding, semanticEmbedding,
                 health, context, submissionMedia, 2,
-                geminiApiKey, voyageApiKey);
+                "claude", anthropicApiKey, "", voyageApiKey);
     }
 
     @Test

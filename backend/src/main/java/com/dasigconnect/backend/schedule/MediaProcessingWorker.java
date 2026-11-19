@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.schedule;
 
+import com.dasigconnect.backend.config.AiProviderConfiguration;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaProcessingJob;
 import com.dasigconnect.backend.model.entity.MediaProcessingJobType;
@@ -64,6 +65,8 @@ public class MediaProcessingWorker {
             SubmissionMediaContextService contextService,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             @Value("${app.media-processing.batch-size:2}") int batchSize,
+            @Value("${app.ai.provider:claude}") String aiProvider,
+            @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${gemini.api.key:}") String geminiApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey) {
         this.queue = queue;
@@ -76,7 +79,8 @@ public class MediaProcessingWorker {
         this.contextService = contextService;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.batchSize = Math.max(1, Math.min(batchSize, 10));
-        this.enrichmentConfigured = !geminiApiKey.isBlank();
+        this.enrichmentConfigured = AiProviderConfiguration.isPrimaryProviderConfigured(
+                aiProvider, anthropicApiKey, geminiApiKey);
         this.imageEmbeddingConfigured = !voyageApiKey.isBlank();
     }
 
@@ -137,7 +141,7 @@ public class MediaProcessingWorker {
             if (job.getJobType() == MediaProcessingJobType.CLASSIFY_AND_EMBED
                     || job.getJobType() == MediaProcessingJobType.ENRICH_MEDIA) {
                 if (!classificationService.enrichAsset(asset.getId(), asset.getStorageUrl())) {
-                    throw new IllegalStateException("Optional Gemini enrichment did not complete");
+                    throw new IllegalStateException("Optional AI enrichment did not complete");
                 }
                 queue.complete(job, workerId);
                 return;

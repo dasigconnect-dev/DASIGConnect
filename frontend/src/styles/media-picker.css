@@ -892,6 +892,66 @@
   cursor: not-allowed;
 }
 
+.ast-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.ast-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-r-sm);
+  background: var(--mp-surface);
+  color: var(--mp-text-2);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.ast-pagination-btn:hover:not(:disabled) {
+  border-color: #1877f2;
+  background: #eff6ff;
+  color: #1565d8;
+}
+
+.ast-pagination-btn:focus-visible {
+  outline: 3px solid rgb(24 119 242 / 25%);
+  outline-offset: 2px;
+}
+
+.ast-pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ast-pagination-status {
+  display: flex;
+  min-width: 92px;
+  flex-direction: column;
+  align-items: center;
+  color: var(--mp-text-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ast-pagination-status strong {
+  color: var(--mp-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ast-pagination-status small {
+  color: var(--mp-muted);
+  font-size: 11px;
+}
+
 
 /* ════════════════════════════════════════════
    MediaAssetGrid (mag-)
