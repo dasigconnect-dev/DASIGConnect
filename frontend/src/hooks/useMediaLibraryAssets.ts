@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   searchMediaAssets,
   semanticSearchMediaAssets,
   type MediaAsset,
 } from "../api/mediaApi";
+import { authenticatedQueryMeta } from "../lib/queryClient";
+import { queryKeys } from "../lib/queryKeys";
 
 const DEBOUNCE_MS = 300;
+const MEDIA_LIBRARY_STALE_TIME_MS = 2 * 60_000;
+const MEDIA_LIBRARY_GC_TIME_MS = 15 * 60_000;
 
 export interface UseMediaLibraryAssetsReturn {
   assets: MediaAsset[];
@@ -40,6 +45,7 @@ export interface UseMediaLibraryAssetsOptions {
 export function useMediaLibraryAssets(
   options?: UseMediaLibraryAssetsOptions,
 ): UseMediaLibraryAssetsReturn {
+  const queryClient = useQueryClient();
   const institutionId = options?.institutionId;
   const networkView = options?.networkView ?? false;
   const pageSize = options?.pageSize ?? 24;
@@ -49,7 +55,7 @@ export function useMediaLibraryAssets(
   const [totalCount, setTotalCount] = useState(0);
   const pageRef = useRef<number>(1);
   const [page, setPage] = useState(1);
-  const assetCache = useRef(new Map<string, MediaAsset>());
+  const [assetCache, setAssetCache] = useState<Map<string, MediaAsset>>(() => new Map());
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestIdRef = useRef(0);
 
@@ -85,27 +91,50 @@ export function useMediaLibraryAssets(
       setLoading(true);
       setError(false);
       const useSemanticSearch = q.trim().length >= 2 && !type && !album;
-      const requestPromise = useSemanticSearch
-        ? semanticSearchMediaAssets(
-            q.trim(),
-            networkView ? undefined : institutionId || undefined,
-            pageNum,
-            pageSize,
-            request.controller.signal,
-          )
-        : searchMediaAssets({
-            query: q || undefined,
-            mediaType: type || undefined,
-            albumId: album || undefined,
-            institutionId: networkView ? undefined : institutionId || undefined,
-            networkView,
-            page: pageNum,
-            pageSize,
-          }, request.controller.signal);
+      const normalizedQuery = q.trim();
+      const queryKey = queryKeys.mediaAssets.all({
+        role: networkView ? "network" : "institution",
+        networkView,
+        institutionId: networkView ? null : institutionId ?? null,
+        albumId: album || null,
+        page: pageNum,
+        pageSize,
+        search: normalizedQuery,
+        sort: useSemanticSearch ? "relevance" : "newest",
+        mediaType: type || undefined,
+        semantic: useSemanticSearch,
+      });
+      const requestPromise = queryClient.fetchQuery({
+        queryKey,
+        queryFn: () => useSemanticSearch
+          ? semanticSearchMediaAssets(
+              normalizedQuery,
+              networkView ? undefined : institutionId || undefined,
+              pageNum,
+              pageSize,
+              request.controller.signal,
+            )
+          : searchMediaAssets({
+              query: normalizedQuery || undefined,
+              mediaType: type || undefined,
+              albumId: album || undefined,
+              institutionId: networkView ? undefined : institutionId || undefined,
+              networkView,
+              page: pageNum,
+              pageSize,
+            }, request.controller.signal),
+        staleTime: MEDIA_LIBRARY_STALE_TIME_MS,
+        gcTime: MEDIA_LIBRARY_GC_TIME_MS,
+        meta: authenticatedQueryMeta,
+      });
       return requestPromise
         .then((result) => {
           if (requestRef.current?.id !== request.id) return;
-          result.items.forEach((asset) => assetCache.current.set(asset.id, asset));
+          setAssetCache((current) => {
+            const next = new Map(current);
+            result.items.forEach((asset) => next.set(asset.id, asset));
+            return next;
+          });
           setPage(pageNum);
           setAssets((prev) => (append ? [...prev, ...result.items] : result.items));
           setTotalCount(result.totalCount);
@@ -122,7 +151,7 @@ export function useMediaLibraryAssets(
           }
         });
     },
-    [institutionId, networkView, pageSize]
+    [institutionId, networkView, pageSize, queryClient]
   );
 
   useEffect(() => {
@@ -166,7 +195,7 @@ export function useMediaLibraryAssets(
   return {
     assets,
     selectedAssets: selectedIds.flatMap((id) => {
-      const asset = assetCache.current.get(id);
+      const asset = assetCache.get(id);
       return asset ? [asset] : [];
     }),
     page,

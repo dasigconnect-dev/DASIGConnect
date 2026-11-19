@@ -64,7 +64,8 @@ async function mockComposerBackend(
     draft: Draft | null;
     log: Array<{ key: string; body: unknown }>;
     patchDelayMs: number;
-  } = { draft: initial, log: [], patchDelayMs: 0 };
+    mediaDelayMs: number;
+  } = { draft: initial, log: [], patchDelayMs: 0, mediaDelayMs: 0 };
   const record = (request: ApiRequest) => {
     const body = request.route.request().postDataJSON() as unknown;
     state.log.push({ key: `${request.method} ${request.path}`, body });
@@ -133,6 +134,9 @@ async function mockComposerBackend(
       });
     },
     [`POST /api/v1/submissions/${DRAFT_ID}/media`]: async (request: ApiRequest) => {
+      if (state.mediaDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, state.mediaDelayMs));
+      }
       const body = record(request);
       const draft = state.draft ?? baseDraft();
       const asset = {
@@ -395,6 +399,34 @@ test.describe("submission composer", () => {
     expect(
       state.log.some((entry) => entry.key.includes(`/submissions/${DRAFT_ID}/media`)),
     ).toBe(false);
+  });
+
+  test("initial media autosave keeps the composer mounted while media uploads in the background", async ({ page }) => {
+    const { state } = await openComposer(page, "/submissions/new", null);
+    state.mediaDelayMs = 1_500;
+
+    const selectedFile = page.getByRole("listitem", { name: /background-save\.png/ });
+    await page.locator("input.umt-input").setInputFiles({
+      name: "background-save.png",
+      mimeType: "image/png",
+      buffer: PNG_BYTES,
+    });
+    await expect(selectedFile).toBeVisible();
+
+    // Creating the lightweight draft updates the URL and header without
+    // replacing the composer with its route-hydration loading state.
+    await expect.poll(() => state.log.some((entry) => entry.key === "POST /api/v1/submissions"), { timeout: 6_000 }).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`/submissions/${DRAFT_ID}$`), { timeout: 6_000 });
+    await expect(page.locator("#composer-step-nav")).toBeVisible();
+    await expect(selectedFile).toBeVisible();
+
+    await expect
+      .poll(
+        () => state.log.some((entry) => entry.key === `POST /api/v1/submissions/${DRAFT_ID}/media`),
+        { timeout: 6_000 },
+      )
+      .toBe(true);
+    expect(state.draft?.mediaAssets).toHaveLength(1);
   });
 
   test("a saved draft uploads newly selected media without a full draft save", async ({ page }) => {

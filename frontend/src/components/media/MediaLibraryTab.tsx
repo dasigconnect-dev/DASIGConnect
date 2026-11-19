@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useMediaLibraryAssets } from "../../hooks/useMediaLibraryAssets";
 import { listMediaAlbums, type MediaAlbum } from "../../api/mediaApi";
 import { listInstitutions } from "../../api/authApi";
 import { buildAlbumOptions } from "../../features/media-repository/albumTree";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 import BrandedSelect from "../ui/BrandedSelect";
 import "../../styles/media-picker.css";
@@ -41,6 +44,8 @@ const MEDIA_TYPE_OPTIONS = [
   { value: "image", label: "Images" },
   { value: "video", label: "Videos" },
 ];
+const MEDIA_LIBRARY_METADATA_STALE_TIME_MS = 5 * 60_000;
+const MEDIA_LIBRARY_METADATA_GC_TIME_MS = 15 * 60_000;
 
 export default function MediaLibraryTab({
   alreadyAddedIds,
@@ -52,6 +57,7 @@ export default function MediaLibraryTab({
   showAlbumFilter,
   institutions: institutionsProp,
 }: MediaLibraryTabProps) {
+  const queryClient = useQueryClient();
   // Defaults to the institution this picker was opened for (least surprising),
   // not "All institutions" — see the composer/Review Queue conversation this
   // was built for. "" means "All institutions".
@@ -61,11 +67,17 @@ export default function MediaLibraryTab({
   useEffect(() => {
     if (!networkView || institutionsProp) return;
     const controller = new AbortController();
-    listInstitutions(controller.signal)
-      .then((res) => setFetchedInstitutions(res.data ?? []))
+    queryClient.fetchQuery({
+      queryKey: queryKeys.institutions.composerOptions({ role: "network" }),
+      queryFn: () => listInstitutions(controller.signal).then((res) => res.data ?? []),
+      staleTime: MEDIA_LIBRARY_METADATA_STALE_TIME_MS,
+      gcTime: MEDIA_LIBRARY_METADATA_GC_TIME_MS,
+      meta: authenticatedQueryMeta,
+    })
+      .then(setFetchedInstitutions)
       .catch(() => setFetchedInstitutions([]));
     return () => controller.abort();
-  }, [networkView, institutionsProp]);
+  }, [networkView, institutionsProp, queryClient]);
   const institutionOptions = institutionsProp ?? fetchedInstitutions;
 
   // Narrowing to one institution disables networkView so the hook sends that
@@ -115,11 +127,22 @@ export default function MediaLibraryTab({
   useEffect(() => {
     if (!showAlbumFilter) return;
     const controller = new AbortController();
-    listMediaAlbums(effectiveInstitutionId, controller.signal)
-      .then((res) => setAlbums(res.data ?? []))
+    queryClient.fetchQuery({
+      queryKey: queryKeys.mediaAlbums.all({
+        role: networkView ? "network" : "institution",
+        institutionId: effectiveInstitutionId ?? null,
+        scope: networkView ? "network" : "institution",
+      }),
+      queryFn: () => listMediaAlbums(effectiveInstitutionId, controller.signal)
+        .then((res) => res.data ?? []),
+      staleTime: MEDIA_LIBRARY_METADATA_STALE_TIME_MS,
+      gcTime: MEDIA_LIBRARY_METADATA_GC_TIME_MS,
+      meta: authenticatedQueryMeta,
+    })
+      .then(setAlbums)
       .catch(() => setAlbums([]));
     return () => controller.abort();
-  }, [showAlbumFilter, effectiveInstitutionId]);
+  }, [showAlbumFilter, effectiveInstitutionId, networkView, queryClient]);
 
   const albumOptions = useMemo(
     () => [
