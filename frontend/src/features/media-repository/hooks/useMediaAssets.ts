@@ -34,8 +34,9 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
-const MEDIA_ASSETS_STALE_TIME_MS = 60_000;
-const MEDIA_ALBUMS_STALE_TIME_MS = 60_000;
+const MEDIA_ASSETS_STALE_TIME_MS = 2 * 60_000;
+const MEDIA_ALBUMS_STALE_TIME_MS = 5 * 60_000;
+const MEDIA_LIBRARY_GC_TIME_MS = 15 * 60_000;
 const MEDIA_ASSETS_PAGE_SIZE = 25;
 
 export function useMediaAssets(
@@ -83,6 +84,7 @@ export function useMediaAssets(
         : undefined,
     enabled,
     staleTime: MEDIA_ASSETS_STALE_TIME_MS,
+    gcTime: MEDIA_LIBRARY_GC_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
@@ -152,6 +154,7 @@ export function useMediaAlbums(
       ),
     enabled,
     staleTime: MEDIA_ALBUMS_STALE_TIME_MS,
+    gcTime: MEDIA_LIBRARY_GC_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
