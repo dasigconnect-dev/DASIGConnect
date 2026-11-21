@@ -6,11 +6,14 @@ import OptimizedImage, { canTransformImageType } from "../../components/media/Op
 import { visibleStatusColor, visibleStatusLabel } from "./calendarStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import "../../styles/calendar.css";
+
+const DEFAULT_FACEBOOK_PAGE_URL = "https://www.facebook.com/DostDasig";
 
 function formatDatetime(iso: string) {
   return new Date(iso).toLocaleString("en-PH", {
@@ -21,6 +24,39 @@ function formatDatetime(iso: string) {
     minute: "2-digit",
     hour12: true,
   });
+}
+
+function formatEventDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (year && month && day) {
+    return new Date(year, month - 1, day).toLocaleDateString("en-PH", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function resolveFacebookPostUrl(
+  publishedManualUrl?: string | null,
+  platformPostId?: string | null,
+): string | null {
+  const manual = publishedManualUrl?.trim();
+  if (manual && (manual.startsWith("https://") || manual.startsWith("http://"))) {
+    return manual;
+  }
+  const postId = platformPostId?.trim();
+  if (postId) {
+    return `https://www.facebook.com/${postId.includes("_") ? postId.replace("_", "/posts/") : postId}`;
+  }
+  return null;
 }
 
 interface CalendarEventDetailModalProps {
@@ -102,8 +138,18 @@ export default function CalendarEventDetailModal({
   const displayColor = visibleStatusColor(event.status, user.role, event.mine);
   const rawStatus = (event.status || "").toLowerCase();
   const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review" || rawStatus === "needs_revision";
-  const isPublished = rawStatus === "published" || rawStatus === "published_manual";
+  const isPublished =
+    rawStatus === "published" ||
+    rawStatus === "published_manual" ||
+    rawStatus === "admin_direct_post";
   const isAdmin = user.role === "moderator" || user.role === "admin";
+  const eventDate = submissionDetail?.eventDate ?? event.eventDate ?? null;
+  const authorName = event.contributorName || submissionDetail?.contributorEmail || null;
+  const facebookPostUrl = resolveFacebookPostUrl(
+    submissionDetail?.publishedManualUrl ?? event.publishedManualUrl,
+    submissionDetail?.platformPostId ?? event.platformPostId,
+  );
+  const canOpenInAppSubmission = !isCrossInstitutionIsolated && (isAdmin || event.mine);
 
   return createPortal(
     <div
@@ -129,7 +175,7 @@ export default function CalendarEventDetailModal({
               >
                 {visibleStatusLabel(event.status, user.role, event.mine)}
               </span>
-              {event.locked && (
+              {event.locked && !isPublished && (
                 <span className="cal-drawer-lock-pill" title="Slot permanently locked">
                   <i className="ti ti-lock" aria-hidden="true" />
                   Locked
@@ -141,10 +187,17 @@ export default function CalendarEventDetailModal({
               {isCrossInstitutionIsolated ? "Reserved publishing slot" : (event.title ?? "Reserved publishing slot")}
             </h2>
 
-            <div className="cal-drawer-header-sub">
-              <i className="ti ti-clock" aria-hidden="true" />
-              <span>Scheduled for {formatDatetime(event.scheduledAt)}</span>
-            </div>
+            {!isCrossInstitutionIsolated && eventDate ? (
+              <div className="cal-drawer-header-sub">
+                <i className="ti ti-calendar-event" aria-hidden="true" />
+                <span>Event date: {formatEventDate(eventDate)}</span>
+              </div>
+            ) : isCrossInstitutionIsolated ? (
+              <div className="cal-drawer-header-sub">
+                <i className="ti ti-clock" aria-hidden="true" />
+                <span>Reserved slot · {formatDatetime(event.scheduledAt)}</span>
+              </div>
+            ) : null}
           </div>
 
           <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
@@ -165,7 +218,10 @@ export default function CalendarEventDetailModal({
                   <div>
                     <strong className="cal-post-author-name">{event.institutionName}</strong>
                     <span className="cal-post-sub-meta">
-                      <i className="ti ti-world" /> Facebook Page Post · {formatDatetime(event.scheduledAt)}
+                      <i className="ti ti-world" />{" "}
+                      {isPublished
+                        ? `Published · ${formatDatetime(event.publishedAt ?? event.scheduledAt)}`
+                        : `Scheduled for ${formatDatetime(event.scheduledAt)}`}
                     </span>
                   </div>
                 </div>
@@ -200,18 +256,16 @@ export default function CalendarEventDetailModal({
                   assets={mediaAssets}
                   loading={detailLoading}
                   error={detailError}
+                  onNavigate={onClose}
                 />
               </div>
             </div>
           )}
 
-          {/* Minimal Contributor Metadata Footer */}
-          {!isCrossInstitutionIsolated && (event.contributorName || submissionDetail?.contributorEmail) && (
+          {/* Minimal Author Metadata Footer */}
+          {!isCrossInstitutionIsolated && authorName && (
             <div className="cal-meta-strip">
-              <span><i className="ti ti-user" /> Contributor: <strong>{event.contributorName || submissionDetail?.contributorEmail}</strong></span>
-              {event.publishedAt && (
-                <span><i className="ti ti-circle-check" /> Published: <strong>{formatDatetime(event.publishedAt)}</strong></span>
-              )}
+              <span><i className="ti ti-user" /> Author: <strong>{authorName}</strong></span>
             </div>
           )}
 
@@ -220,7 +274,7 @@ export default function CalendarEventDetailModal({
               <i className="ti ti-shield-lock" aria-hidden="true" />
               <div>
                 <strong>Cross-Institution Privacy</strong>
-                <p>Caption, media attachments, and contributor identity are restricted to members of {event.institutionName}.</p>
+                <p>Caption, media attachments, and author identity are restricted to members of {event.institutionName}.</p>
               </div>
             </div>
           )}
@@ -228,27 +282,61 @@ export default function CalendarEventDetailModal({
 
         {/* Drawer Sticky Footer Toolbar */}
         <div className="cal-drawer-footer">
-          {isPendingApproval && isAdmin && (
-            <a className="cal-drawer-cta-btn" href="/queue">
+          {isPendingApproval && isAdmin ? (
+            <Link
+              className="cal-drawer-cta-btn"
+              to={`/queue?submissionId=${encodeURIComponent(event.id)}`}
+              onClick={onClose}
+            >
               <i className="ti ti-checklist" aria-hidden="true" />
               <span>Open in Approval Queue</span>
               <i className="ti ti-arrow-right" aria-hidden="true" />
-            </a>
-          )}
-
-          {isPublished && (
+            </Link>
+          ) : isPublished && facebookPostUrl ? (
             <div className="cal-drawer-footer-actions">
-              <button
-                type="button"
-                className="notif-btn notif-btn-ghost notif-btn-sm"
-                onClick={onClose}
+              {canOpenInAppSubmission && (
+                <Link
+                  className="cal-drawer-cta-btn cal-drawer-cta-btn--secondary"
+                  to={`/submissions/${encodeURIComponent(event.id)}`}
+                  onClick={onClose}
+                >
+                  <i className="ti ti-file-text" aria-hidden="true" />
+                  <span>View Submission</span>
+                </Link>
+              )}
+              <a
+                className="cal-drawer-cta-btn"
+                href={facebookPostUrl}
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                <span>Close Details</span>
-              </button>
+                <i className="ti ti-brand-facebook" aria-hidden="true" />
+                <span>View on Facebook</span>
+                <i className="ti ti-external-link" aria-hidden="true" />
+              </a>
             </div>
-          )}
-
-          {!isPendingApproval && !isPublished && (
+          ) : canOpenInAppSubmission ? (
+            <Link
+              className="cal-drawer-cta-btn"
+              to={`/submissions/${encodeURIComponent(event.id)}`}
+              onClick={onClose}
+            >
+              <i className="ti ti-external-link" aria-hidden="true" />
+              <span>View Post</span>
+              <i className="ti ti-arrow-right" aria-hidden="true" />
+            </Link>
+          ) : isPublished ? (
+            <a
+              className="cal-drawer-cta-btn"
+              href={DEFAULT_FACEBOOK_PAGE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <i className="ti ti-brand-facebook" aria-hidden="true" />
+              <span>View on Facebook Page</span>
+              <i className="ti ti-external-link" aria-hidden="true" />
+            </a>
+          ) : (
             <button
               type="button"
               className="notif-btn notif-btn-ghost notif-btn-sm"
@@ -269,10 +357,12 @@ function CalendarMediaPreview({
   assets,
   loading,
   error,
+  onNavigate,
 }: {
   assets: SavedMediaAsset[];
   loading: boolean;
   error: boolean;
+  onNavigate: () => void;
 }) {
   if (loading) {
     return (
@@ -285,36 +375,59 @@ function CalendarMediaPreview({
   }
 
   if (assets.length > 0) {
+    const allAssetIdsParam =
+      assets.length > 1
+        ? `&assets=${encodeURIComponent(assets.map((a) => a.id).join(","))}`
+        : "";
     return (
       <div className="cal-media-gallery">
-        {assets.map((asset, index) => (
-          <figure className="cal-media-tile" key={asset.id}>
-            {isVideoAsset(asset) ? (
-              <video
-                src={asset.storageUrl}
-                controls
-                preload="metadata"
-                playsInline
-                aria-label={`Video attachment ${index + 1}: ${asset.fileName}`}
-              />
-            ) : (
-              <OptimizedImage
-                src={asset.storageUrl}
-                alt={asset.fileName || `Media attachment ${index + 1}`}
-                width={360}
-                height={270}
-                sizes="(max-width: 768px) 100vw, 260px"
-                candidateWidths={[260, 360, 520]}
-                transform={canTransformImageType(asset.fileType)}
-                loading="lazy"
-              />
-            )}
-            <figcaption className="cal-media-tile-badge">
-              <i className={isVideoAsset(asset) ? "ti ti-video" : "ti ti-photo"} />
-              <span>{assets.length > 1 ? `${index + 1} of ${assets.length}` : isVideoAsset(asset) ? "Video" : "Image"}</span>
-            </figcaption>
-          </figure>
-        ))}
+        {assets.map((asset, index) => {
+          const libraryHref = `/media-repository?asset=${encodeURIComponent(asset.id)}${allAssetIdsParam}`;
+          return (
+            <figure className="cal-media-tile" key={asset.id}>
+              {isVideoAsset(asset) ? (
+                <video
+                  src={asset.storageUrl}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  aria-label={`Video attachment ${index + 1}: ${asset.fileName}`}
+                />
+              ) : (
+                <Link
+                  className="cal-media-tile-img-wrap"
+                  to={libraryHref}
+                  onClick={onNavigate}
+                  title={`View ${asset.fileName || "photo"} in Media Library`}
+                >
+                  <OptimizedImage
+                    src={asset.storageUrl}
+                    alt={asset.fileName || `Media attachment ${index + 1}`}
+                    width={360}
+                    height={270}
+                    sizes="(max-width: 768px) 100vw, 260px"
+                    candidateWidths={[260, 360, 520]}
+                    transform={canTransformImageType(asset.fileType)}
+                    loading="lazy"
+                  />
+                </Link>
+              )}
+              <figcaption className="cal-media-tile-badge">
+                <i className={isVideoAsset(asset) ? "ti ti-video" : "ti ti-photo"} />
+                <span>{assets.length > 1 ? `${index + 1} of ${assets.length}` : isVideoAsset(asset) ? "Video" : "Image"}</span>
+              </figcaption>
+              <Link
+                className="cal-media-tile-link"
+                to={libraryHref}
+                onClick={onNavigate}
+                title={`View ${asset.fileName || "media"} in Media Library`}
+              >
+                <span>View in Library</span>
+                <i className="ti ti-arrow-up-right" aria-hidden="true" />
+              </Link>
+            </figure>
+          );
+        })}
       </div>
     );
   }

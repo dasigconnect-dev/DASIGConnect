@@ -94,6 +94,8 @@ public class MediaAssetService {
     private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
     private static final int UNIFIED_SEARCH_CANDIDATE_CAP = 200;
     private static final double RRF_K = 60.0;
+    static final double MIN_SEMANTIC_SIMILARITY = 0.40;
+    static final double MAX_SEMANTIC_SCORE_DROP = 0.12;
 
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionRepository submissionRepository;
@@ -278,6 +280,8 @@ public class MediaAssetService {
                 String.valueOf(institutionId), String.valueOf(networkWide), scopeKey,
                 normalizedQuery, voyageAIClient.modelName(),
                 MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION,
+                String.valueOf(MIN_SEMANTIC_SIMILARITY),
+                String.valueOf(MAX_SEMANTIC_SCORE_DROP),
                 String.valueOf(safePage), String.valueOf(safePageSize));
         MediaAssetListResponseDto cached = mediaSearchCache.get(cacheKey);
         if (cached != null) return cached;
@@ -307,7 +311,15 @@ public class MediaAssetService {
 
         Map<UUID, MediaAsset> assetsById = keywordHits.stream()
                 .collect(Collectors.toMap(MediaAsset::getId, asset -> asset, (left, right) -> left));
+        double topSemanticScore = semanticHits.stream()
+                .mapToDouble(MediaAssetService::extractSimilarityScore)
+                .max()
+                .orElse(0.0);
+        double minSemanticScore = Math.max(
+                MIN_SEMANTIC_SIMILARITY,
+                topSemanticScore - MAX_SEMANTIC_SCORE_DROP);
         List<UUID> semanticIds = semanticHits.stream()
+                .filter(row -> extractSimilarityScore(row) >= minSemanticScore)
                 .map(row -> UUID.fromString((String) row[0]))
                 .toList();
         if (!semanticIds.isEmpty()) {
@@ -347,6 +359,14 @@ public class MediaAssetService {
 
     public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
         return semanticSearch(query, institutionId, 1, 60, user);
+    }
+
+    private static double extractSimilarityScore(Object[] row) {
+        if (row == null || row.length < 2 || !(row[1] instanceof Number number)) {
+            return 0.0;
+        }
+        double value = number.doubleValue();
+        return Double.isFinite(value) ? value : 0.0;
     }
 
     @Transactional(readOnly = true)

@@ -65,12 +65,12 @@ public class NotificationEventListener {
         Submission s = event.submission();
         String scheduledPart = s.getScheduledAt() != null ? " (scheduled for " + fmt(s.getScheduledAt()) + ")" : "";
         String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart
-                + ". Next action: Moderator review — approve or return for revision.";
+                + ". Next action: Review — approve or return for revision.";
         String link = "/queue?submissionId=" + s.getId() + "&mode=review";
 
         for (User reviewer : reviewers()) {
             notificationService.createNotification(reviewer, NotificationEventType.submission_pending, msg, link);
-            String messengerMsg = "New submission waiting for Moderator review: \"" + s.getEventTitle()
+            String messengerMsg = "New submission waiting for review: \"" + s.getEventTitle()
                     + "\". Review and approve or return for revision: " + frontendBaseUrl + link;
             messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }
@@ -443,9 +443,9 @@ public class NotificationEventListener {
             notificationService.createNotification(reviewer, NotificationEventType.fast_track_submission, msg, link);
             emailDeliveryService.send(reviewer,
                     NotificationEventType.fast_track_submission.name(),
-                    "Urgent: live event submission needs immediate Moderator review",
+                    "Urgent: live event submission needs immediate review",
                     msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
-            String messengerMsg = "Urgent live event submission waiting for Moderator review: \"" + s.getEventTitle()
+            String messengerMsg = "Urgent live event submission waiting for review: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
             messengerDeliveryService.sendToUser(reviewer.getId(), messengerMsg);
         }

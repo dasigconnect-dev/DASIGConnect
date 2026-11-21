@@ -13,6 +13,7 @@ export function CalendarDateField({
   readOnly,
   minValue,
   id,
+  invalid,
   onChange,
 }: {
   value: string;
@@ -20,6 +21,7 @@ export function CalendarDateField({
   readOnly?: boolean;
   minValue?: string;
   id?: string;
+  invalid?: boolean;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -150,9 +152,10 @@ export function CalendarDateField({
     >
       <button
         id={id}
-        className={`sub-date-trigger ${open ? "open" : ""}`}
+        className={`sub-date-trigger ${open ? "open" : ""}${invalid ? " is-invalid" : ""}`}
         type="button"
         disabled={readOnly}
+        aria-invalid={invalid || undefined}
         onClick={() => {
           if (!readOnly) setOpen((current) => !current);
         }}

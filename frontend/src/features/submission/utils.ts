@@ -139,7 +139,7 @@ export function toPayload(form: FormState, scheduledAt?: string): SubmissionPayl
   return {
     institutionId: form.institutionId || undefined,
     eventTitle: form.eventTitle.trim() || "Untitled submission",
-    eventDate: form.eventDate || new Date().toISOString().slice(0, 10),
+    eventDate: form.eventDate || dateToInputValue(new Date()),
     caption: form.caption.trim(),
     description: "",
     scheduledAt,
@@ -893,6 +893,12 @@ export function buildCalendarDays(monthDate: Date) {
       inMonth: date.getMonth() === monthDate.getMonth(),
     };
   });
+}
+
+export function formatDateInput(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return dateToInputValue(date);
 }
 
 export function formatTimeInput(value: string) {

@@ -57,6 +57,8 @@ export interface SubmissionSummary {
   status: SubmissionStatus;
   scheduledAt?: string;
   publishedAt?: string;
+  platformPostId?: string | null;
+  publishedManualUrl?: string | null;
   submittedAt?: string;
   createdAt?: string;
   updatedAt?: string;

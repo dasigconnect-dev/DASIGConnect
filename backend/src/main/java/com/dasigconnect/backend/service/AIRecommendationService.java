@@ -1004,7 +1004,7 @@ public class AIRecommendationService {
             }
         }
 
-        boolean hasEmbeddingSignal = !embeddingScores.isEmpty();
+        boolean hasAnyEmbeddingSignal = !embeddingScores.isEmpty();
         Map<UUID, Double> scores = embeddingScores;
         List<AlbumMatchCandidateDto> ranked = rootAlbums.stream()
                 .map(album -> scoreAlbumMatch(
@@ -1012,7 +1012,7 @@ public class AIRecommendationService {
                 draftTags,
                 albumTagMap.getOrDefault(album.getId(), Set.of()),
                 scores.getOrDefault(album.getId(), 0.0),
-                hasEmbeddingSignal))
+                hasAnyEmbeddingSignal && scores.containsKey(album.getId())))
                 .filter(candidate -> candidate.getScore() >= ALBUM_MATCH_AMBIGUOUS_THRESHOLD)
                 .sorted(Comparator.comparingDouble(AlbumMatchCandidateDto::getScore).reversed())
                 .limit(3)
@@ -1032,13 +1032,14 @@ public class AIRecommendationService {
         Set<String> overlap = new LinkedHashSet<>(draftTags);
         overlap.retainAll(albumTags);
         double tagScore = draftTags.isEmpty() ? 0.0 : Math.min(1.0, overlap.size() / (double) draftTags.size());
+        double effectiveEmbeddingScore = embeddingScore >= MIN_RELEVANCE_SCORE ? embeddingScore : 0.0;
 
         double score = hasEmbeddingSignal
-                ? (ALBUM_MATCH_EMBEDDING_WEIGHT * embeddingScore) + (ALBUM_MATCH_TAG_WEIGHT * tagScore)
+                ? (ALBUM_MATCH_EMBEDDING_WEIGHT * effectiveEmbeddingScore) + (ALBUM_MATCH_TAG_WEIGHT * tagScore)
                 : tagScore;
 
         List<String> reasons = new ArrayList<>();
-        if (hasEmbeddingSignal && embeddingScore > 0) {
+        if (hasEmbeddingSignal && effectiveEmbeddingScore > 0) {
             reasons.add("Visually similar to existing media in \"" + album.getName() + "\".");
         }
         if (!overlap.isEmpty()) {

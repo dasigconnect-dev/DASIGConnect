@@ -34,24 +34,24 @@ export const statusCopy: Record<
   draft: {
     label: "Draft",
     meaning: "Draft — not yet submitted.",
-    whoActsNext: "Complete all required items and submit for Moderator review.",
+    whoActsNext: "Complete all required items and submit for review.",
     actionLabel: "Continue Draft",
   },
   pending: {
     label: "Pending Review",
     meaning: "Awaiting review — submitted for approval.",
-    whoActsNext: "A Moderator will review this post next.",
+    whoActsNext: "Waiting for review.",
     actionLabel: "View Status",
   },
   in_review: {
     label: "In Review",
     meaning: "Being reviewed now.",
-    whoActsNext: "A Moderator is currently reviewing this submission.",
+    whoActsNext: "This submission is currently being reviewed.",
     actionLabel: "View Details",
   },
   needs_revision: {
     label: "Needs Revision",
-    meaning: "Needs revision — the Moderator asked for changes.",
+    meaning: "Needs revision — changes were requested during review.",
     whoActsNext: "Edit and resubmit.",
     actionLabel: "Edit & Resubmit",
   },
@@ -117,7 +117,7 @@ export const statusCopy: Record<
   },
   rejected: {
     label: "Declined",
-    meaning: "Declined — the Moderator declined this post.",
+    meaning: "Declined — this post was not approved for publication.",
     whoActsNext: "Review the reason to edit and resubmit.",
     actionLabel: "View Reason",
   },
@@ -161,10 +161,10 @@ export const statusActionLabels: Record<SubmissionStatus, string> = {
 
 export const statusGuidance: Record<SubmissionStatus, string> = {
   draft: "Draft not yet submitted. Complete required items and submit for review.",
-  pending: "Awaiting review — a Moderator will review this submission next.",
-  in_review: "Under review — a Moderator is currently evaluating this submission.",
-  needs_revision: "Needs revision — the Moderator asked for changes. Edit and resubmit.",
-  missed_review: "Missed schedule — scheduled time passed. A Moderator will reschedule.",
+  pending: "Awaiting review — submitted and waiting for review.",
+  in_review: "Under review — this submission is currently being evaluated.",
+  needs_revision: "Needs revision — changes were requested during review. Edit and resubmit.",
+  missed_review: "Missed schedule — scheduled time passed. Needs a new schedule.",
   scheduled: "Approved — will publish automatically at the scheduled time.",
   publishing: "Publishing now to the DASIG Facebook Page.",
   publish_failed: "Publish failed — an Administrator or Moderator must retry or publish manually.",

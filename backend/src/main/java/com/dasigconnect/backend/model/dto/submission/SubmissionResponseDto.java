@@ -25,6 +25,7 @@ public class SubmissionResponseDto {
     private Instant submittedAt;
     private Instant publishedAt;
     private String platformPostId;
+    private String publishedManualUrl;
     private String validatorRemarks;
     private String rejectionReason;
     private int retryCount;
@@ -57,6 +58,7 @@ public class SubmissionResponseDto {
         dto.submittedAt = s.getSubmittedAt();
         dto.publishedAt = s.getPublishedAt();
         dto.platformPostId = s.getPlatformPostId();
+        dto.publishedManualUrl = s.getPublishedManualUrl();
         dto.validatorRemarks = s.getValidatorRemarks();
         dto.rejectionReason = s.getRejectionReason();
         dto.retryCount = s.getRetryCount();
@@ -133,6 +135,10 @@ public class SubmissionResponseDto {
 
     public String getPlatformPostId() {
         return platformPostId;
+    }
+
+    public String getPublishedManualUrl() {
+        return publishedManualUrl;
     }
 
     public String getValidatorRemarks() {

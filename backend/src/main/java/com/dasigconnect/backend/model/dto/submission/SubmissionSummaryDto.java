@@ -19,6 +19,7 @@ public class SubmissionSummaryDto {
     private Instant publishedAt;
     private Instant submittedAt;
     private Instant createdAt;
+    private Instant updatedAt;
     private UUID institutionId;
     private String institutionName;
     private String contributorEmail;
@@ -59,6 +60,7 @@ public class SubmissionSummaryDto {
         dto.publishedAt = s.getPublishedAt();
         dto.submittedAt = s.getSubmittedAt();
         dto.createdAt = s.getCreatedAt();
+        dto.updatedAt = s.getUpdatedAt();
         dto.institutionId = s.getInstitution().getId();
         dto.institutionName = s.getInstitution().getName();
         dto.contributorEmail = s.getContributor().getEmail();
@@ -98,6 +100,7 @@ public class SubmissionSummaryDto {
         dto.publishedAt = s.getPublishedAt();
         dto.submittedAt = s.getSubmittedAt();
         dto.createdAt = s.getCreatedAt();
+        dto.updatedAt = s.getUpdatedAt();
         dto.institutionId = s.getInstitution().getId();
         dto.institutionName = s.getInstitution().getName();
         dto.contributorEmail = s.getContributor().getEmail();
@@ -149,6 +152,10 @@ public class SubmissionSummaryDto {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 
     public UUID getInstitutionId() {

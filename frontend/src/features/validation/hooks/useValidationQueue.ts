@@ -8,6 +8,7 @@ import type {
   ValidationLog,
   ValidationQueueCounts,
   ValidationQueueSort,
+  ValidationQueueSortDirection,
   ValidationQueueView,
 } from "../../../api/validationApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
@@ -68,6 +69,7 @@ export function useValidationQueue(
   sort: ValidationQueueSort,
   search: string,
   enabled = true,
+  direction?: ValidationQueueSortDirection,
 ) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.validation.page({
@@ -76,6 +78,7 @@ export function useValidationQueue(
     institutionId: user.institutionId ?? null,
     queueView: view,
     sort,
+    direction,
     search,
     pageSize: VALIDATION_QUEUE_PAGE_SIZE,
   });
@@ -99,6 +102,7 @@ export function useValidationQueue(
       getValidationQueuePage({
         view,
         sort,
+        direction,
         search,
         page: pageParam,
         pageSize: VALIDATION_QUEUE_PAGE_SIZE,
