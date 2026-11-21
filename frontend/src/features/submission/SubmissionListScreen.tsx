@@ -12,6 +12,7 @@ import { statusGuidance, statusLabels } from "./constants";
 import { formatDate, getSubmissionStatusIcon } from "./utils";
 import { QueueLoadingState, QueueState } from "./components/SharedPrimitives";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
+import "../../components/ui/InfoTip.css";
 import "../../styles/submission.css";
 
 const VALID_TABS: QueueFilter[] = ["drafts", "action-needed", "rejected", "submitted", "published", "failed", "all"];
@@ -254,21 +255,26 @@ export default function SubmissionListScreen({ user }: { user: User }) {
                           <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
                         </div>
                       </div>
-                      <div className="sub-fb-status-wrap">
+                      <div
+                        className="sub-fb-status-wrap"
+                        tabIndex={statusGuidance[item.status] ? 0 : undefined}
+                        aria-label={
+                          statusGuidance[item.status]
+                            ? `${statusLabels[item.status]}: ${statusGuidance[item.status]}`
+                            : statusLabels[item.status]
+                        }
+                      >
                         <span className={`sub-qi-badge status-${item.status}`}>
                           <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
                           {statusLabels[item.status]}
                         </span>
+                        {statusGuidance[item.status] && (
+                          <span className="infotip-bubble is-bottom sub-status-tooltip" role="tooltip">
+                            {statusGuidance[item.status]}
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    {/* Status Guidance Callout (Option B) */}
-                    {statusGuidance[item.status] && (
-                      <div className={`sub-status-callout status-callout-${item.status}`}>
-                        <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true" />
-                        <span>{statusGuidance[item.status]}</span>
-                      </div>
-                    )}
 
                     {/* Post Content: Event Title & Caption */}
                     <div className="sub-fb-card-content">

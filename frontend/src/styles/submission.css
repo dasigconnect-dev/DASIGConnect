@@ -495,8 +495,39 @@
 }
 
 .sub-fb-status-wrap {
+  position: relative;
   margin-left: auto;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  outline: none;
+}
+
+.sub-fb-status-wrap .sub-status-tooltip.infotip-bubble {
+  left: auto;
+  right: 0;
+  top: calc(100% + 8px);
+  width: max-content;
+  max-width: 240px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  animation: none;
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+
+.sub-fb-status-wrap .sub-status-tooltip.infotip-bubble.is-bottom::after {
+  left: auto;
+  right: 18px;
+  transform: rotate(45deg);
+}
+
+.sub-fb-status-wrap:hover .sub-status-tooltip.infotip-bubble,
+.sub-fb-status-wrap:focus-visible .sub-status-tooltip.infotip-bubble {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .sub-fb-card-content {
@@ -1862,17 +1893,24 @@
   align-items: start;
 }
 .sub-preview-split:not(.has-reorder) .sub-preview-card-col {
-  width: min(680px, 100%);
+  width: min(550px, 100%);
   margin: 0 auto;
 }
 .sub-preview-split.has-reorder {
-  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-columns: minmax(210px, 1fr) minmax(0, 550px) minmax(0, 1fr);
+}
+.sub-preview-split.has-reorder .sub-preview-card-col {
+  grid-column: 2;
 }
 .sub-preview-card-col {
   min-width: 0;
+  width: min(550px, 100%);
+  margin: 0 auto;
 }
 .sub-preview-reorder-col {
   min-width: 0;
+  width: 210px;
+  justify-self: end;
   position: sticky;
   top: 16px;
 }
@@ -1899,8 +1937,13 @@
   .sub-preview-split.has-reorder {
     grid-template-columns: minmax(0, 1fr);
   }
+  .sub-preview-split.has-reorder .sub-preview-card-col {
+    grid-column: 1;
+  }
   .sub-preview-reorder-col {
     position: static;
+    width: min(550px, 100%);
+    justify-self: center;
   }
   .sub-preview-reorder-col .fb-reorder-strip {
     flex-direction: row;
@@ -2351,6 +2394,22 @@
   border-color: var(--sub-blue);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
 }
+.sub-finput.is-invalid,
+.sub-finput[aria-invalid="true"],
+.sub-fselect.is-invalid,
+.sub-fselect[aria-invalid="true"] {
+  border-color: var(--sub-red, #dc2626);
+  background: var(--sub-red-dim, #fef2f2);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+.sub-finput.is-invalid:focus,
+.sub-finput[aria-invalid="true"]:focus,
+.sub-fselect.is-invalid:focus,
+.sub-fselect[aria-invalid="true"]:focus {
+  border-color: var(--sub-red, #dc2626);
+  background: var(--sub-surface);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.22);
+}
 textarea.sub-finput {
   resize: vertical;
   min-height: 90px;
@@ -2398,6 +2457,23 @@ textarea.sub-finput {
   background: var(--sub-surface);
   border-color: var(--sub-blue);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
+}
+.sub-date-trigger.is-invalid,
+.sub-time-trigger.is-invalid {
+  border-color: var(--sub-red, #dc2626);
+  background: var(--sub-red-dim, #fef2f2);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+.sub-date-trigger.is-invalid:hover:not(:disabled),
+.sub-date-trigger.is-invalid.open,
+.sub-time-trigger.is-invalid:hover:not(:disabled),
+.sub-time-trigger.is-invalid.open {
+  border-color: var(--sub-red, #dc2626);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.22);
+}
+.sub-date-trigger.is-invalid i,
+.sub-time-trigger.is-invalid i {
+  color: var(--sub-red, #dc2626);
 }
 .sub-date-trigger:disabled,
 .sub-time-trigger:disabled,
@@ -3566,8 +3642,51 @@ textarea.sub-finput {
   align-items: center;
   gap: 4px;
 }
-.fb-preview-more {
+.fb-preview-head-actions {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.fb-preview-wm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #d7e2f2;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.fb-preview-wm-toggle:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1877f2;
+}
+.fb-preview-wm-toggle.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1877f2;
+}
+.fb-preview-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid #d7e2f2;
+  background: #ffffff;
+  color: #1877f2;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fb-preview-more {
   border: none;
   border-radius: 50%;
   background: transparent;
@@ -3580,7 +3699,9 @@ textarea.sub-finput {
 }
 .fb-preview-media,
 .fb-preview-empty-media {
+  --fb-preview-max-h: 148px;
   height: 148px;
+  max-height: var(--fb-preview-max-h);
   background: #f0f2f5;
 }
 .fb-preview-media {
@@ -3962,12 +4083,15 @@ textarea.sub-finput {
 }
 .fb-preview-large .fb-preview-media,
 .fb-preview-large .fb-preview-empty-media {
-  height: clamp(420px, 58vh, 620px);
+  --fb-preview-max-h: clamp(320px, 48vh, 420px);
+  height: var(--fb-preview-max-h);
+  max-height: var(--fb-preview-max-h);
   border-top: 1px solid #e4e6eb;
   border-bottom: 1px solid #e4e6eb;
 }
 .fb-preview-large .fb-preview-media img,
 .fb-preview-large .fb-preview-media video {
+  max-height: var(--fb-preview-max-h);
   object-fit: contain;
 }
 .fb-preview-large .fb-preview-caption {
@@ -3978,6 +4102,9 @@ textarea.sub-finput {
   white-space: pre-wrap;
 }
 .fb-preview-large {
+  max-width: 550px;
+  margin-left: auto;
+  margin-right: auto;
   border-radius: 13px;
   box-shadow: 0 12px 34px rgba(12, 29, 61, 0.1);
 }
@@ -4355,7 +4482,7 @@ textarea.sub-finput {
   display: block;
 }
 .fb-preview-modal-post {
-  width: min(760px, 100%);
+  width: min(586px, 100%);
   display: grid;
   align-content: start;
   gap: 16px;
@@ -4956,7 +5083,9 @@ textarea.sub-finput {
   }
   .fb-preview-large .fb-preview-media,
   .fb-preview-large .fb-preview-empty-media {
-    height: min(460px, 56vh);
+    --fb-preview-max-h: min(380px, 48vh);
+    height: var(--fb-preview-max-h);
+    max-height: var(--fb-preview-max-h);
   }
   .sub-registry-toolbar {
     flex-wrap: wrap;
@@ -5412,7 +5541,9 @@ textarea.sub-finput {
   }
   .fb-preview-large .fb-preview-media,
   .fb-preview-large .fb-preview-empty-media {
-    height: 280px;
+    --fb-preview-max-h: 280px;
+    height: var(--fb-preview-max-h);
+    max-height: var(--fb-preview-max-h);
   }
   .fb-preview-modal-btn {
     width: 100%;
