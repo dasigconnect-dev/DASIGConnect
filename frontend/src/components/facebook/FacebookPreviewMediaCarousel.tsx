@@ -10,39 +10,66 @@ interface FacebookPreviewMediaCarouselProps {
   activeIndex: number;
   onActiveIndexChange?: (index: number) => void;
   size?: "compact" | "large";
-}
-
-// Facebook shows a single photo at its own shape, within these bounds:
-// landscape no wider than 1.91:1, portrait no taller than 4:5.
-const MIN_MEDIA_RATIO = 4 / 5;
-const MAX_MEDIA_RATIO = 1.91;
-
-function clampMediaRatio(ratio: number) {
-  return Math.min(Math.max(ratio, MIN_MEDIA_RATIO), MAX_MEDIA_RATIO);
+  showWatermark?: boolean;
 }
 
 function FacebookPreviewImageItem({
   item,
   watermarkConfig,
+  showWatermark = true,
   fillFrame = false,
   onMeasure,
 }: {
   item: FacebookPreviewMediaItem;
   watermarkConfig: WatermarkConfiguration | null;
+  showWatermark?: boolean;
   fillFrame?: boolean;
   onMeasure?: (width: number, height: number) => void;
 }) {
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+  const maxHeightVar = fillFrame
+    ? "var(--fb-preview-max-h, 420px)"
+    : "var(--fb-preview-max-h, 148px)";
+
+  if (loadFailed) {
+    return (
+      <div className="fb-preview-empty-media">
+        <i className="ti ti-photo-off" aria-hidden="true" />
+        <span>This media asset failed to load.</span>
+        <button
+          type="button"
+          className="fb-preview-retry-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setLoadFailed(false);
+            setRetryToken((n) => n + 1);
+          }}
+        >
+          <i className="ti ti-refresh" aria-hidden="true" /> Retry
+        </button>
+      </div>
+    );
+  }
+
+  const imageSrc =
+    retryToken > 0
+      ? `${item.url}${item.url.includes("?") ? "&" : "?"}retry=${retryToken}`
+      : item.url;
 
   return (
     <div
       className="fb-preview-img-container"
       style={{
         position: "relative",
-        width: fillFrame ? "100%" : undefined,
-        height: fillFrame ? "100%" : undefined,
+        width: aspectRatio
+          ? `min(100%, calc(${maxHeightVar} * ${aspectRatio}))`
+          : fillFrame
+            ? "100%"
+            : undefined,
         maxWidth: "100%",
-        maxHeight: "100%",
+        maxHeight: maxHeightVar,
         aspectRatio: aspectRatio ? `${aspectRatio}` : undefined,
         display: "flex",
         alignItems: "center",
@@ -50,7 +77,8 @@ function FacebookPreviewImageItem({
       }}
     >
       <img
-        src={item.url}
+        key={retryToken}
+        src={imageSrc}
         alt={item.alt}
         onLoad={(e) => {
           const { naturalWidth, naturalHeight } = e.currentTarget;
@@ -59,14 +87,16 @@ function FacebookPreviewImageItem({
             onMeasure?.(naturalWidth, naturalHeight);
           }
         }}
+        onError={() => setLoadFailed(true)}
         style={{
           width: "100%",
           height: "100%",
+          maxHeight: maxHeightVar,
           objectFit: "contain",
           display: "block",
         }}
       />
-      {watermarkConfig?.enabled && !item.skipWatermark && (
+      {showWatermark && watermarkConfig?.enabled && !item.skipWatermark && (
         <WatermarkOverlay elements={watermarkConfig.elements} />
       )}
     </div>
@@ -76,14 +106,18 @@ function FacebookPreviewImageItem({
 function FacebookPreviewCollage({
   mediaItems,
   watermarkConfig,
+  showWatermark = true,
   onSelectMedia,
 }: {
   mediaItems: FacebookPreviewMediaItem[];
   watermarkConfig: WatermarkConfiguration | null;
+  showWatermark?: boolean;
   onSelectMedia: (index: number) => void;
 }) {
   const count = mediaItems.length;
   if (count <= 1) return null;
+  const shouldRenderWatermark = (item: FacebookPreviewMediaItem) =>
+    Boolean(showWatermark && watermarkConfig?.enabled && item.type === "image" && !item.skipWatermark);
 
   if (count === 2) {
     return (
@@ -105,8 +139,8 @@ function FacebookPreviewCollage({
                 <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
               </div>
             )}
-            {watermarkConfig?.enabled && item.type === "image" && !item.skipWatermark && (
-              <WatermarkOverlay elements={watermarkConfig.elements} />
+            {shouldRenderWatermark(item) && (
+              <WatermarkOverlay elements={watermarkConfig!.elements} />
             )}
           </div>
         ))}
@@ -132,8 +166,8 @@ function FacebookPreviewCollage({
               <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
             </div>
           )}
-          {watermarkConfig?.enabled && mediaItems[0].type === "image" && !mediaItems[0].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
+          {shouldRenderWatermark(mediaItems[0]) && (
+            <WatermarkOverlay elements={watermarkConfig!.elements} />
           )}
         </div>
         <div className="fb-preview-collage-row">
@@ -154,8 +188,8 @@ function FacebookPreviewCollage({
                   <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
                 </div>
               )}
-              {watermarkConfig?.enabled && item.type === "image" && !item.skipWatermark && (
-                <WatermarkOverlay elements={watermarkConfig.elements} />
+              {shouldRenderWatermark(item) && (
+                <WatermarkOverlay elements={watermarkConfig!.elements} />
               )}
             </div>
           ))}
@@ -182,8 +216,8 @@ function FacebookPreviewCollage({
               <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
             </div>
           )}
-          {watermarkConfig?.enabled && mediaItems[0].type === "image" && !mediaItems[0].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
+          {shouldRenderWatermark(mediaItems[0]) && (
+            <WatermarkOverlay elements={watermarkConfig!.elements} />
           )}
         </div>
         <div className="fb-preview-collage-row">
@@ -204,8 +238,8 @@ function FacebookPreviewCollage({
                   <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
                 </div>
               )}
-              {watermarkConfig?.enabled && item.type === "image" && !item.skipWatermark && (
-                <WatermarkOverlay elements={watermarkConfig.elements} />
+              {shouldRenderWatermark(item) && (
+                <WatermarkOverlay elements={watermarkConfig!.elements} />
               )}
             </div>
           ))}
@@ -231,8 +265,8 @@ function FacebookPreviewCollage({
             <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
           </div>
         )}
-        {watermarkConfig?.enabled && mediaItems[0].type === "image" && !mediaItems[0].skipWatermark && (
-          <WatermarkOverlay elements={watermarkConfig.elements} />
+        {shouldRenderWatermark(mediaItems[0]) && (
+          <WatermarkOverlay elements={watermarkConfig!.elements} />
         )}
       </div>
       <div className="fb-preview-collage-row">
@@ -253,8 +287,8 @@ function FacebookPreviewCollage({
                 <span className="fb-preview-collage-video-badge"><i className="ti ti-video" /></span>
               </div>
             )}
-            {watermarkConfig?.enabled && item.type === "image" && !item.skipWatermark && (
-              <WatermarkOverlay elements={watermarkConfig.elements} />
+            {shouldRenderWatermark(item) && (
+              <WatermarkOverlay elements={watermarkConfig!.elements} />
             )}
           </div>
         ))}
@@ -272,8 +306,8 @@ function FacebookPreviewCollage({
               <video src={mediaItems[3].url} muted playsInline />
             </div>
           )}
-          {watermarkConfig?.enabled && mediaItems[3].type === "image" && !mediaItems[3].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
+          {shouldRenderWatermark(mediaItems[3]) && (
+            <WatermarkOverlay elements={watermarkConfig!.elements} />
           )}
           <div className="fb-preview-collage-more-overlay">
             +{count - 3}
@@ -289,6 +323,7 @@ export default function FacebookPreviewMediaCarousel({
   activeIndex,
   onActiveIndexChange,
   size = "compact",
+  showWatermark = true,
 }: FacebookPreviewMediaCarouselProps) {
   const watermarkQuery = useWatermarkConfiguration();
   const watermarkConfig = watermarkQuery.data ?? null;
@@ -300,12 +335,13 @@ export default function FacebookPreviewMediaCarousel({
   const currentIndex = clampIndex(activeIdx, mediaItems.length);
   const current = mediaItems[currentIndex];
   // Natural width/height ratio per media URL, so the large preview's frame can
-  // match the media instead of letterboxing it in a fixed-height box.
+  // match the media instead of letterboxing it in a fixed-height box while
+  // respecting --fb-preview-max-h for non-grid images.
   const [mediaRatios, setMediaRatios] = useState<Record<string, number>>({});
   const currentRatio = current ? mediaRatios[current.url] : undefined;
   const mediaFrameStyle =
     size === "large" && currentRatio
-      ? { height: "auto", aspectRatio: `${clampMediaRatio(currentRatio)}` }
+      ? { height: "auto" }
       : undefined;
 
   function recordRatio(url: string, width: number, height: number) {
@@ -372,6 +408,7 @@ export default function FacebookPreviewMediaCarousel({
         <FacebookPreviewCollage
           mediaItems={mediaItems}
           watermarkConfig={watermarkConfig}
+          showWatermark={showWatermark}
           onSelectMedia={(idx) => {
             goTo(idx);
             setViewMode("carousel");
@@ -388,6 +425,16 @@ export default function FacebookPreviewMediaCarousel({
               preload="metadata"
               aria-label={current.alt}
               controls={size === "large"}
+              style={
+                size === "large" && currentRatio
+                  ? {
+                      aspectRatio: `${currentRatio}`,
+                      width: `min(100%, calc(var(--fb-preview-max-h, 420px) * ${currentRatio}))`,
+                      height: "auto",
+                      maxHeight: "var(--fb-preview-max-h, 420px)",
+                    }
+                  : undefined
+              }
               onLoadedMetadata={(event) =>
                 recordRatio(current.url, event.currentTarget.videoWidth, event.currentTarget.videoHeight)
               }
@@ -403,6 +450,7 @@ export default function FacebookPreviewMediaCarousel({
               key={current.url}
               item={current}
               watermarkConfig={watermarkConfig}
+              showWatermark={showWatermark}
               fillFrame={size === "large"}
               onMeasure={(width, height) => recordRatio(current.url, width, height)}
             />
@@ -442,17 +490,6 @@ export default function FacebookPreviewMediaCarousel({
               <div className="fb-preview-counter">
                 {currentIndex + 1} / {mediaItems.length}
               </div>
-              <button
-                type="button"
-                className="fb-preview-grid-pill"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setViewMode("grid");
-                }}
-                title="Switch back to Facebook grid layout"
-              >
-                <i className="ti ti-layout-grid" /> Grid view
-              </button>
             </>
           )}
         </div>

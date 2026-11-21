@@ -1483,6 +1483,37 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  pointer-events: none;
+}
+
+.cal-media-tile-img-wrap {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+
+.cal-media-tile-link {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  color: #ffffff !important;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.cal-media-tile-link:hover {
+  background: var(--d-blue, #1877f2);
+  transform: translateY(-1px);
 }
 
 .cal-post-no-media {
@@ -1513,29 +1544,31 @@
 }
 
 .cal-drawer-footer-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
   width: 100%;
 }
 
 .cal-drawer-cta-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 46px;
-  padding: 12px 24px;
+  min-height: 44px;
+  padding: 10px 16px;
   border-radius: 999px;
   background: var(--d-blue, #1877f2);
   color: #ffffff !important;
-  font-size: 14.5px;
+  font-size: 13.5px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
   text-decoration: none !important;
-  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.28);
+  border: 1.5px solid transparent;
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.24);
   transition: all 160ms cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
 }
@@ -1545,6 +1578,21 @@
   box-shadow: 0 8px 22px rgba(24, 119, 242, 0.38);
   transform: translateY(-1.5px);
   color: #ffffff !important;
+}
+
+.cal-drawer-cta-btn--secondary {
+  background: #ffffff;
+  color: var(--d-text, #0c1d3d) !important;
+  border-color: #d7e2f2;
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.04);
+}
+
+.cal-drawer-cta-btn--secondary:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--d-blue, #1877f2) !important;
+  box-shadow: 0 6px 16px rgba(24, 119, 242, 0.12);
+  transform: translateY(-1.5px);
 }
 
 .cal-drawer-cta-btn:active {

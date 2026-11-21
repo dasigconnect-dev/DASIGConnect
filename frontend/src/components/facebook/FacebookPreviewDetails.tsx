@@ -11,7 +11,7 @@ export default function FacebookPreviewDetails({
       <div className="fb-preview-details-head">
         <div>
           <h3 id="fb-preview-details-title">Submission Details</h3>
-          <p>Confirm readiness before sending this content to your moderator.</p>
+          <p>Confirm readiness before sending this content for review.</p>
         </div>
         <span className="fb-preview-status">{details.statusLabel}</span>
       </div>
