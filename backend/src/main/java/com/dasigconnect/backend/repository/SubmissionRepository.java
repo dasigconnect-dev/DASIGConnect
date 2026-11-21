@@ -172,18 +172,16 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
               OR LOCATE(:search, LOWER(CAST(s.eventDate AS String))) > 0
           )
         ORDER BY
-          CASE WHEN :activeOrdering = true AND s.fastTrack = true THEN 0 ELSE 1 END ASC,
-          CASE WHEN :ascending = true AND :sortMode = 'publish_slot'
-                    AND COALESCE(s.scheduledAt, s.publishedAt) IS NULL THEN 0 ELSE 1 END ASC,
+          CASE WHEN :activeOrdering = true AND :sortMode = 'publish_slot' AND s.fastTrack = true THEN 0 ELSE 1 END ASC,
+          CASE WHEN :sortMode = 'publish_slot'
+                    AND COALESCE(s.scheduledAt, s.publishedAt) IS NULL THEN 1 ELSE 0 END ASC,
           CASE WHEN :ascending = true AND :sortMode = 'publish_slot'
                     THEN COALESCE(s.scheduledAt, s.publishedAt) END ASC,
           CASE WHEN :ascending = false AND :sortMode = 'publish_slot'
-                    AND COALESCE(s.scheduledAt, s.publishedAt) IS NULL THEN 1 ELSE 0 END ASC,
-          CASE WHEN :ascending = false AND :sortMode = 'publish_slot'
                     THEN COALESCE(s.scheduledAt, s.publishedAt) END DESC,
-          CASE WHEN :ascending = true AND :sortMode = 'submitted'
+          CASE WHEN :ascending = true
                     THEN COALESCE(s.submittedAt, s.createdAt) END ASC,
-          CASE WHEN :ascending = false AND :sortMode = 'submitted'
+          CASE WHEN :ascending = false
                     THEN COALESCE(s.submittedAt, s.createdAt) END DESC,
           s.id ASC
         """,

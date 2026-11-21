@@ -83,12 +83,15 @@ public class ValidationController {
     public ResponseEntity<ApiResponse<ValidationQueuePageDto>> getQueuePage(
             @RequestParam(defaultValue = "all") String view,
             @RequestParam(defaultValue = "submitted") String sort,
+            @RequestParam(required = false) String direction,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(defaultValue = "") String search,
             @AuthenticationPrincipal JwtUserDetails caller) {
-        return ResponseEntity.ok(ApiResponse.success(
-                validationService.getQueuePage(caller, view, sort, page, pageSize, search)));
+        ValidationQueuePageDto dto = (direction == null || direction.isBlank())
+                ? validationService.getQueuePage(caller, view, sort, page, pageSize, search)
+                : validationService.getQueuePage(caller, view, sort, direction, page, pageSize, search);
+        return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
     @GetMapping("/dashboard-summary")

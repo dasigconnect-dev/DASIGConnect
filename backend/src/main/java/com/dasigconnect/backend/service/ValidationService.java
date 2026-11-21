@@ -169,6 +169,18 @@ public class ValidationService {
             int page,
             int pageSize,
             String search) {
+        return getQueuePage(caller, view, sort, null, page, pageSize, search);
+    }
+
+    @Transactional(readOnly = true)
+    public ValidationQueuePageDto getQueuePage(
+            JwtUserDetails caller,
+            String view,
+            String sort,
+            String direction,
+            int page,
+            int pageSize,
+            String search) {
         String normalizedView = normalizeView(view);
         String normalizedSort = normalizeSort(sort);
         int safePage = Math.max(page, 0);
@@ -176,6 +188,7 @@ public class ValidationService {
                 ? DEFAULT_QUEUE_PAGE_SIZE
                 : Math.min(pageSize, MAX_QUEUE_PAGE_SIZE);
         boolean activeOrdering = isActiveView(normalizedView);
+        boolean ascending = resolveAscending(normalizedView, normalizedSort, direction, activeOrdering);
         String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
 
         Page<Submission> result = submissionRepository.findValidationPage(
@@ -183,7 +196,7 @@ public class ValidationService {
                 normalizedSearch,
                 normalizedSort,
                 activeOrdering,
-                activeOrdering,
+                ascending,
                 PageRequest.of(safePage, safePageSize));
 
         return new ValidationQueuePageDto(
@@ -271,6 +284,19 @@ public class ValidationService {
 
     private boolean isActiveView(String view) {
         return view.equals("pending") || view.equals("in_review") || view.equals("needs_revision");
+    }
+
+    private boolean resolveAscending(String normalizedView, String normalizedSort, String direction, boolean activeOrdering) {
+        if (direction != null && !direction.isBlank()) {
+            return switch (direction.trim().toLowerCase()) {
+                case "asc" -> true;
+                case "desc" -> false;
+                default -> throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Unsupported validation queue sort direction: " + direction);
+            };
+        }
+        return activeOrdering;
     }
 
     private List<SubmissionStatus> statusesForView(String view) {
