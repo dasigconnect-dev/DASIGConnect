@@ -6,6 +6,7 @@ interface FacebookPreviewMediaProps {
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
   size?: "compact" | "large";
+  showWatermark?: boolean;
 }
 
 export default function FacebookPreviewMedia({
@@ -13,6 +14,7 @@ export default function FacebookPreviewMedia({
   activeIndex = 0,
   onActiveIndexChange,
   size = "compact",
+  showWatermark = true,
 }: FacebookPreviewMediaProps) {
   return (
     <FacebookPreviewMediaCarousel
@@ -20,6 +22,7 @@ export default function FacebookPreviewMedia({
       activeIndex={activeIndex}
       onActiveIndexChange={onActiveIndexChange}
       size={size}
+      showWatermark={showWatermark}
     />
   );
 }

@@ -36,6 +36,7 @@ import {
   type ValidationLog,
   type ValidationQueuePage,
   type ValidationQueueSort,
+  type ValidationQueueSortDirection,
   type ValidationQueueView,
 } from "../../api/validationApi";
 import type { SubmissionMediaItem } from "../../types/media";
@@ -71,8 +72,8 @@ import type { ProofreadIssue } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
-import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
-import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
+import FacebookPreviewCard from "../../components/facebook/FacebookPreviewCard";
+import type { FacebookPreviewMediaItem } from "../../types/facebook";
 import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { invalidateQueryRoots } from "../../lib/queryInvalidation";
@@ -129,6 +130,16 @@ function tabFromSearch(search: URLSearchParams): QueueFilter {
   return value && TAB_KEYS.has(value) ? (value as QueueFilter) : "all";
 }
 type SortKey = ValidationQueueSort;
+
+function defaultSortDirectionForTab(tab: QueueFilter, sort: SortKey): ValidationQueueSortDirection {
+  if (tab === "pending" || tab === "in_review" || tab === "needs_revision") {
+    return "asc";
+  }
+  if (tab === "scheduled" && sort === "publish_slot") {
+    return "asc";
+  }
+  return "desc";
+}
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
@@ -267,8 +278,8 @@ function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): E
 }
 
 const statusLabel: Record<string, string> = {
-  pending: "Waiting for Moderator Review",
-  in_review: "Being Reviewed by Moderator",
+  pending: "Waiting for Review",
+  in_review: "Being Reviewed",
   needs_revision: "Needs Revision (Waiting on Contributor)",
   missed_review: "Publishing Slot Passed (Needs New Schedule)",
   scheduled: "Scheduled",
@@ -284,9 +295,9 @@ const statusLabel: Record<string, string> = {
 };
 
 const statusGuidanceText: Record<string, string> = {
-  pending: "Waiting for a Moderator to review and approve or return for revision.",
-  in_review: "A Moderator is actively reviewing this submission.",
-  needs_revision: "Needs revision — the Moderator asked for changes. The Contributor must edit and resubmit.",
+  pending: "Waiting for review and approval or return for revision.",
+  in_review: "This submission is actively being reviewed.",
+  needs_revision: "Needs revision — changes were requested during review. The Contributor must edit and resubmit.",
   missed_review: "The scheduled publish time passed before review completed — assign a new schedule to return it to the approval queue.",
   scheduled: "Scheduled to publish automatically on the DASIG Facebook Page.",
   publishing: "Currently publishing to the DASIG Facebook Page.",
@@ -333,10 +344,14 @@ export default function ValidationQueueScreen({
   // Same default as picking the tab (handleFilterChange): All sorts by
   // submitted, every other tab by publish slot — also when opened from ?tab=.
   const [sortKey, setSortKey] = useState<SortKey>(() => (filter === "all" ? "submitted" : "publish_slot"));
+  const [sortDirection, setSortDirection] = useState<ValidationQueueSortDirection>(() =>
+    defaultSortDirectionForTab(filter, filter === "all" ? "submitted" : "publish_slot"),
+  );
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 350);
   const queueView: ValidationQueueView = isFailedMode ? "all" : filter;
   const queueSort: ValidationQueueSort = isFailedMode ? "submitted" : sortKey;
+  const queueDirection: ValidationQueueSortDirection = isFailedMode ? "desc" : sortDirection;
   const queueSearch = isFailedMode ? "" : debouncedSearch;
   const failureSearch = isFailedMode ? debouncedSearch : "";
   const isDesktop = useIsDesktop();
@@ -350,7 +365,7 @@ export default function ValidationQueueScreen({
     loadMore: loadMoreQueue,
     loading,
     error,
-  } = useValidationQueue(user, queueView, queueSort, queueSearch, !isFailedMode);
+  } = useValidationQueue(user, queueView, queueSort, queueSearch, !isFailedMode, queueDirection);
   
   const { lookups } = useSubmissionLookups(user, true);
 
@@ -736,8 +751,10 @@ export default function ValidationQueueScreen({
 
   function handleFilterChange(next: QueueFilter) {
     if (next === filter) return;
+    const nextSort: SortKey = next === "all" ? "submitted" : "publish_slot";
     setMobileView("queue");
-    setSortKey(next === "all" ? "submitted" : "publish_slot");
+    setSortKey(nextSort);
+    setSortDirection(defaultSortDirectionForTab(next, nextSort));
     setFilter(next);
     setSearchParams(
       (prev) => {
@@ -869,7 +886,7 @@ export default function ValidationQueueScreen({
               });
               setLockNotice(
                 lock
-                  ? `This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`
+                  ? `This submission is currently being reviewed by ${lock.lockedByEmail}.`
                   : "",
               );
             }
@@ -1189,18 +1206,38 @@ export default function ValidationQueueScreen({
     setGuardRails(null);
   }
 
+  const stashedScheduleRef = useRef<{ date: string; time: string }>({ date: "", time: "" });
+
   // Publishing mode is fixed during review by default (see ValidationService.edit's
   // admin-only server-side guard); this Admin-only override mirrors Content
-  // Submission's Schedule/Live Event toggle. Switching to Live drops any
-  // in-progress schedule; switching to Scheduled just clears the flag so the
-  // date/time fields below become editable again.
+  // Submission's Schedule/Live Event toggle. Switching to Live stashes any
+  // in-progress schedule and clears the inputs; switching back to Scheduled
+  // restores the stashed or original schedule so the date/time aren't lost.
   function updateEditFastTrack(value: boolean) {
-    setEditForm((f) => ({
-      ...f,
-      fastTrack: value,
-      scheduledDate: value ? "" : f.scheduledDate,
-      scheduledTime: value ? "" : f.scheduledTime,
-    }));
+    setEditForm((f) => {
+      if (value) {
+        if (f.scheduledDate || f.scheduledTime) {
+          stashedScheduleRef.current = { date: f.scheduledDate, time: f.scheduledTime };
+        }
+        return {
+          ...f,
+          fastTrack: true,
+          scheduledDate: "",
+          scheduledTime: "",
+        };
+      }
+      const fallback = isoToLocalDateTime(selected?.scheduledAt ?? contributorScheduledAt);
+      const restoredDate =
+        f.scheduledDate || stashedScheduleRef.current.date || fallback.date;
+      const restoredTime =
+        f.scheduledTime || stashedScheduleRef.current.time || fallback.time;
+      return {
+        ...f,
+        fastTrack: false,
+        scheduledDate: restoredDate,
+        scheduledTime: restoredTime,
+      };
+    });
   }
 
   const editScheduledAtIso = useMemo(() => {
@@ -1268,7 +1305,13 @@ export default function ValidationQueueScreen({
         key: "mode", label: "Publishing mode",
         before: base.fastTrack ? "Live Event" : "Scheduled",
         after: editForm.fastTrack ? "Live Event" : "Scheduled",
-        onUndo: () => setEditForm((f) => ({ ...f, fastTrack: base.fastTrack })),
+        onUndo: () =>
+          setEditForm((f) => ({
+            ...f,
+            fastTrack: base.fastTrack,
+            scheduledDate: base.fastTrack ? "" : f.scheduledDate || base.scheduledDate,
+            scheduledTime: base.fastTrack ? "" : f.scheduledTime || base.scheduledTime,
+          })),
       });
     }
     if (scheduleChanged) {
@@ -1348,6 +1391,10 @@ export default function ValidationQueueScreen({
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
+  const scheduleInPast =
+    !editForm.fastTrack &&
+    Boolean(editScheduledAtIso) &&
+    new Date(editScheduledAtIso).getTime() <= nowMs;
 
   // ── Content completeness (mirrors SubmissionService.assertContentComplete) ─
   const editMissingFields = useMemo(() => {
@@ -1365,11 +1412,12 @@ export default function ValidationQueueScreen({
     : false;
 
   // Only an admin can bypass a hard block — with a reason. Moderators cannot
-  // save a blocked slot at all. Saving requires at least one field to have been modified.
+  // save a blocked slot at all. Past schedules are never valid.
   const canSaveEdit =
     !editSaving &&
     hasEditChanges &&
     editMissingFields.length === 0 &&
+    !scheduleInPast &&
     (!hardBlocked || (isAdmin && overrideReason.trim().length >= 10));
 
   // ── AI caption assist (Details tab) ──────────────────────────────────────
@@ -1737,16 +1785,58 @@ export default function ValidationQueueScreen({
                   <button
                     className={sortKey === "publish_slot" ? "active" : ""}
                     type="button"
-                    onClick={() => setSortKey("publish_slot")}
+                    onClick={() => {
+                      if (sortKey === "publish_slot") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortKey("publish_slot");
+                        setSortDirection(defaultSortDirectionForTab(filter, "publish_slot"));
+                      }
+                    }}
+                    title={
+                      sortKey === "publish_slot"
+                        ? sortDirection === "asc"
+                          ? "Publish Slot: Earliest / most urgent first (click to sort latest first)"
+                          : "Publish Slot: Latest first (click to sort earliest first)"
+                        : "Sort by publish slot"
+                    }
                   >
-                    <i className="ti ti-calendar-due"></i> Publish Slot
+                    <i className="ti ti-calendar-due"></i>
+                    <span>Publish Slot</span>
+                    {sortKey === "publish_slot" && (
+                      <i
+                        className={`ti ${sortDirection === "asc" ? "ti-arrow-up" : "ti-arrow-down"} val-sort-dir-icon`}
+                        aria-label={sortDirection === "asc" ? "Increasing (earliest first)" : "Decreasing (latest first)"}
+                      />
+                    )}
                   </button>
                   <button
                     className={sortKey === "submitted" ? "active" : ""}
                     type="button"
-                    onClick={() => setSortKey("submitted")}
+                    onClick={() => {
+                      if (sortKey === "submitted") {
+                        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+                      } else {
+                        setSortKey("submitted");
+                        setSortDirection(defaultSortDirectionForTab(filter, "submitted"));
+                      }
+                    }}
+                    title={
+                      sortKey === "submitted"
+                        ? sortDirection === "asc"
+                          ? "Submitted: Oldest first (click to sort newest first)"
+                          : "Submitted: Newest first (click to sort oldest first)"
+                        : "Sort by submitted date"
+                    }
                   >
-                    <i className="ti ti-send"></i> Submitted
+                    <i className="ti ti-send"></i>
+                    <span>Submitted</span>
+                    {sortKey === "submitted" && (
+                      <i
+                        className={`ti ${sortDirection === "asc" ? "ti-arrow-up" : "ti-arrow-down"} val-sort-dir-icon`}
+                        aria-label={sortDirection === "asc" ? "Increasing (oldest first)" : "Decreasing (newest first)"}
+                      />
+                    )}
                   </button>
                 </div>
               )}
@@ -2218,6 +2308,7 @@ export default function ValidationQueueScreen({
                                 id="val-edit-event-date"
                                 value={editForm.eventDate}
                                 placeholder="Select event date"
+                                invalid={!editForm.eventDate}
                                 onChange={(value) => setEditForm((f) => ({ ...f, eventDate: value }))}
                               />
                             </div>
@@ -2483,6 +2574,7 @@ export default function ValidationQueueScreen({
                                 value={editForm.scheduledDate}
                                 placeholder="Pick a date"
                                 minValue={dateToInputValue(new Date())}
+                                invalid={!editForm.fastTrack && !editForm.scheduledDate}
                                 onChange={(value) => setEditForm((f) => ({ ...f, scheduledDate: value }))}
                               />
                             </div>
@@ -2497,6 +2589,8 @@ export default function ValidationQueueScreen({
                                 startHour={lookups?.postingWindowStartHour ?? 8}
                                 endHour={lookups?.postingWindowEndHour ?? 20}
                                 enforceRange={lookups?.guardrailsEnforced ?? true}
+                                selectedDate={editForm.scheduledDate}
+                                invalid={!editForm.fastTrack && (!editForm.scheduledTime || scheduleInPast || hardBlocked)}
                                 onChange={(value) => setEditForm((f) => ({ ...f, scheduledTime: value }))}
                               />
                             </div>
@@ -2512,10 +2606,16 @@ export default function ValidationQueueScreen({
                             </Suspense>
                           )}
 
-                          {scheduleChanged && (
+                          {(scheduleChanged || scheduleInPast) && (
                             <div className="val-edit-gr">
-                              {guardRailsLoading && <span className="val-edit-gr-loading">Checking slot…</span>}
-                              {!guardRailsLoading &&
+                              {scheduleInPast && (
+                                <div className="val-edit-gr-block">
+                                  <i className="ti ti-alert-triangle" /> Scheduled time cannot be in the past. Please choose a future time.
+                                </div>
+                              )}
+                              {!scheduleInPast && guardRailsLoading && <span className="val-edit-gr-loading">Checking slot…</span>}
+                              {!scheduleInPast &&
+                                !guardRailsLoading &&
                                 !guardRails?.hardBlocks?.length &&
                                 !guardRails?.softWarnings?.length && (
                                   <div className="val-edit-gr-ok">
@@ -3418,81 +3518,6 @@ function EditDiffView({ diffJson }: { diffJson: string }) {
   );
 }
 
-function FacebookPostImage({
-  src,
-  alt = "",
-  showWatermark = false,
-  watermarkConfig = null,
-  skipWatermark = false,
-}: {
-  src: string;
-  alt?: string;
-  showWatermark?: boolean;
-  watermarkConfig?: WatermarkConfiguration | null;
-  skipWatermark?: boolean;
-}) {
-  const [isVeryTall, setIsVeryTall] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [retryToken, setRetryToken] = useState(0);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      setIsVeryTall(false);
-      setLoadFailed(false);
-      setRetryToken(0);
-    });
-  }, [src]);
-
-  // A7: a broken/unreachable media asset must not block review — the reviewer
-  // can retry the load (e.g. a transient R2/network hiccup) or acknowledge it
-  // and proceed straight to Request Revision/Reject with the rest of the
-  // submission's content still visible.
-  if (loadFailed) {
-    return (
-      <div className="val-fb-image-wrapper val-fb-image-error">
-        <i className="ti ti-photo-off" aria-hidden="true" />
-        <span>This media asset failed to load.</span>
-        <button
-          type="button"
-          className="val-btn val-btn-secondary"
-          onClick={() => {
-            setLoadFailed(false);
-            setRetryToken((n) => n + 1);
-          }}
-        >
-          <i className="ti ti-refresh" aria-hidden="true" />
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`val-fb-image-wrapper ${isVeryTall ? "is-very-tall" : ""}`}>
-      <img
-        key={retryToken}
-        src={retryToken > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${retryToken}` : src}
-        alt={alt}
-        className={isVeryTall ? "val-fb-img-cover" : "val-fb-img-natural"}
-        onLoad={(e) => {
-          const { naturalWidth, naturalHeight } = e.currentTarget;
-          if (naturalWidth && naturalHeight) {
-            const ratio = naturalWidth / naturalHeight;
-            // Facebook feed rule:
-            // - If ratio >= 4/5 (0.8): natural scaling (100% width, auto height)
-            // - If ratio < 4/5 (0.8): cap container to 4:5 aspect ratio and crop with object-fit: cover
-            setIsVeryTall(ratio < 0.8);
-          }
-        }}
-        onError={() => setLoadFailed(true)}
-      />
-      {showWatermark && watermarkConfig?.enabled && !skipWatermark && (
-        <WatermarkOverlay elements={watermarkConfig.elements} />
-      )}
-    </div>
-  );
-}
-
 /**
  * Collapsible side panel beside the Facebook preview: who submitted it, who
  * edited it during review, its institution, when it was submitted, and how /
@@ -3562,9 +3587,23 @@ function SubmissionDetailsPanel({
         <header className="val-details-head">
           <div className="val-details-head-title">
             <h2>Submission details</h2>
-            <span className={`val-status ${status}`}>
-              {statusLabel[status] || status.replace(/_/g, " ") || "Unknown"}
-            </span>
+            <div className="val-details-status-row">
+              <span className={`val-status ${status}`}>
+                {statusLabel[status] || status.replace(/_/g, " ") || "Unknown"}
+              </span>
+              {statusGuidanceText[status] && (
+                <span
+                  className="val-details-info-tip"
+                  tabIndex={0}
+                  aria-label={statusGuidanceText[status]}
+                >
+                  <i className="ti ti-info-circle" aria-hidden="true" />
+                  <span className="val-details-info-popover" role="tooltip">
+                    {statusGuidanceText[status]}
+                  </span>
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -3576,13 +3615,6 @@ function SubmissionDetailsPanel({
             <i className="ti ti-layout-sidebar-right-collapse" />
           </button>
         </header>
-
-        {statusGuidanceText[status] && (
-          <p className="val-details-muted" style={{ margin: "0 0 12px", fontSize: "12.5px", lineHeight: 1.45 }}>
-            <i className="ti ti-info-circle" style={{ marginRight: "6px" }} aria-hidden="true" />
-            {statusGuidanceText[status]}
-          </p>
-        )}
 
         {/* When it publishes is the fact a reviewer acts on — lead with it. */}
         <section className={`val-details-publish ${modeClass}`} aria-label="Publishing">
@@ -3700,219 +3732,6 @@ function SubmissionDetailsPanel({
   );
 }
 
-function FacebookMultiMediaGrid({
-  mediaAssets,
-  showWatermark,
-  watermarkConfig,
-  onSelectMedia,
-}: {
-  mediaAssets: SavedMediaAsset[];
-  showWatermark: boolean;
-  watermarkConfig?: WatermarkConfiguration | null;
-  onSelectMedia: (index: number) => void;
-}) {
-  const count = mediaAssets.length;
-  if (count <= 1) return null;
-
-  if (count === 2) {
-    return (
-      <div className="val-fb-collage val-fb-collage--2">
-        {mediaAssets.slice(0, 2).map((item, idx) => (
-          <div
-            key={item.id}
-            className="val-fb-collage-cell"
-            onClick={() => onSelectMedia(idx)}
-            role="button"
-            tabIndex={0}
-            title={`${item.fileName} (Click to view full photo)`}
-          >
-            {isImage(item.fileType) ? (
-              <img src={item.storageUrl} alt={item.fileName} />
-            ) : (
-              <div className="val-fb-video-wrapper">
-                <video src={item.storageUrl} muted playsInline />
-                <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-              </div>
-            )}
-            {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
-              <WatermarkOverlay elements={watermarkConfig.elements} />
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (count === 3) {
-    return (
-      <div className="val-fb-collage val-fb-collage--3">
-        <div
-          className="val-fb-collage-cell val-fb-collage-cell--featured"
-          onClick={() => onSelectMedia(0)}
-          role="button"
-          tabIndex={0}
-          title={`${mediaAssets[0].fileName} (Click to view full photo)`}
-        >
-          {isImage(mediaAssets[0].fileType) ? (
-            <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
-          ) : (
-            <div className="val-fb-video-wrapper">
-              <video src={mediaAssets[0].storageUrl} muted playsInline />
-              <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-            </div>
-          )}
-          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
-          )}
-        </div>
-        <div className="val-fb-collage-row">
-          {mediaAssets.slice(1, 3).map((item, idx) => (
-            <div
-              key={item.id}
-              className="val-fb-collage-cell"
-              onClick={() => onSelectMedia(idx + 1)}
-              role="button"
-              tabIndex={0}
-              title={`${item.fileName} (Click to view full photo)`}
-            >
-              {isImage(item.fileType) ? (
-                <img src={item.storageUrl} alt={item.fileName} />
-              ) : (
-                <div className="val-fb-video-wrapper">
-                  <video src={item.storageUrl} muted playsInline />
-                  <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-                </div>
-              )}
-              {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
-                <WatermarkOverlay elements={watermarkConfig.elements} />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (count === 4) {
-    return (
-      <div className="val-fb-collage val-fb-collage--4">
-        <div
-          className="val-fb-collage-cell val-fb-collage-cell--featured"
-          onClick={() => onSelectMedia(0)}
-          role="button"
-          tabIndex={0}
-          title={`${mediaAssets[0].fileName} (Click to view full photo)`}
-        >
-          {isImage(mediaAssets[0].fileType) ? (
-            <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
-          ) : (
-            <div className="val-fb-video-wrapper">
-              <video src={mediaAssets[0].storageUrl} muted playsInline />
-              <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-            </div>
-          )}
-          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
-          )}
-        </div>
-        <div className="val-fb-collage-row">
-          {mediaAssets.slice(1, 4).map((item, idx) => (
-            <div
-              key={item.id}
-              className="val-fb-collage-cell"
-              onClick={() => onSelectMedia(idx + 1)}
-              role="button"
-              tabIndex={0}
-              title={`${item.fileName} (Click to view full photo)`}
-            >
-              {isImage(item.fileType) ? (
-                <img src={item.storageUrl} alt={item.fileName} />
-              ) : (
-                <div className="val-fb-video-wrapper">
-                  <video src={item.storageUrl} muted playsInline />
-                  <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-                </div>
-              )}
-              {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
-                <WatermarkOverlay elements={watermarkConfig.elements} />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="val-fb-collage val-fb-collage--5plus">
-      <div
-        className="val-fb-collage-cell val-fb-collage-cell--featured"
-        onClick={() => onSelectMedia(0)}
-        role="button"
-        tabIndex={0}
-        title={`${mediaAssets[0].fileName} (Click to view full photo)`}
-      >
-        {isImage(mediaAssets[0].fileType) ? (
-          <img src={mediaAssets[0].storageUrl} alt={mediaAssets[0].fileName} />
-        ) : (
-          <div className="val-fb-video-wrapper">
-            <video src={mediaAssets[0].storageUrl} muted playsInline />
-            <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-          </div>
-        )}
-        {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[0].fileType) && !mediaAssets[0].skipWatermark && (
-          <WatermarkOverlay elements={watermarkConfig.elements} />
-        )}
-      </div>
-      <div className="val-fb-collage-row">
-        {mediaAssets.slice(1, 3).map((item, idx) => (
-          <div
-            key={item.id}
-            className="val-fb-collage-cell"
-            onClick={() => onSelectMedia(idx + 1)}
-            role="button"
-            tabIndex={0}
-            title={`${item.fileName} (Click to view full photo)`}
-          >
-            {isImage(item.fileType) ? (
-              <img src={item.storageUrl} alt={item.fileName} />
-            ) : (
-              <div className="val-fb-video-wrapper">
-                <video src={item.storageUrl} muted playsInline />
-                <span className="val-fb-collage-video-badge"><i className="ti ti-video" /></span>
-              </div>
-            )}
-            {showWatermark && watermarkConfig?.enabled && isImage(item.fileType) && !item.skipWatermark && (
-              <WatermarkOverlay elements={watermarkConfig.elements} />
-            )}
-          </div>
-        ))}
-        <div
-          className="val-fb-collage-cell val-fb-collage-cell--more"
-          onClick={() => onSelectMedia(3)}
-          role="button"
-          tabIndex={0}
-          title={`View all ${count} photos`}
-        >
-          {isImage(mediaAssets[3].fileType) ? (
-            <img src={mediaAssets[3].storageUrl} alt={mediaAssets[3].fileName} />
-          ) : (
-            <div className="val-fb-video-wrapper">
-              <video src={mediaAssets[3].storageUrl} muted playsInline />
-            </div>
-          )}
-          {showWatermark && watermarkConfig?.enabled && isImage(mediaAssets[3].fileType) && !mediaAssets[3].skipWatermark && (
-            <WatermarkOverlay elements={watermarkConfig.elements} />
-          )}
-          <div className="val-fb-collage-more-overlay">
-            +{count - 3}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FacebookPostPreviewCard({
   submission,
   editMode,
@@ -3920,7 +3739,6 @@ function FacebookPostPreviewCard({
   mediaAssets,
   mediaIndex,
   onMediaIndexChange,
-  watermarkConfig,
   showWatermarkPreview = true,
   onToggleWatermark,
 }: {
@@ -3934,240 +3752,47 @@ function FacebookPostPreviewCard({
   showWatermarkPreview?: boolean;
   onToggleWatermark?: () => void;
 }) {
-  const [viewMode, setViewMode] = useState<"grid" | "carousel">("grid");
-  const safeIndex = mediaAssets.length > 0 ? Math.min(mediaIndex, mediaAssets.length - 1) : 0;
-  const selectedMedia = mediaAssets[safeIndex];
   const pageName = submission.institutionName || "DasigConnect";
-  const displayCaption = editMode ? editForm.caption : (submission.caption || submission.eventTitle);
+  const baseCaption = editMode
+    ? editForm.caption
+    : submission.caption || submission.eventTitle || "";
   // Only tags publishing adds after the caption — the caption's own hashtags
   // are already in its text. An edit saves no separate tags (they live in the
   // caption), so edit mode adds none.
   const formattedTags: string[] = editMode
     ? []
-    : tagsAppendedToCaption(submission.tags || [], displayCaption || "");
+    : tagsAppendedToCaption(submission.tags || [], baseCaption);
+  const fullCaption =
+    formattedTags.length > 0
+      ? `${baseCaption ? `${baseCaption}\n\n` : ""}${formattedTags.join(" ")}`
+      : baseCaption;
+
+  const previewMediaItems: FacebookPreviewMediaItem[] = mediaAssets.map((asset) => ({
+    id: asset.id,
+    source: "saved",
+    sourceId: asset.id,
+    url: asset.storageUrl,
+    type: isImage(asset.fileType) ? "image" : "video",
+    alt: asset.fileName || "Media attachment",
+    fileName: asset.fileName,
+    skipWatermark: asset.skipWatermark,
+  }));
 
   return (
-    <article className="val-fb-card" aria-label="Facebook Post Preview">
-      {/* 1. Facebook Page Header */}
-      <div className="val-fb-header">
-        <div className="val-fb-author">
-          <div className="val-fb-avatar" aria-hidden="true">
-            <i className="ti ti-brand-facebook" />
-          </div>
-          <div className="val-fb-author-meta">
-            <div className="val-fb-author-name">
-              <strong>{pageName}</strong>
-            </div>
-            <div className="val-fb-time-row">
-              <span className="val-fb-published-by" title={`Published by ${pageName}`}>
-                Published by {pageName}
-              </span>
-              <span className="val-fb-dot">·</span>
-              <span className="val-fb-schedule-text">
-                {submission.fastTrack
-                  ? "Live Event Fast-Track"
-                  : submission.scheduledAt
-                  ? `Scheduled • ${formatDate(submission.scheduledAt)}`
-                  : "18h"}
-              </span>
-              <span className="val-fb-dot">·</span>
-              <i className="ti ti-world" title="Public on Facebook" />
-            </div>
-          </div>
-        </div>
-
-        <div className="val-fb-header-actions">
-          {mediaAssets.length > 1 && (
-            <div className="val-fb-view-toggle" role="group" aria-label="Media layout">
-              <button
-                type="button"
-                className={`val-fb-view-btn ${viewMode === "grid" ? "active" : ""}`}
-                onClick={() => setViewMode("grid")}
-                title="Facebook multi-photo collage layout"
-              >
-                <i className="ti ti-layout-grid" />
-                <span>Grid</span>
-              </button>
-              <button
-                type="button"
-                className={`val-fb-view-btn ${viewMode === "carousel" ? "active" : ""}`}
-                onClick={() => setViewMode("carousel")}
-                title="Single photo with navigation arrows"
-              >
-                <i className="ti ti-arrows-left-right" />
-                <span>Arrows</span>
-              </button>
-            </div>
-          )}
-          {watermarkConfig?.enabled && onToggleWatermark && (
-            <button
-              type="button"
-              className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
-              onClick={onToggleWatermark}
-              title="Toggle watermark overlay on media preview"
-            >
-              <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
-              <span>{showWatermarkPreview ? "Watermark: ON" : "Watermark: OFF"}</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 2. Facebook Post Caption & Hashtags (Starts directly withoutCMS title headline) */}
-      <div className="val-fb-body">
-        {displayCaption ? (
-          <p className="val-fb-text">{displayCaption}</p>
-        ) : (
-          <p className="val-fb-text val-fb-text-empty">No caption supplied.</p>
-        )}
-        {formattedTags.length > 0 && (
-          <div className="val-fb-hashtags">
-            {formattedTags.map((tag: string) => (
-              <span key={tag} className="val-fb-hashtag">{tag}</span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 3. Media Frame with Dynamic Facebook Aspect-Ratio Handling */}
-      {mediaAssets.length > 1 && viewMode === "grid" ? (
-        <FacebookMultiMediaGrid
-          mediaAssets={mediaAssets}
-          showWatermark={showWatermarkPreview}
-          watermarkConfig={watermarkConfig}
-          onSelectMedia={(idx) => {
-            onMediaIndexChange(idx);
-            setViewMode("carousel");
-          }}
-        />
-      ) : (
-        <div className="val-fb-media-frame">
-          {selectedMedia ? (
-            isImage(selectedMedia.fileType) ? (
-              <FacebookPostImage
-                src={selectedMedia.storageUrl}
-                alt={selectedMedia.fileName}
-                showWatermark={showWatermarkPreview}
-                watermarkConfig={watermarkConfig}
-                skipWatermark={selectedMedia.skipWatermark}
-              />
-            ) : (
-              <div className="val-fb-video-wrapper">
-                <video src={selectedMedia.storageUrl} controls playsInline />
-              </div>
-            )
-          ) : (
-            <div className="val-fb-no-media">
-              <i className="ti ti-photo-off" />
-              <span>No media attached</span>
-            </div>
-          )}
-
-          {mediaAssets.length > 1 && (
-            <>
-              <button
-                className="val-fb-arrow left"
-                type="button"
-                aria-label="Previous media"
-                onClick={() =>
-                  onMediaIndexChange((safeIndex - 1 + mediaAssets.length) % mediaAssets.length)
-                }
-              >
-                <i className="ti ti-chevron-left" />
-              </button>
-              <button
-                className="val-fb-arrow right"
-                type="button"
-                aria-label="Next media"
-                onClick={() => onMediaIndexChange((safeIndex + 1) % mediaAssets.length)}
-              >
-                <i className="ti ti-chevron-right" />
-              </button>
-              <div className="val-fb-counter">
-                {safeIndex + 1} / {mediaAssets.length}
-              </div>
-              <button
-                type="button"
-                className="val-fb-grid-pill"
-                onClick={() => setViewMode("grid")}
-                title="Switch back to Facebook grid layout"
-              >
-                <i className="ti ti-layout-grid" /> Grid view
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Multi-Photo Carousel Dots / Thumbnails */}
-      {mediaAssets.length > 1 && viewMode === "carousel" && (
-        <div className="val-fb-thumbs">
-          {mediaAssets.map((asset, index) => (
-            <button
-              className={`val-fb-thumb ${index === safeIndex ? "active" : ""}`}
-              key={asset.id}
-              type="button"
-              onClick={() => onMediaIndexChange(index)}
-              title={asset.fileName}
-            >
-              {isImage(asset.fileType) ? (
-                <OptimizedImage
-                  src={asset.storageUrl}
-                  alt=""
-                  width={72}
-                  height={72}
-                  sizes="72px"
-                  candidateWidths={[72, 144]}
-                  transform={canTransformImageType(asset.fileType)}
-                />
-              ) : (
-                <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 4. Insights Bar (Image 2) */}
-      <div className="val-fb-insights-bar" aria-hidden="true">
-        <span className="val-fb-insights-link">See insights</span>
-        <button type="button" tabIndex={-1} className="val-fb-create-ad-btn">
-          Create ad
-        </button>
-      </div>
-
-      {/* 5. Engagement Action Buttons (Image 2) */}
-      <div className="val-fb-action-buttons" aria-hidden="true">
-        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
-          <i className="ti ti-thumb-up" />
-          <span>Like</span>
-        </button>
-        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
-          <i className="ti ti-message-circle" />
-          <span>Comment</span>
-        </button>
-        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
-          <i className="ti ti-share-3" />
-          <span>Share</span>
-        </button>
-      </div>
-
-      {/* 6. Comment as page input (Image 2) */}
-      <div className="val-fb-comment-bar" aria-hidden="true">
-        <div className="val-fb-comment-avatar">
-          <i className="ti ti-brand-facebook" />
-        </div>
-        <div className="val-fb-comment-input-box">
-          <span>Comment as {pageName}</span>
-          <div className="val-fb-comment-tools">
-            <i className="ti ti-mood-smile" />
-            <i className="ti ti-camera" />
-            <i className="ti ti-gif" />
-            <i className="ti ti-sticker" />
-          </div>
-        </div>
-      </div>
-    </article>
+    <div className="val-fb-preview-host">
+      <FacebookPreviewCard
+        pageName={pageName}
+        publishDate={submission.scheduledAt}
+        publishLabel={submission.fastTrack ? "Live Event Fast-Track" : undefined}
+        caption={fullCaption}
+        mediaItems={previewMediaItems}
+        activeMediaIndex={mediaIndex}
+        onMediaIndexChange={onMediaIndexChange}
+        showWatermark={showWatermarkPreview}
+        onToggleWatermark={onToggleWatermark}
+        size="large"
+      />
+    </div>
   );
 }
 

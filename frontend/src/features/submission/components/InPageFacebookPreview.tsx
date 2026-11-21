@@ -39,6 +39,17 @@ export function InPageFacebookPreview({
       aria-label="What followers will see"
     >
       <div className={`sub-preview-split${hasReorder ? " has-reorder" : ""}`}>
+        {hasReorder && (
+          <aside className="sub-preview-reorder-col">
+            <FacebookPreviewMediaReorder
+              mediaItems={mediaItems}
+              activeMediaId={mediaItems[activeMediaIndex]?.id}
+              disabled={reorderDisabled}
+              onSelect={onMediaIndexChange}
+              onReorder={onReorderMedia}
+            />
+          </aside>
+        )}
         <div className="sub-preview-card-col">
           <FacebookPreviewCard
             pageName={pageName}
@@ -51,17 +62,6 @@ export function InPageFacebookPreview({
             size="large"
           />
         </div>
-        {hasReorder && (
-          <aside className="sub-preview-reorder-col">
-            <FacebookPreviewMediaReorder
-              mediaItems={mediaItems}
-              activeMediaId={mediaItems[activeMediaIndex]?.id}
-              disabled={reorderDisabled}
-              onSelect={onMediaIndexChange}
-              onReorder={onReorderMedia}
-            />
-          </aside>
-        )}
       </div>
 
       {/* <div className="sub-preview-footer">

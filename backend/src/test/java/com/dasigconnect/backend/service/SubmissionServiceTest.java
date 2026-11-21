@@ -187,7 +187,7 @@ class SubmissionServiceTest {
     @Test
     void submit_withCaptionOverCharLimit_returns422() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         submission.setCaption("x".repeat(3001));
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
@@ -263,7 +263,7 @@ class SubmissionServiceTest {
 
         assertThat(result.getEventTitle()).isEqualTo("Updated Title");
         assertThat(result.getScheduledAt()).isEqualTo(newSlot);
-        verify(slotReservationService).reserve(submissionId, institutionId, newSlot);
+        verify(slotReservationService).reserve(submissionId, institutionId, newSlot, false);
     }
 
     @Test
@@ -286,7 +286,7 @@ class SubmissionServiceTest {
 
         assertThat(result.getScheduledAt()).isEqualTo(newSlot);
         verify(guardRailService, never()).validate(any(), any(), any());
-        verify(slotReservationService).reserve(submissionId, institutionId, newSlot);
+        verify(slotReservationService).reserve(submissionId, institutionId, newSlot, false);
     }
 
     @Test
@@ -344,7 +344,7 @@ class SubmissionServiceTest {
     @Test
     void submit_draftWithCleanSlot_transitionsToPendingAndAudits() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
@@ -370,7 +370,7 @@ class SubmissionServiceTest {
     @Test
     void submit_rejectedSubmission_transitionsToPendingAndClearsRejectionReason() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.rejected, scheduledAt);
         submission.setRejectionReason("POLICY_VIOLATION: Inappropriate caption");
         User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
@@ -428,7 +428,7 @@ class SubmissionServiceTest {
     @Test
     void submit_blockedGuardRail_returns409() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, SubmissionStatus.draft, scheduledAt)));
         GuardRailViolation violation = new GuardRailViolation("GR-H1", "Slot already taken");
@@ -460,7 +460,7 @@ class SubmissionServiceTest {
     void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
         when(guardRailSettings.enforced()).thenReturn(false);
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
@@ -479,7 +479,7 @@ class SubmissionServiceTest {
     @Test
     void submit_withoutCaption_returns422() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         submission.setCaption("   ");
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
@@ -497,7 +497,7 @@ class SubmissionServiceTest {
     @Test
     void submit_withoutMedia_returns422() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
@@ -752,7 +752,8 @@ class SubmissionServiceTest {
     @Test
     void submit_withOnlyDeletedMedia_returns422() {
         UUID submissionId = UUID.randomUUID();
-        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        Submission submission = submission(submissionId, SubmissionStatus.draft,
+                Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS));
         MediaAsset deletedAsset = mediaAsset(UUID.randomUUID(), institution);
         deletedAsset.setStatus(MediaAssetStatus.DELETED);
         deletedAsset.setDeletedAt(Instant.now());
@@ -1130,7 +1131,7 @@ class SubmissionServiceTest {
     @Test
     void submit_promotesStagedMediaToProcessingAndStampsInstitution() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         MediaAsset staged = new MediaAsset();
         staged.setId(UUID.randomUUID());
@@ -1157,7 +1158,7 @@ class SubmissionServiceTest {
     @Test
     void submit_filesNewMediaIntoAssignedAlbum_keepsLibraryAssetAlbum_andTagsBoth() {
         UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Instant scheduledAt = Instant.now().plus(7, java.time.temporal.ChronoUnit.DAYS);
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         submission.setMediaTags("expo, dost7");
 

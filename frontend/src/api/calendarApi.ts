@@ -3,12 +3,15 @@ import { api } from "./authApi";
 export interface CalendarEvent {
   id: string;
   title: string | null;
+  eventDate?: string | null;
   institutionId: string;
   institutionName: string;
   institutionCode: string;
   status: string;
   scheduledAt: string;
   publishedAt: string | null;
+  platformPostId?: string | null;
+  publishedManualUrl?: string | null;
   caption?: string | null;
   description?: string | null;
   contributorName?: string | null;

@@ -76,6 +76,7 @@ export type ValidationQueueView =
   | "rejected";
 
 export type ValidationQueueSort = "publish_slot" | "submitted";
+export type ValidationQueueSortDirection = "asc" | "desc";
 
 export interface ValidationQueueCounts {
   all: number;
@@ -112,6 +113,7 @@ export function getValidationQueuePage(
   params: {
     view: ValidationQueueView;
     sort: ValidationQueueSort;
+    direction?: ValidationQueueSortDirection;
     page?: number;
     pageSize?: number;
     search?: string;
@@ -122,6 +124,7 @@ export function getValidationQueuePage(
     params: {
       view: params.view,
       sort: params.sort,
+      direction: params.direction,
       page: params.page ?? 0,
       pageSize: params.pageSize ?? 20,
       search: params.search?.trim() ?? "",

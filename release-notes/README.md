@@ -8,6 +8,7 @@ This directory contains versioned release notes for all official releases of the
 
 | Version | Release Date | Summary Highlights |
 |---|---|---|
+| **[v3.4.1](./v3.4.1.md)** | `2026-11-22` | Review queue sorting & direction toggle, scheduling guard rails & timezone fix, semantic search & album auto-matching thresholds, smooth draft autosave & media caching, status badge tooltip, dashboard CTA & mobile UI polish |
 | **[v3.4.0](./v3.4.0.md)** | `2026-11-13` | Claude primary AI with Gemini standby fallback, Voyage AI card, session token & spend visibility, Facebook page name resolution, concurrent Run All Jobs toolbar, watermark studio & caption flow polish |
 | **[v3.3.0](./v3.3.0.md)** | `2026-11-05` | Asynchronous Fast-Track publishing, Facebook Page token eye reveal & copy toggle, Canva-style full-screen Watermark Studio revamp, billing master feature flag, review queue layout stability |
 | **[v3.2.0](./v3.2.0.md)** | `2026-10-25` | Auth route redirection guards, subscription plans full-screen redesign, Gemini Vision metadata v2 taxonomy, pending admin transfer sidebar indicator badge, blinded media evaluation pool |

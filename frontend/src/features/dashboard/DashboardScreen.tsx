@@ -37,8 +37,7 @@ interface ActionItem {
 interface ActivityItem {
   title: string;
   subtitle: string;
-  institution: string;
-  submitted: string;
+  lastActivity: string;
   status: {
     label: string;
     icon: string;
@@ -88,7 +87,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   const activitySource = isNetworkView
     ? dashboardStats.reviewRecent ?? []
     : dashboardStats.submissions ?? [];
-  const activityRows = activityForRole(user, activitySource, institutions);
+  const activityRows = activityForRole(user, activitySource);
   const activityLoading = dashboardData.activity.loading;
   const activityError = dashboardData.activity.error;
 
@@ -131,24 +130,16 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: "1 1 280px" }}>
-                <i className={nextAction.icon}></i>
-                <div dangerouslySetInnerHTML={{ __html: nextAction.html }}></div>
+              <div className="first-login-notice-content">
+                <span className="first-login-notice-icon" aria-hidden="true">
+                  <i className={nextAction.icon}></i>
+                </span>
+                <div className="first-login-notice-text" dangerouslySetInnerHTML={{ __html: nextAction.html }}></div>
               </div>
               {nextAction.actionLabel && nextAction.actionPath && (
                 <button
                   type="button"
-                  className="sub-btn-primary"
-                  style={{
-                    padding: "7px 14px",
-                    fontSize: "12.5px",
-                    fontWeight: 700,
-                    borderRadius: "8px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="first-login-notice-cta"
                   onClick={() => navigate(nextAction.actionPath!)}
                 >
                   <span>{nextAction.actionLabel}</span>
@@ -229,8 +220,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
             <thead>
               <tr>
                 <th>Event / Post</th>
-                <th>Institution</th>
-                <th>Submitted</th>
+                <th>Last Activity</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -244,9 +234,6 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                       <div className="dash-skeleton dash-skeleton-line is-sub"></div>
                     </td>
                     <td>
-                      <div className="dash-skeleton dash-skeleton-line is-inst"></div>
-                    </td>
-                    <td>
                       <div className="dash-skeleton dash-skeleton-line is-date"></div>
                     </td>
                     <td>
@@ -256,7 +243,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                 ))
               ) : activityError ? (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: "center", padding: "36px 20px" }}>
+                  <td colSpan={3} style={{ textAlign: "center", padding: "36px 20px" }}>
                     <div style={{ color: "var(--d-muted)", fontSize: 13, marginBottom: 10 }}>
                       Unable to load recent activity.
                     </div>
@@ -268,7 +255,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
               ) : activityRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={3}
                     style={{
                       textAlign: "center",
                       padding: "36px 20px",
@@ -315,15 +302,14 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                 </tr>
               ) : (
                 activityRows.map((row) => (
-                  <tr key={`${row.title}-${row.submitted}`}>
+                  <tr key={`${row.title}-${row.lastActivity}`}>
                     <td>
                       <div className="act-title">{row.title}</div>
                       {row.subtitle && (
                         <span className="act-category">{row.subtitle}</span>
                       )}
                     </td>
-                    <td className="act-institution">{row.institution}</td>
-                    <td className="act-date">{row.submitted}</td>
+                    <td className="act-date">{row.lastActivity}</td>
                     <td>
                       <span className={`status-pill ${row.status.className}`}>
                         <i
@@ -468,7 +454,7 @@ function notice(
     const targetRev = stats.submissions?.find((s) => s.status === "needs_revision");
     return {
       icon: "ti ti-pencil-minus",
-      html: `<strong>Next action:</strong> <strong>Needs revision — the Moderator asked for changes. Edit and resubmit.</strong> (${needsRevision} submission${needsRevision === 1 ? "" : "s"})`,
+      html: `<strong>Next action:</strong> <strong>Needs revision — changes were requested during review. Edit and resubmit.</strong> (${needsRevision} submission${needsRevision === 1 ? "" : "s"})`,
       actionLabel: "Edit & Resubmit",
       actionPath: targetRev ? `/submissions/${targetRev.id}` : "/submissions",
     };
@@ -488,14 +474,14 @@ function notice(
   if (underReview > 0) {
     return {
       icon: "ti ti-clock",
-      html: `You have <strong>${underReview} submission${underReview === 1 ? "" : "s"}</strong> awaiting review from your Moderator. <strong>Waiting for Moderator review — no action needed from you right now.</strong>`,
+      html: `You have <strong>${underReview} submission${underReview === 1 ? "" : "s"}</strong> awaiting review. <strong>Waiting for review — no action needed from you right now.</strong>`,
       actionLabel: "View My Submissions",
       actionPath: "/submissions",
     };
   }
   return {
     icon: "ti ti-confetti",
-    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Moderator will review them before they go to the DASIG Facebook page.`,
+    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — they will be reviewed before going to the DASIG Facebook page.`,
     actionLabel: "Start First Submission",
     actionPath: "/submissions/new",
   };
@@ -688,27 +674,21 @@ function actionsForRole(user: User | null): ActionItem[] {
 function activityForRole(
   user: User | null,
   submissions: SubmissionSummary[],
-  institutions: { id: string; name: string }[],
 ): ActivityItem[] {
   if (!user || submissions.length === 0) return [];
 
   const sorted = [...submissions]
     .sort((a, b) => {
-      const dateA = a.submittedAt ?? a.createdAt ?? "";
-      const dateB = b.submittedAt ?? b.createdAt ?? "";
+      const dateA = a.updatedAt ?? a.publishedAt ?? a.submittedAt ?? a.createdAt ?? "";
+      const dateB = b.updatedAt ?? b.publishedAt ?? b.submittedAt ?? b.createdAt ?? "";
       return dateB.localeCompare(dateA);
     })
     .slice(0, 5);
 
   return sorted.map((s) => {
-    const institutionName =
-      s.institutionName ||
-      institutions.find((i) => i.id === s.institutionId)?.name ||
-      getInstitutionName(user);
-
-    const submitted = s.submittedAt ?? s.createdAt ?? "";
-    const submittedLabel = submitted
-      ? new Date(submitted).toLocaleDateString(undefined, {
+    const activityTimestamp = s.updatedAt ?? s.publishedAt ?? s.submittedAt ?? s.createdAt ?? "";
+    const lastActivityLabel = activityTimestamp
+      ? new Date(activityTimestamp).toLocaleDateString(undefined, {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -718,8 +698,7 @@ function activityForRole(
     return {
       title: s.eventTitle,
       subtitle: statusGuidance[s.status] ?? "",
-      institution: institutionName,
-      submitted: submittedLabel,
+      lastActivity: lastActivityLabel,
       status: statusDisplay(s.status),
     };
   });

@@ -84,6 +84,12 @@ public class SlotReservationService {
      */
     @Transactional
     public SlotReservation reserve(UUID submissionId, UUID institutionId, Instant requestedSlot) {
+        return reserve(submissionId, institutionId, requestedSlot, false);
+    }
+
+    @Transactional
+    public SlotReservation reserve(UUID submissionId, UUID institutionId, Instant requestedSlot,
+            boolean adminOverride) {
         SlotReservation existingReservation = slotReservationRepository.findActiveBySubmissionId(submissionId)
                 .orElse(null);
         if (existingReservation != null && existingReservation.getScheduledAt().compareTo(requestedSlot) == 0) {
@@ -94,7 +100,7 @@ public class SlotReservationService {
 
         ensureExactSlotAvailable(requestedSlot, submissionId);
 
-        if (guardRailSettings.enforced()) {
+        if (guardRailSettings.enforced() && !adminOverride) {
             // Step 1: Guard rail validation
             GuardRailResult result = guardRailService.validate(institutionId, requestedSlot, submissionId);
             if (result.isBlocked()) {
@@ -107,6 +113,9 @@ public class SlotReservationService {
                 log.info("Slot reservation proceeding with soft warnings for submission {}: {}",
                         submissionId, result.getSoftWarnings());
             }
+        } else if (adminOverride) {
+            log.info("Admin override active; reserving requested slot {} for submission {}.",
+                    requestedSlot, submissionId);
         } else {
             log.info("Guard rail enforcement disabled; reserving requested slot {} for submission {}.",
                     requestedSlot, submissionId);
@@ -127,6 +136,7 @@ public class SlotReservationService {
         reservation.setInstitution(institution);
         reservation.setScheduledAt(requestedSlot);
         reservation.setStatus(SlotReservationStatus.held);
+        reservation.setAdminOverride(adminOverride);
         reservation.setConflictBufferMinutes(activeConflictBufferMinutes());
 
         try {

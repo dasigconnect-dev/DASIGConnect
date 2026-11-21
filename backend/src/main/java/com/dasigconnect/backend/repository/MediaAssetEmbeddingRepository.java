@@ -437,8 +437,26 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         WHERE ma.institution_id = :institutionId
           AND al.parent_album_id IS NULL
           AND ma.deleted_at IS NULL
+          AND ma.status = 'READY'
           AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
           AND mae.embedding_type = :embeddingType
+          AND (
+              :embeddingType <> 'semantic'
+              OR mae.source_revision = ma.semantic_revision
+          )
+          AND (
+              NOT EXISTS (
+                  SELECT 1 FROM submission_media_assets any_link
+                  WHERE any_link.media_asset_id = ma.id
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM submission_media_assets visible_link
+                  JOIN submissions visible_submission ON visible_submission.id = visible_link.submission_id
+                  WHERE visible_link.media_asset_id = ma.id
+                    AND visible_submission.status <> 'draft'
+              )
+          )
         GROUP BY ma.media_album_id
         """, nativeQuery = true)
     List<Object[]> findMaxSimilarityByRootAlbum(@Param("institutionId") UUID institutionId,

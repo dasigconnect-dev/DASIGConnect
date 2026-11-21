@@ -411,6 +411,7 @@ public class SubmissionService {
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
             boolean isAdmin = isAdmin(user);
+            boolean adminOverride = false;
             // This endpoint only edits a submission owned by the caller. Draft
             // scheduling therefore follows the network-wide enforcement switch,
             // even when the draft owner also has an Admin or Moderator role.
@@ -432,6 +433,7 @@ public class SubmissionService {
                                 Map.of("newSlot", dto.getScheduledAt().toString(),
                                         "overrideReason", reason,
                                         "violations", gr.getHardBlocks().toString()));
+                        adminOverride = true;
                     } else if (isModerator(user)) {
                         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                                 "This slot is blocked by a guard rail. Only an administrator can override it.");
@@ -442,7 +444,7 @@ public class SubmissionService {
             }
             submission.setScheduledAt(dto.getScheduledAt());
             // reserve() releases any existing held slot and creates a new one
-            slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
+            slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt(), adminOverride);
         }
 
         return submissionRepository.save(submission);
@@ -524,6 +526,10 @@ public class SubmissionService {
         if (!fastTrack && submission.getScheduledAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A scheduled time must be selected before submitting.");
+        }
+        if (!fastTrack && submission.getScheduledAt() != null && !submission.getScheduledAt().isAfter(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Scheduled time cannot be in the past. Please choose a future time.");
         }
 
         // Re-run guard rails — slot may have been taken since draft was saved

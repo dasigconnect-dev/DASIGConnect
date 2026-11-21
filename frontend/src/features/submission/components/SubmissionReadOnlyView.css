@@ -59,7 +59,7 @@
 /* ── Facebook preview: the preview card is its own frame, so no wrapper card ── */
 .sub-ro-preview {
   width: 100%;
-  max-width: 560px;
+  max-width: 550px;
   margin: 0 auto;
 }
 

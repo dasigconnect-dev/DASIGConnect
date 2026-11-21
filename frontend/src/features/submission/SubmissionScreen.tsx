@@ -74,6 +74,7 @@ import {
   defaultMediaTags,
   effectiveMediaTags,
   extractHashtags,
+  formatDateInput,
   formatTimeInput,
   getDraftFieldSignature,
   getErrorMessage,
@@ -1283,6 +1284,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     toast.success("AI caption applied to your caption box!");
   }
 
+  const stashedScheduleRef = useRef<{ date: string; time: string }>({ date: "", time: "" });
+
   function updateFastTrack(value: boolean) {
     if (value && !form.fastTrack && (form.scheduledDate || form.scheduledTime)) {
       setModal("fast-track-switch");
@@ -1292,13 +1295,30 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function applyFastTrackMode(value: boolean) {
-    setForm((current) => ({
-      ...current,
-      fastTrack: value,
-      liveEventName: value ? current.liveEventName : "",
-      scheduledDate: value ? "" : current.scheduledDate,
-      scheduledTime: value ? "" : current.scheduledTime,
-    }));
+    setForm((current) => {
+      if (value) {
+        if (current.scheduledDate || current.scheduledTime) {
+          stashedScheduleRef.current = {
+            date: current.scheduledDate,
+            time: current.scheduledTime,
+          };
+        }
+        return {
+          ...current,
+          fastTrack: true,
+          liveEventName: current.liveEventName,
+          scheduledDate: "",
+          scheduledTime: "",
+        };
+      }
+      return {
+        ...current,
+        fastTrack: false,
+        liveEventName: "",
+        scheduledDate: current.scheduledDate || stashedScheduleRef.current.date,
+        scheduledTime: current.scheduledTime || stashedScheduleRef.current.time,
+      };
+    });
     setGuardRails(value ? null : guardRails);
     setGuardRailError(value ? "" : guardRailError);
     setSaveState("idle");
@@ -1655,7 +1675,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         caption: submission.caption || "",
         description: "",
         scheduledDate: submission.scheduledAt
-          ? submission.scheduledAt.slice(0, 10)
+          ? formatDateInput(submission.scheduledAt)
           : "",
         scheduledTime: submission.scheduledAt
           ? formatTimeInput(submission.scheduledAt)
@@ -2951,12 +2971,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               >
                 <input
                   ref={eventTitleRef}
-                  className="sub-finput"
+                  className={`sub-finput${!isReadOnlySubmission && !hasRealEventTitle(form.eventTitle) ? " is-invalid" : ""}`}
                   readOnly={isReadOnlySubmission}
                   aria-required={!isReadOnlySubmission}
                   aria-invalid={
-                    !isReadOnlySubmission &&
-                    form.eventTitle.trim().toLowerCase() === "untitled submission"
+                    !isReadOnlySubmission && !hasRealEventTitle(form.eventTitle)
                   }
                   placeholder="e.g. CIT-U Innovation Summit 2026"
                   value={form.eventTitle}
@@ -2984,6 +3003,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     value={form.eventDate}
                     readOnly={isReadOnlySubmission}
                     placeholder="Select event date"
+                    invalid={!isReadOnlySubmission && !form.eventDate}
                     onChange={(value) => updateField("eventDate", value)}
                   />
                 </Field>
@@ -3053,9 +3073,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div className="sub-caption-wrapper">
                 <textarea
                   ref={captionRef}
-                  className={`sub-finput ${captionTone(form.caption)}`}
+                  className={`sub-finput ${captionTone(form.caption)}${!isReadOnlySubmission && !form.caption.trim() ? " is-invalid" : ""}`}
                   rows={8}
                   readOnly={isReadOnlySubmission}
+                  aria-required={!isReadOnlySubmission}
+                  aria-invalid={!isReadOnlySubmission && !form.caption.trim()}
                   value={form.caption}
                   onChange={(event) => {
                     updateCaption(event.target.value);
@@ -3261,6 +3283,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
                     placeholder="Search, select, or create a new album"
+                    invalid={!isReadOnlySubmission && !form.albumName.trim()}
                     onChange={handleAlbumNameChange}
                     onAutoMatch={applyAutoAlbum}
                     matching={albumMatching}
@@ -3340,6 +3363,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     readOnly={isReadOnlySubmission || form.fastTrack}
                     placeholder="Pick a date"
                     minValue={dateToInputValue(new Date())}
+                    invalid={!isReadOnlySubmission && !form.fastTrack && !form.scheduledDate}
                     onChange={(value) => updateField("scheduledDate", value)}
                   />
                 </Field>
@@ -3351,10 +3375,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     startHour={lookups.postingWindowStartHour}
                     endHour={lookups.postingWindowEndHour}
                     enforceRange={lookups.guardrailsEnforced}
+                    selectedDate={form.scheduledDate}
+                    invalid={Boolean(
+                      !isReadOnlySubmission &&
+                        !form.fastTrack &&
+                        (!form.scheduledTime ||
+                          (scheduledAt && new Date(scheduledAt) <= new Date()) ||
+                          (lookups.guardrailsEnforced && guardRails?.blocked)),
+                    )}
                     onChange={(value) => updateField("scheduledTime", value)}
                   />
                 </Field>
               </div>
+              {!form.fastTrack && scheduledAt && new Date(scheduledAt) <= new Date() && (
+                <div className="sub-inline-error" role="alert" style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}>
+                  <i className="ti ti-alert-triangle" aria-hidden="true" />
+                  <span>Scheduled time cannot be in the past. Please choose a future time.</span>
+                </div>
+              )}
               <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                 <EngagementRecommendationsPanel
                   loading={engagementLoading}
@@ -3746,10 +3784,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             isNeedsRevision
               ? "Your updated changes will be re-submitted to the reviewer for approval."
               : form.status === "rejected"
-                ? "Your updated submission will be sent back to moderators for review."
+                ? "Your updated submission will be sent back for review."
                 : hasRecommendedWarnings
                   ? `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). Optional quality tips (${recommendedWarnings.map((item) => item.title).join(", ")}) are non-blocking.`
-                  : `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). This submission will be sent for moderator approval.`
+                  : `Required: ${readiness.requiredComplete} of ${readiness.required.length} ✓ — Ready to submit (${readiness.tipsSummary}). This submission will be sent for review and approval.`
           }
           cancelLabel="Go Back"
           confirmLabel={

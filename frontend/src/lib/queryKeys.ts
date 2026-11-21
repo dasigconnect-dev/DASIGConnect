@@ -110,6 +110,7 @@ export const queryKeys = {
       institutionId?: string | null;
       queueView: string;
       sort: string;
+      direction?: string;
       search: string;
       pageSize: number;
     }) => scopedKey("validation", { ...params, view: "queue-page" }),

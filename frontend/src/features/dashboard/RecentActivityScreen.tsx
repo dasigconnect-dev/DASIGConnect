@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import "../../styles/institution-management.css";
 import type { User } from "../../types/auth.types";
-import { listInstitutions } from "../../api/authApi";
 import {
   listSubmissionPage,
   type SubmissionQueueBucket,
@@ -21,8 +20,7 @@ interface ActivityItem {
   id: string;
   title: string;
   subtitle: string;
-  institution: string;
-  submitted: string;
+  lastActivity: string;
   status: {
     label: string;
     icon: string;
@@ -32,7 +30,6 @@ interface ActivityItem {
 
 const RECENT_ACTIVITY_STALE_TIME_MS = 60_000;
 const EMPTY_SUBMISSIONS: SubmissionSummary[] = [];
-const EMPTY_INSTITUTIONS: { id: string; name: string; code: string; emailDomain: string }[] = [];
 
 export default function RecentActivityScreen({ user }: RecentActivityScreenProps) {
   const navigate = useNavigate();
@@ -60,46 +57,22 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
     staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
-  const institutionsQuery = useQuery({
-    queryKey: queryKeys.dashboard.resource({
-      role: user.role,
-      userId: userScope,
-      institutionId: user.institutionId ?? null,
-      resource: "recent-activity-institutions",
-    }),
-    queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
-      response.data.map((item) => ({
-        id: item.id,
-        name: item.name,
-        code: item.institutionCode,
-        emailDomain: item.emailDomain,
-      }))),
-    enabled: user.role === "admin",
-    staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
-    meta: authenticatedQueryMeta,
-  });
 
   const submissions = submissionsQuery.data?.pages?.flatMap((page) => page.items) ?? EMPTY_SUBMISSIONS;
-  const institutions = institutionsQuery.data ?? EMPTY_INSTITUTIONS;
   const loading = submissionsQuery.isLoading;
   const loadError = submissionsQuery.isError && !submissionsQuery.data;
 
   const allActivities: ActivityItem[] = useMemo(() => {
     return [...submissions]
       .sort((a, b) => {
-        const dateA = a.submittedAt ?? a.createdAt ?? "";
-        const dateB = b.submittedAt ?? b.createdAt ?? "";
+        const dateA = a.updatedAt ?? a.publishedAt ?? a.submittedAt ?? a.createdAt ?? "";
+        const dateB = b.updatedAt ?? b.publishedAt ?? b.submittedAt ?? b.createdAt ?? "";
         return dateB.localeCompare(dateA);
       })
       .map((s) => {
-        const institutionName =
-          s.institutionName ||
-          institutions.find((i) => i.id === s.institutionId)?.name ||
-          getInstitutionName(user);
-
-        const submitted = s.submittedAt ?? s.createdAt ?? "";
-        const submittedLabel = submitted
-          ? new Date(submitted).toLocaleDateString(undefined, {
+        const activityTimestamp = s.updatedAt ?? s.publishedAt ?? s.submittedAt ?? s.createdAt ?? "";
+        const lastActivityLabel = activityTimestamp
+          ? new Date(activityTimestamp).toLocaleDateString(undefined, {
               month: "short",
               day: "numeric",
               year: "numeric",
@@ -110,12 +83,11 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
           id: s.id,
           title: s.eventTitle,
           subtitle: "",
-          institution: institutionName,
-          submitted: submittedLabel,
+          lastActivity: lastActivityLabel,
           status: statusDisplay(s.status),
         };
       });
-  }, [submissions, institutions, user]);
+  }, [submissions]);
 
   const statusCounts = useMemo(() => {
     const counts = submissionsQuery.data?.pages[0]?.counts;
@@ -219,8 +191,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
             <thead>
               <tr>
                 <th>Event / Post</th>
-                <th>Institution</th>
-                <th>Submitted</th>
+                <th>Last Activity</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -238,9 +209,6 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
                       <div className="dash-skeleton dash-skeleton-line is-sub"></div>
                     </td>
                     <td>
-                      <div className="dash-skeleton dash-skeleton-line is-inst"></div>
-                    </td>
-                    <td>
                       <div className="dash-skeleton dash-skeleton-line is-date"></div>
                     </td>
                     <td>
@@ -250,7 +218,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
                 ))
               ) : loadError ? (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: "center", padding: "44px 20px" }}>
+                  <td colSpan={3} style={{ textAlign: "center", padding: "44px 20px" }}>
                     <div style={{ color: "var(--d-muted)", fontSize: 13, marginBottom: 10 }}>
                       Unable to load recent activities.
                     </div>
@@ -262,7 +230,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
               ) : filteredActivities.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={3}
                     style={{
                       textAlign: "center",
                       padding: "44px 20px",
@@ -311,15 +279,14 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
                 </tr>
               ) : (
                 filteredActivities.map((row) => (
-                  <tr key={`${row.id}-${row.title}-${row.submitted}`}>
+                  <tr key={`${row.id}-${row.title}-${row.lastActivity}`}>
                     <td>
                       <div className="act-title">{row.title}</div>
                       {row.subtitle && (
                         <span className="act-category">{row.subtitle}</span>
                       )}
                     </td>
-                    <td className="act-institution">{row.institution}</td>
-                    <td className="act-date">{row.submitted}</td>
+                    <td className="act-date">{row.lastActivity}</td>
                     <td>
                       <span className={`status-pill ${row.status.className}`}>
                         <i
@@ -376,14 +343,4 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
     default:
       return { label: status, icon: "ti ti-circle", className: "" };
   }
-}
-
-function getInstitutionName(user: User | null): string {
-  if (!user) return "Institution";
-  if (user.role === "admin" || user.role === "moderator") return "DASIG Network";
-  const explicit = user.inst?.trim();
-  if (explicit && explicit !== user.institutionId) return explicit;
-  const emailDomain =
-    user.email.split("@")[1]?.split(".")[0]?.toLowerCase() || "";
-  return emailDomain.toUpperCase() || "Institution";
 }
