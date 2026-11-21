@@ -5,7 +5,14 @@ import {
   usePickerDismiss,
   usePopoverCollision,
 } from "../hooks/usePopoverCollision";
-import { cycleNumber, formatTimeDisplay, formatTimeParts, parseTimeValue, timePartsToValue } from "../utils";
+import {
+  cycleNumber,
+  dateToInputValue,
+  formatTimeDisplay,
+  formatTimeParts,
+  parseTimeValue,
+  timePartsToValue,
+} from "../utils";
 
 function TimeStepper({
   label,
@@ -42,6 +49,8 @@ export function TimePickerField({
   startHour,
   endHour,
   enforceRange,
+  selectedDate,
+  invalid,
   onChange,
 }: {
   value: string;
@@ -51,6 +60,8 @@ export function TimePickerField({
   startHour: number;
   endHour: number;
   enforceRange: boolean;
+  selectedDate?: string;
+  invalid?: boolean;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -76,11 +87,37 @@ export function TimePickerField({
     return h * 60 + parts.minute;
   }
 
+  const now = new Date();
+  const todayValue = dateToInputValue(now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
   const draftMinutes = draftToMinutes(draft);
+  const isPastTime = Boolean(
+    selectedDate &&
+      (selectedDate < todayValue ||
+        (selectedDate === todayValue && draftMinutes <= nowMinutes)),
+  );
   // Posting windows are start-inclusive and end-exclusive, matching the
-  // backend's GR-H4 rule. When guard rails are off, any time of day is valid.
+  // backend's GR-H4 rule. When guard rails are off, any future time of day is valid.
   const isOutOfRange = enforceRange
     && (draftMinutes < startHour * 60 || draftMinutes >= endHour * 60);
+  const isDraftBlocked = isPastTime || isOutOfRange;
+
+  const valueMinutes = value ? draftToMinutes(parseTimeValue(value)) : null;
+  const isValuePast = Boolean(
+    value &&
+      selectedDate &&
+      valueMinutes !== null &&
+      (selectedDate < todayValue ||
+        (selectedDate === todayValue && valueMinutes <= nowMinutes)),
+  );
+  const isValueOutOfRange = Boolean(
+    value &&
+      enforceRange &&
+      valueMinutes !== null &&
+      (valueMinutes < startHour * 60 || valueMinutes >= endHour * 60),
+  );
+  const isTriggerInvalid = Boolean(invalid || isValuePast || isValueOutOfRange);
 
   function adjust(part: "hour" | "minute", offset: number) {
     setDraft((current) => {
@@ -92,7 +129,7 @@ export function TimePickerField({
   }
 
   function applyTime() {
-    if (isOutOfRange) return;
+    if (isDraftBlocked) return;
     onChange(timePartsToValue(draft));
     setOpen(false);
   }
@@ -156,12 +193,17 @@ export function TimePickerField({
         ))}
       </div>
 
-      {isOutOfRange && (
-        <div className="sub-time-range-error">
+      {isPastTime ? (
+        <div className="sub-time-range-error" role="alert">
+          <i className="ti ti-alert-triangle"></i>
+          Selected time has already passed. Choose a future time.
+        </div>
+      ) : isOutOfRange ? (
+        <div className="sub-time-range-error" role="alert">
           <i className="ti ti-alert-triangle"></i>
           Time must be from {startHour}:00 up to, but not including, {endHour}:00.
         </div>
-      )}
+      ) : null}
 
       <div className="sub-time-actions">
         <button
@@ -173,7 +215,7 @@ export function TimePickerField({
         >
           Clear
         </button>
-        <button type="button" onClick={applyTime} disabled={isOutOfRange}>
+        <button type="button" onClick={applyTime} disabled={isDraftBlocked}>
           Apply Time
         </button>
       </div>
@@ -187,9 +229,10 @@ export function TimePickerField({
     >
       <button
         id={id}
-        className={`sub-time-trigger ${open ? "open" : ""}`}
+        className={`sub-time-trigger ${open ? "open" : ""}${isTriggerInvalid ? " is-invalid" : ""}`}
         type="button"
         disabled={readOnly}
+        aria-invalid={isTriggerInvalid || undefined}
         onClick={() => {
           if (!readOnly) setOpen((current) => !current);
         }}

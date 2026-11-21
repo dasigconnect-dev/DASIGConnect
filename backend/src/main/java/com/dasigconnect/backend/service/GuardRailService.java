@@ -165,6 +165,8 @@ public class GuardRailService {
         Duration maxLeadTime = Duration.ofDays(guardRailSettingsService.maximumLeadTimeDays());
         Duration conflictBuffer = Duration.ofMinutes(guardRailSettingsService.conflictBufferMinutes());
         Duration suggestionStep = conflictBuffer.isZero() ? Duration.ofMinutes(1) : conflictBuffer;
+        int startHour = guardRailSettingsService.postingWindowStartHour();
+        int endHour = guardRailSettingsService.postingWindowEndHour();
         
         Instant minAllowed = now.plus(minLeadTime);
 
@@ -187,6 +189,12 @@ public class GuardRailService {
             // Skip if too far in the future (GR-H3)
             if (candidate.isAfter(now.plus(maxLeadTime))) {
                 break;
+            }
+            // Skip if outside the configured posting window (GR-H4)
+            java.time.ZonedDateTime candidateLocal = candidate.atZone(PAGE_ZONE);
+            if (candidateLocal.getHour() < startHour || candidateLocal.getHour() >= endHour) {
+                candidate = candidate.plus(suggestionStep);
+                continue;
             }
             // Check against nearby reserved slots
             Instant finalCandidate = candidate;

@@ -33,6 +33,8 @@ interface AlbumComboboxProps {
   suggestions?: AlbumMatchSuggestion[];
   /** Auto-Match ran but nothing cleared the confidence floor. */
   noMatchNotice?: boolean;
+  /** Highlights the input with a red border and glow when required and empty/invalid. */
+  invalid?: boolean;
 }
 
 export default function AlbumCombobox({
@@ -50,6 +52,7 @@ export default function AlbumCombobox({
   matchedBadge = null,
   suggestions = [],
   noMatchNotice = false,
+  invalid = false,
 }: AlbumComboboxProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,9 +85,10 @@ export default function AlbumCombobox({
       <div style={{ position: "relative" }}>
         <input
           type="text"
-          className="sub-finput"
+          className={`sub-finput${invalid ? " is-invalid" : ""}`}
           value={value}
           readOnly={readOnly}
+          aria-invalid={invalid || undefined}
           placeholder={placeholder}
           onChange={(e) => {
             onChange(e.target.value);
