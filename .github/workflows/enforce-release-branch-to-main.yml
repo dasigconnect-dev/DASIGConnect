@@ -1,0 +1,27 @@
+name: Enforce Release Branch for Main
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source branch starts with release
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "PR source branch: $HEAD_REF -> target: main"
+          if [[ "$HEAD_REF" != release* ]]; then
+            echo "::error::Pull requests into 'main' must come from a branch starting with 'release' (got '$HEAD_REF')."
+            exit 1
+          fi
