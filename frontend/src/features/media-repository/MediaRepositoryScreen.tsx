@@ -324,6 +324,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   );
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
+  const [deepLinkedAssets, setDeepLinkedAssets] = useState<MediaAsset[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [lightboxAssetId, setLightboxAssetId] = useState<string | null>(null);
 
@@ -331,39 +332,76 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     selected: checkedIds,
     toggle: toggleCheck,
     clear: clearSelection,
+    setSelection,
   } = usePersistentSelection(`dasigconnect:media-selection:${encodeURIComponent(userScope)}`);
 
-  // Always start with an empty selection when the page mounts.
-  // IDs are already captured in the ?assetIds= URL before navigating away,
-  // so there is no reason to restore a stale sessionStorage selection.
+  // Always start with an empty selection when the page mounts (unless deep-linking
+  // via ?asset= or ?assets=, which sets its own selection below).
+  const initialHasDeepLinkRef = useRef(
+    Boolean(searchParams.get("asset") || searchParams.get("assets")),
+  );
   useEffect(() => {
+    if (initialHasDeepLinkRef.current) return;
     clearSelection();
   }, [clearSelection]);
 
-  // Deep link: ?asset=<id> opens that asset's detail panel (e.g. from a
-  // read-only submission's "View in library" link). Consume the param after.
+  // Deep link: ?asset=<id> (and optional ?assets=<id1>,<id2>,...) selects the
+  // photo(s) in the library, switches into the primary asset's album, and opens
+  // the detail panel.
   useEffect(() => {
     const assetId = searchParams.get("asset");
-    if (!assetId) return;
+    const assetsParam = searchParams.get("assets");
+    if (!assetId && !assetsParam) return;
+
+    const allIds = assetsParam
+      ? assetsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    if (assetId && !allIds.includes(assetId)) {
+      allIds.unshift(assetId);
+    }
+    const primaryId = assetId || allIds[0];
+    if (!primaryId) return;
+
     let active = true;
-    fetchMediaAssetDetail(assetId)
-      .then((asset) => {
+    setSelection(allIds);
+
+    Promise.all(
+      allIds.map((id) => fetchMediaAssetDetail(id).catch(() => null)),
+    )
+      .then((results) => {
         if (!active) return;
-        setSelectedAsset(asset);
+        const valid = results.filter((a): a is MediaAsset => a !== null);
+        if (valid.length === 0) {
+          toast.error("That media asset could not be opened.");
+          return;
+        }
+        setDeepLinkedAssets(valid);
+        const primary = valid.find((a) => a.id === primaryId) ?? valid[0];
+        if (isAdmin && primary.institutionId) {
+          setSelectedInstitutionId(primary.institutionId);
+        }
+        setSelectedAsset(primary);
         setPanelOpen(true);
-      })
-      .catch(() => {
-        if (active) toast.error("That media asset could not be opened.");
-      })
-      .finally(() => {
         const next = new URLSearchParams(searchParams);
         next.delete("asset");
+        next.delete("assets");
+        if (primary.albumId && !next.get("album")) {
+          next.set("album", primary.albumId);
+        }
+        setSearchParams(next, { replace: true });
+      })
+      .catch(() => {
+        if (!active) return;
+        toast.error("That media asset could not be opened.");
+        const next = new URLSearchParams(searchParams);
+        next.delete("asset");
+        next.delete("assets");
         setSearchParams(next, { replace: true });
       });
     return () => {
       active = false;
     };
-  }, [fetchMediaAssetDetail, searchParams, setSearchParams, toast]);
+  }, [fetchMediaAssetDetail, isAdmin, searchParams, setSearchParams, setSelection, toast]);
 
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
@@ -604,10 +642,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         : [],
     [albums, searchTerm, searchActive, sort],
   );
-  const selectedAssets = useMemo(
-    () => assets.filter((a) => checkedIds.has(a.id)),
-    [assets, checkedIds],
-  );
+  const selectedAssets = useMemo(() => {
+    const byId = new Map<string, MediaAsset>();
+    for (const a of deepLinkedAssets) byId.set(a.id, a);
+    for (const a of assets) byId.set(a.id, a);
+    const list: MediaAsset[] = [];
+    for (const id of checkedIds) {
+      const found = byId.get(id);
+      if (found) list.push(found);
+    }
+    return list;
+  }, [assets, checkedIds, deepLinkedAssets]);
   const selectionMode = checkedIds.size > 0;
   const canBulkDelete = selectedAssets.length > 0 && selectedAssets.every(canDeleteAsset);
 

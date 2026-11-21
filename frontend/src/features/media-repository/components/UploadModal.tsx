@@ -62,6 +62,39 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 // contract.
 const TEXT_MATCH_CONFIDENT = 0.6;
 const TEXT_MATCH_AMBIGUOUS = 0.3;
+const GENERIC_FILENAME_TOKENS = new Set([
+  "img",
+  "image",
+  "images",
+  "photo",
+  "photos",
+  "pic",
+  "picture",
+  "pictures",
+  "dsc",
+  "dcim",
+  "screenshot",
+  "screenshots",
+  "video",
+  "videos",
+  "vid",
+  "file",
+  "files",
+  "copy",
+  "untitled",
+  "download",
+  "whatsapp",
+  "viber",
+  "messenger",
+  "asset",
+]);
+
+function isMeaningfulFilenameToken(token: string): boolean {
+  if (token.length < 3) return false;
+  if (/^\d+$/.test(token)) return false;
+  if (GENERIC_FILENAME_TOKENS.has(token)) return false;
+  return true;
+}
 
 interface AlbumMatchCandidate {
   album: MediaAlbum;
@@ -82,7 +115,10 @@ function scoreAlbumMatches(cues: Set<string>, albums: MediaAlbum[]): AlbumMatchC
         if (cue === albumName) {
           exact = true;
           matched.add(cue);
-        } else if (albumName.includes(cue) || cue.includes(albumName) || albumWords.has(cue)) {
+        } else if (
+          albumWords.has(cue) ||
+          (cue.length >= 3 && albumName.length >= 3 && (albumName.includes(cue) || cue.includes(albumName)))
+        ) {
           matched.add(cue);
         }
       });
@@ -177,7 +213,7 @@ export default function UploadModal({
         .replace(/\.[^.]+$/, "")
         .split(/[^a-z0-9]+/i)
         .map((part) => part.trim())
-        .filter(Boolean)
+        .filter(isMeaningfulFilenameToken)
         .forEach((part) => cues.add(part));
     }
     return scoreAlbumMatches(cues, scopedAlbums);

@@ -458,6 +458,45 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void semanticSearch_filtersOutLowSimilarityTailFromSemanticHits() {
+        UUID institutionId = UUID.randomUUID();
+        UUID relevantId = UUID.randomUUID();
+        UUID closeRelevantId = UUID.randomUUID();
+        UUID dropoffNoiseId = UUID.randomUUID();
+        UUID belowFloorId = UUID.randomUUID();
+        MediaAsset relevant = asset(relevantId, institutionId, UUID.randomUUID());
+        MediaAsset closeRelevant = asset(closeRelevantId, institutionId, UUID.randomUUID());
+
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.empty());
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+        when(voyageAIClient.embedQuery("helping")).thenReturn("[0.1,0.2]");
+        when(mediaAssetRepository.findTopSimilarInInstitutions(
+                eq(Set.of(institutionId)), eq("[0.1,0.2]"), eq("voyage-4-lite"),
+                eq(MediaProcessingQueueService.SEMANTIC_EMBEDDING_VERSION), eq(200)))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{relevantId.toString(), 0.62},
+                        new Object[]{closeRelevantId.toString(), 0.54},
+                        new Object[]{dropoffNoiseId.toString(), 0.43},
+                        new Object[]{belowFloorId.toString(), 0.28}));
+        when(mediaAssetRepository.findKeywordMatches(
+                eq(false), eq(Set.of(institutionId)), eq("helping"), any(Pageable.class)))
+                .thenReturn(List.of());
+        when(mediaAssetRepository.findExactKeywordMatchIds(
+                eq(false), eq(Set.of(institutionId)), eq("helping"), any(Pageable.class)))
+                .thenReturn(List.of());
+        when(mediaAssetRepository.findActiveByIds(List.of(relevantId, closeRelevantId)))
+                .thenReturn(List.of(relevant, closeRelevant));
+
+        MediaAssetListResponseDto result = mediaAssetService.semanticSearch(
+                "helping", null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(List.of(relevantId, closeRelevantId),
+                result.getItems().stream().map(item -> item.getId()).toList());
+    }
+
+    @Test
     void semanticSearch_returnsScopeSafeCachedPageWithoutCallingVoyage() {
         UUID institutionId = UUID.randomUUID();
         JwtUserDetails actor = user(UUID.randomUUID(), "contributor", institutionId);
