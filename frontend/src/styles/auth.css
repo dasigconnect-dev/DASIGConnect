@@ -1639,30 +1639,90 @@ body {
 }
 
 .first-login-notice {
-  background: #1877f2;
-  border: 1px solid #166fe5;
-  border-radius: var(--r, 10px);
+  background: linear-gradient(135deg, #1877f2 0%, #155ec2 100%);
+  border: 1px solid #155ec2;
+  border-radius: 12px;
   padding: 14px 18px;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 24px;
-  font-size: 13px;
+  font-size: 13.5px;
   color: #ffffff;
-  line-height: 1.55;
-  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.18);
+  line-height: 1.5;
+  box-shadow: 0 6px 18px rgba(24, 119, 242, 0.22);
 }
 
-.first-login-notice i {
+.first-login-notice-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 280px;
+}
+
+.first-login-notice-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.first-login-notice-icon i {
   font-size: 18px;
   color: #ffffff;
-  flex-shrink: 0;
-  margin-top: 1px;
+  margin: 0;
 }
 
 .first-login-notice strong {
   color: #ffffff;
   font-weight: 700;
+}
+
+.first-login-notice-cta {
+  background: #ffffff;
+  color: #155ec2;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(10, 31, 68, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.first-login-notice-cta i {
+  font-size: 14px;
+  color: #155ec2;
+  margin: 0;
+  transition: transform 0.15s ease;
+}
+
+.first-login-notice-cta:hover {
+  background: #f8fafc;
+  color: #0f4c9c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(10, 31, 68, 0.25);
+}
+
+.first-login-notice-cta:hover i {
+  color: #0f4c9c;
+  transform: translateX(2px);
+}
+
+.first-login-notice-cta:active {
+  transform: translateY(0);
 }
 
 .stat-grid {
