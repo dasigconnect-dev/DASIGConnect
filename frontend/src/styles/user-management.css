@@ -2298,7 +2298,8 @@ button.um-user-avatar:focus-visible {
   color: #15803D;
 }
 
-.um-batch-status-badge.status-pending_will_be_superseded {
+.um-batch-status-badge.status-pending_will_be_superseded,
+.um-batch-status-badge.status-domain_mismatch {
   background: #FEF9C3;
   color: #A16207;
 }

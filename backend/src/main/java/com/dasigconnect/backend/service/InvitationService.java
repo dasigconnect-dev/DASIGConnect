@@ -599,6 +599,13 @@ public class InvitationService {
                 "Only admins and moderators can view invitations");
     }
 
+    /** Rows that can be sent; domain_mismatch is only a soft warning. */
+    private static boolean isSendableStatus(String status) {
+        return "valid".equals(status)
+                || "domain_mismatch".equals(status)
+                || "pending_will_be_superseded".equals(status);
+    }
+
     @Transactional(readOnly = true)
     public BatchInvitationPreviewResponseDto previewBatch(BatchInvitationPreviewRequestDto dto, JwtUserDetails inviter) {
         if (inviter == null) {
@@ -664,6 +671,7 @@ public class InvitationService {
 
             // 5. Institution resolution
             Institution institution = null;
+            String domainWarning = null;
             if (assignedRole == UserRole.contributor) {
                 if (instId != null) {
                     institution = institutionRepository.findById(instId).orElse(null);
@@ -681,10 +689,8 @@ public class InvitationService {
                 if (domain != null && !domain.isBlank()) {
                     String normDomain = domain.trim().toLowerCase();
                     if (!normalizedEmail.endsWith("@" + normDomain)) {
-                        previewResults.add(new BatchInvitationRowPreviewResultDto(
-                                i, rawEmail, rawRole, institution.getId(), institution.getName(), "invalid_email",
-                                "Recipient email must use institution domain: " + normDomain));
-                        continue;
+                        // Soft warning only: the invitation can still be sent.
+                        domainWarning = "Not @" + normDomain;
                     }
                 }
             }
@@ -722,10 +728,14 @@ public class InvitationService {
             // 8. If pending user exists, it will be superseded
             String status = "valid";
             String reason = null;
+            if (domainWarning != null) {
+                status = "domain_mismatch";
+                reason = domainWarning;
+            }
             if (existingUser != null && (existingUser.getAccountState() == UserStatus.pending
                     || existingUser.getAccountState() == UserStatus.pending_email_undelivered)) {
                 status = "pending_will_be_superseded";
-                reason = "Existing pending invitation will be superseded";
+                reason = domainWarning != null ? domainWarning + " · will supersede pending" : "Will supersede pending invite";
             }
 
             previewResults.add(new BatchInvitationRowPreviewResultDto(
@@ -734,7 +744,7 @@ public class InvitationService {
         }
 
         int validCount = (int) previewResults.stream()
-                .filter(r -> "valid".equals(r.status()) || "pending_will_be_superseded".equals(r.status()))
+                .filter(r -> isSendableStatus(r.status()))
                 .count();
         int invalidCount = previewResults.size() - validCount;
 
@@ -757,7 +767,7 @@ public class InvitationService {
                 new BatchInvitationPreviewRequestDto(dto != null ? dto.rows() : java.util.Collections.emptyList()), inviter);
 
         List<BatchInvitationRowPreviewResultDto> validRows = preview.rows().stream()
-                .filter(r -> "valid".equals(r.status()) || "pending_will_be_superseded".equals(r.status()))
+                .filter(r -> isSendableStatus(r.status()))
                 .toList();
 
         int rowCount = preview.rows().size();

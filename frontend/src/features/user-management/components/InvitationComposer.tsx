@@ -68,6 +68,8 @@ function statusDisplayLabel(status: string): string {
       return 'Valid'
     case 'pending_will_be_superseded':
       return 'Will Supersede'
+    case 'domain_mismatch':
+      return 'Domain Warning'
     case 'duplicate_in_batch':
       return 'Duplicate in Batch'
     case 'invalid_email':
@@ -180,7 +182,7 @@ export default function InvitationComposer({
     setBatchSending(true)
 
     const validRows = previewData.rows
-      .filter((r) => r.status === 'valid' || r.status === 'pending_will_be_superseded')
+      .filter((r) => r.status === 'valid' || r.status === 'domain_mismatch' || r.status === 'pending_will_be_superseded')
       .map((r) => ({
         email: r.email,
         role: r.role,
@@ -322,6 +324,13 @@ export default function InvitationComposer({
                     {previewData.validCount} Valid
                   </span>
                 </div>
+                {previewData.rows.some((r) => r.status === 'domain_mismatch') && (
+                  <div className="um-batch-metric-item">
+                    <span className="um-batch-pill is-warning">
+                      {previewData.rows.filter((r) => r.status === 'domain_mismatch').length} Domain warning
+                    </span>
+                  </div>
+                )}
                 {previewData.invalidCount > 0 && (
                   <div className="um-batch-metric-item">
                     <span className="um-batch-pill is-error">
@@ -358,7 +367,7 @@ export default function InvitationComposer({
                           </span>
                         </td>
                         <td className="um-batch-reason">
-                          {row.reason || (row.status === 'valid' ? 'Ready to send' : '—')}
+                          {row.reason || (row.status === 'valid' ? 'Ready' : '—')}
                         </td>
                       </tr>
                     ))}
