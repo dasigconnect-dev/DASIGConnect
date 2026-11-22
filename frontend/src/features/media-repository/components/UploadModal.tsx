@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { MediaAlbum } from "../../../api/mediaApi";
 import type { InstitutionResponse } from "../../../api/authApi";
 import AlbumCombobox from "../../../components/ui/AlbumCombobox";
+import BrandedSelect from "../../../components/ui/BrandedSelect";
 
 export interface UploadMetadata {
   albumId?: string | null;
@@ -597,18 +598,22 @@ export default function UploadModal({
               ) : (
                 <>
                   {needInstitutionPick && (
-                    <select
-                      className="med-upload-input"
-                      value={pickedInstId}
-                      disabled={uploading}
-                      onChange={(e) => { setPickedInstId(e.target.value); handleAlbumChange(""); }}
-                      style={{ marginBottom: 8 }}
-                    >
-                      <option value="">Select institution</option>
-                      {institutions.map((inst) => (
-                        <option key={inst.id} value={inst.id}>{inst.name}</option>
-                      ))}
-                    </select>
+                    <div style={{ marginBottom: 8 }}>
+                      <BrandedSelect
+                        value={pickedInstId}
+                        disabled={uploading}
+                        placeholder="Select institution"
+                        ariaLabel="Select institution"
+                        onChange={(val) => { setPickedInstId(val); handleAlbumChange(""); }}
+                        options={[
+                          { value: "", label: "Select institution" },
+                          ...institutions.map((inst) => ({
+                            value: inst.id,
+                            label: inst.name,
+                          })),
+                        ]}
+                      />
+                    </div>
                   )}
 
                   <AlbumCombobox

@@ -612,32 +612,6 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 </button>
               </div>
 
-              {inviteRole !== 'moderator' && (
-                <div className="um-context-bar">
-                  <div className="um-context-label">
-                    <i className="ti ti-building" aria-hidden="true"></i>
-                    <span>Invite to institution</span>
-                  </div>
-                  {institutionsLoading ? (
-                    <SkeletonBlock className="um-skeleton-line is-wide" />
-                  ) : (
-                    <BrandedSelect
-                      className="um-inst-select"
-                      value={effectiveInviteInstitutionId}
-                      onChange={setInviteInstitutionId}
-                      disabled={institutions.length === 0}
-                      ariaLabel="Select destination institution"
-                      placeholder="Select institution"
-                      options={
-                        institutions.length === 0
-                          ? [{ value: '', label: 'No institutions available', disabled: true }]
-                          : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
-                      }
-                    />
-                  )}
-                </div>
-              )}
-
               <InvitationComposer
                 chips={emailChips}
                 emailDraft={emailDraft}
@@ -647,6 +621,34 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 networkWide={inviteRole === 'moderator'}
                 embedded
                 sending={sending}
+                institutionPicker={
+                  <div className="um-composer-section">
+                    <div className="um-section-head">
+                      <div>
+                        <div className="um-composer-label">Institution</div>
+                      </div>
+                    </div>
+                    {institutionsLoading ? (
+                      <SkeletonBlock className="um-skeleton-line is-wide" />
+                    ) : (
+                      <BrandedSelect
+                        className="um-invite-inst-select"
+                        value={inviteRole === 'moderator' ? '__network__' : effectiveInviteInstitutionId}
+                        onChange={setInviteInstitutionId}
+                        disabled={institutions.length === 0 || inviteRole === 'moderator'}
+                        ariaLabel="Select destination institution"
+                        placeholder="Select institution"
+                        options={
+                          inviteRole === 'moderator'
+                            ? [{ value: '__network__', label: 'All institutions (network-wide)' }]
+                            : institutions.length === 0
+                              ? [{ value: '', label: 'No institutions available', disabled: true }]
+                              : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
+                        }
+                      />
+                    )}
+                  </div>
+                }
                 onDraftChange={setEmailDraft}
                 onAddChip={(email) => {
                   if (!emailChips.includes(email.toLowerCase())) {

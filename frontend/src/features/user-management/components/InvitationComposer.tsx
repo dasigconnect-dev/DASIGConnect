@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ChangeEvent } from 'react'
+import { useState, type FormEvent, type ChangeEvent, type ReactNode } from 'react'
 import type { InviteRole } from '../types'
 import type { InstitutionOption } from '../types'
 import EmailChipsInput from './EmailChipsInput'
@@ -29,6 +29,8 @@ interface InvitationComposerProps {
   /** Max recipients per batch. Defaults to 15; callers with a tighter cap (e.g. the 3-admin limit) pass their remaining slots. */
   maxRecipients?: number
   allowBulk?: boolean
+  /** Optional institution selector rendered inside Quick Invite between Role and Recipients. */
+  institutionPicker?: ReactNode
   onDraftChange: (value: string) => void
   onAddChip: (email: string) => void
   onRemoveChip: (index: number) => void
@@ -100,6 +102,7 @@ export default function InvitationComposer({
   embedded = false,
   maxRecipients = 15,
   allowBulk = true,
+  institutionPicker,
   onDraftChange,
   onAddChip,
   onRemoveChip,
@@ -256,7 +259,12 @@ export default function InvitationComposer({
       )}
 
       {allowBulk && (
-        <div className="um-composer-mode-tabs" role="tablist" aria-label="Invitation Mode">
+        <div
+          className="um-composer-mode-tabs"
+          data-active={inviteMode}
+          role="tablist"
+          aria-label="Invitation Mode"
+        >
           <button
             type="button"
             role="tab"
@@ -344,9 +352,9 @@ export default function InvitationComposer({
                     </tr>
                   </thead>
                   <tbody>
-                    {previewData.rows.map((row) => (
+                    {previewData.rows.map((row, rowIdx) => (
                       <tr key={row.index} className={`um-batch-row-${row.status}`}>
-                        <td>{row.index}</td>
+                        <td>{rowIdx + 1}</td>
                         <td className="um-batch-email">{row.email}</td>
                         <td>
                           <span className="um-batch-role-tag">{row.role}</span>
@@ -486,53 +494,6 @@ export default function InvitationComposer({
         </div>
       ) : (
         <form className="um-composer-form" onSubmit={onSubmit}>
-          <div className="um-composer-section um-recipient-section">
-            <div className="um-section-head">
-              <div>
-                <label className="um-composer-label" htmlFor="invitation-recipient-input">
-                  Recipients
-                </label>
-                <div className="um-composer-label-hint">
-                  {embedded
-                    ? 'Separate addresses with Enter or a comma.'
-                    : 'Add one or more institutional email addresses. Press Enter or comma after each address.'}
-                </div>
-              </div>
-              <span className={`um-recipient-meter${atLimit ? ' is-limit' : ''}`}>
-                {recipientCount}/{maxRecipients}
-              </span>
-            </div>
-            <EmailChipsInput
-              chips={chips}
-              draft={emailDraft}
-              onDraftChange={onDraftChange}
-              onAdd={(email) => {
-                if (chips.length < maxRecipients) onAddChip(email)
-              }}
-              onRemove={onRemoveChip}
-              disabled={sending || atLimit}
-              placeholder={
-                networkWide
-                  ? 'moderator@example.edu.ph, office@example.edu.ph'
-                  : 'name@institution.edu.ph, office@institution.edu.ph'
-              }
-              inputId="invitation-recipient-input"
-            />
-            {atLimit && (
-              <div className="um-composer-label-hint">
-                {maxRecipients === 1
-                  ? 'Only 1 invitation can be sent in this batch.'
-                  : `Up to ${maxRecipients} invitations can be sent in this batch.`}
-              </div>
-            )}
-            {invalidRecipientCount > 0 && (
-              <div className="um-field-warning" role="alert">
-                <i className="ti ti-alert-circle" aria-hidden="true"></i>
-                {invalidRecipientCount} recipient{invalidRecipientCount === 1 ? '' : 's'} need a valid email format.
-              </div>
-            )}
-          </div>
-
           {canChooseRole && (
             <div className="um-composer-section">
               <div className="um-section-head">
@@ -586,6 +547,55 @@ export default function InvitationComposer({
               </div>
             </div>
           )}
+
+          {institutionPicker}
+
+          <div className="um-composer-section um-recipient-section">
+            <div className="um-section-head">
+              <div>
+                <label className="um-composer-label" htmlFor="invitation-recipient-input">
+                  Recipients
+                </label>
+                <div className="um-composer-label-hint">
+                  {embedded
+                    ? 'Separate addresses with Enter or a comma.'
+                    : 'Add one or more institutional email addresses. Press Enter or comma after each address.'}
+                </div>
+              </div>
+              <span className={`um-recipient-meter${atLimit ? ' is-limit' : ''}`}>
+                {recipientCount}/{maxRecipients}
+              </span>
+            </div>
+            <EmailChipsInput
+              chips={chips}
+              draft={emailDraft}
+              onDraftChange={onDraftChange}
+              onAdd={(email) => {
+                if (chips.length < maxRecipients) onAddChip(email)
+              }}
+              onRemove={onRemoveChip}
+              disabled={sending || atLimit}
+              placeholder={
+                networkWide
+                  ? 'moderator@example.edu.ph, office@example.edu.ph'
+                  : 'name@institution.edu.ph, office@institution.edu.ph'
+              }
+              inputId="invitation-recipient-input"
+            />
+            {atLimit && (
+              <div className="um-composer-label-hint">
+                {maxRecipients === 1
+                  ? 'Only 1 invitation can be sent in this batch.'
+                  : `Up to ${maxRecipients} invitations can be sent in this batch.`}
+              </div>
+            )}
+            {invalidRecipientCount > 0 && (
+              <div className="um-field-warning" role="alert">
+                <i className="ti ti-alert-circle" aria-hidden="true"></i>
+                {invalidRecipientCount} recipient{invalidRecipientCount === 1 ? '' : 's'} need a valid email format.
+              </div>
+            )}
+          </div>
 
           {selectedInstitution && !embedded && (
             <div className="um-workspace-card" aria-label="Destination workspace">
