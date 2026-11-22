@@ -617,6 +617,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 emailDraft={emailDraft}
                 role={inviteRole}
                 selectedInstitution={inviteRole === 'moderator' ? null : selectedInviteInstitution}
+                institutions={institutions}
                 canChooseRole
                 networkWide={inviteRole === 'moderator'}
                 embedded
