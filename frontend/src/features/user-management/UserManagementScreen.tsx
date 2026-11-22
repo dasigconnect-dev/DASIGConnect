@@ -612,41 +612,43 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 </button>
               </div>
 
-              {inviteRole !== 'moderator' && (
-                <div className="um-context-bar">
-                  <div className="um-context-label">
-                    <i className="ti ti-building" aria-hidden="true"></i>
-                    <span>Invite to institution</span>
-                  </div>
-                  {institutionsLoading ? (
-                    <SkeletonBlock className="um-skeleton-line is-wide" />
-                  ) : (
-                    <BrandedSelect
-                      className="um-inst-select"
-                      value={effectiveInviteInstitutionId}
-                      onChange={setInviteInstitutionId}
-                      disabled={institutions.length === 0}
-                      ariaLabel="Select destination institution"
-                      placeholder="Select institution"
-                      options={
-                        institutions.length === 0
-                          ? [{ value: '', label: 'No institutions available', disabled: true }]
-                          : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
-                      }
-                    />
-                  )}
-                </div>
-              )}
-
               <InvitationComposer
                 chips={emailChips}
                 emailDraft={emailDraft}
                 role={inviteRole}
                 selectedInstitution={inviteRole === 'moderator' ? null : selectedInviteInstitution}
+                institutions={institutions}
                 canChooseRole
                 networkWide={inviteRole === 'moderator'}
                 embedded
                 sending={sending}
+                quickInviteHeader={
+                  inviteRole !== 'moderator' ? (
+                    <div className="um-context-bar" style={{ marginBottom: 0 }}>
+                      <div className="um-context-label">
+                        <i className="ti ti-building" aria-hidden="true"></i>
+                        <span>Invite to institution</span>
+                      </div>
+                      {institutionsLoading ? (
+                        <SkeletonBlock className="um-skeleton-line is-wide" />
+                      ) : (
+                        <BrandedSelect
+                          className="um-inst-select"
+                          value={effectiveInviteInstitutionId}
+                          onChange={setInviteInstitutionId}
+                          disabled={institutions.length === 0}
+                          ariaLabel="Select destination institution"
+                          placeholder="Select institution"
+                          options={
+                            institutions.length === 0
+                              ? [{ value: '', label: 'No institutions available', disabled: true }]
+                              : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
+                          }
+                        />
+                      )}
+                    </div>
+                  ) : null
+                }
                 onDraftChange={setEmailDraft}
                 onAddChip={(email) => {
                   if (!emailChips.includes(email.toLowerCase())) {

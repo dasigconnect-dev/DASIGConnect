@@ -673,16 +673,19 @@ public class InvitationService {
             Institution institution = null;
             String domainWarning = null;
             if (assignedRole == UserRole.contributor) {
-                if (instId != null) {
-                    institution = institutionRepository.findById(instId).orElse(null);
-                } else if (instCode != null && !instCode.isBlank()) {
-                    institution = institutionRepository.findByCode(instCode)
+                if (instCode != null && !instCode.isBlank()) {
+                    institution = institutionRepository.findByCodeIgnoreCase(instCode)
                             .or(() -> institutionRepository.findByNameIgnoreCase(instCode))
                             .orElse(null);
+                } else if (instId != null) {
+                    institution = institutionRepository.findById(instId).orElse(null);
                 }
                 if (institution == null || institution.getStatus() == InstitutionStatus.inactive) {
+                    String instReason = (instId == null && (instCode == null || instCode.isBlank()))
+                            ? "Institution required"
+                            : "Institution not found or inactive";
                     previewResults.add(new BatchInvitationRowPreviewResultDto(
-                            i, rawEmail, rawRole, instId, null, "inactive_institution", "Institution not found or inactive"));
+                            i, rawEmail, rawRole, instId, instCode, "inactive_institution", instReason));
                     continue;
                 }
                 String domain = institution.getEmailDomain();
