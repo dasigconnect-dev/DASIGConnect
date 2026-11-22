@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ChangeEvent } from 'react'
+import { useState, type FormEvent, type ChangeEvent, type ReactNode } from 'react'
 import type { InviteRole } from '../types'
 import type { InstitutionOption } from '../types'
 import EmailChipsInput from './EmailChipsInput'
@@ -16,6 +16,8 @@ interface InvitationComposerProps {
   emailDraft: string
   role: InviteRole
   selectedInstitution: InstitutionOption | null
+  /** Available institutions for per-row selection in Bulk Invite preview. */
+  institutions?: InstitutionOption[]
   canChooseRole: boolean
   sending: boolean
   /** Network-wide invites (e.g. moderators) that are not bound to an institution workspace. */
@@ -29,6 +31,8 @@ interface InvitationComposerProps {
   /** Max recipients per batch. Defaults to 15; callers with a tighter cap (e.g. the 3-admin limit) pass their remaining slots. */
   maxRecipients?: number
   allowBulk?: boolean
+  /** Optional header element rendered only inside Quick Invite (e.g. institution picker). */
+  quickInviteHeader?: ReactNode
   onDraftChange: (value: string) => void
   onAddChip: (email: string) => void
   onRemoveChip: (index: number) => void
@@ -68,6 +72,8 @@ function statusDisplayLabel(status: string): string {
       return 'Valid'
     case 'pending_will_be_superseded':
       return 'Will Supersede'
+    case 'domain_mismatch':
+      return 'Domain Warning'
     case 'duplicate_in_batch':
       return 'Duplicate in Batch'
     case 'invalid_email':
@@ -94,12 +100,14 @@ export default function InvitationComposer({
   emailDraft,
   role,
   selectedInstitution,
+  institutions = [],
   canChooseRole,
   sending,
   networkWide = false,
   embedded = false,
   maxRecipients = 15,
   allowBulk = true,
+  quickInviteHeader,
   onDraftChange,
   onAddChip,
   onRemoveChip,
@@ -111,6 +119,7 @@ export default function InvitationComposer({
 
   // Bulk mode states
   const [csvText, setCsvText] = useState('')
+  const [batchRows, setBatchRows] = useState<BatchInvitationRow[]>([])
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewData, setPreviewData] = useState<BatchInvitationPreviewResponse | null>(null)
   const [batchSending, setBatchSending] = useState(false)
@@ -137,12 +146,12 @@ export default function InvitationComposer({
       if (!parts[0]) continue
       const email = parts[0]
       const rowRole = parts[1] || (role ?? 'contributor')
-      const rowInst = parts[2] || (selectedInstitution?.code ?? selectedInstitution?.name ?? '')
+      const rowInst = parts[2] || ''
       rows.push({
         email,
         role: rowRole,
         institutionCode: rowInst || null,
-        institutionId: selectedInstitution?.id ?? null,
+        institutionId: null,
       })
     }
     return rows
@@ -162,6 +171,7 @@ export default function InvitationComposer({
 
     setPreviewLoading(true)
     try {
+      setBatchRows(rows)
       const res = await previewBatchInvitations(rows)
       setPreviewData(res.data)
     } catch (err: unknown) {
@@ -174,18 +184,41 @@ export default function InvitationComposer({
     }
   }
 
+  async function handleRowInstitutionChange(rowIndex: number, nextInstitutionId: string) {
+    if (batchRows.length === 0) return
+    const nextRows = batchRows.map((row, idx) =>
+      idx === rowIndex
+        ? { ...row, institutionId: nextInstitutionId || null, institutionCode: null }
+        : row,
+    )
+    setBatchRows(nextRows)
+    setBatchError(null)
+    setPreviewLoading(true)
+    try {
+      const res = await previewBatchInvitations(nextRows)
+      setPreviewData(res.data)
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : 'Failed to update row institution.'
+      setBatchError(msg || 'Failed to update row institution.')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   async function handleSendBatch() {
     if (!previewData || previewData.validCount === 0) return
     setBatchError(null)
     setBatchSending(true)
 
     const validRows = previewData.rows
-      .filter((r) => r.status === 'valid' || r.status === 'pending_will_be_superseded')
+      .filter((r) => r.status === 'valid' || r.status === 'domain_mismatch' || r.status === 'pending_will_be_superseded')
       .map((r) => ({
         email: r.email,
         role: r.role,
         institutionId: r.institutionId,
-        institutionCode: r.institutionName ?? undefined,
+        institutionCode: r.institutionId ? null : (r.institutionName ?? undefined),
       }))
 
     try {
@@ -217,15 +250,7 @@ export default function InvitationComposer({
     reader.readAsText(file)
   }
 
-  function handleLoadSample() {
-    const instCode = selectedInstitution?.code || 'CITU'
-    const domain = selectedInstitution?.emailDomain || 'cit.edu'
-    const sample = `email,role,institution\ncontributor1@${domain},contributor,${instCode}\ncontributor2@${domain},contributor,${instCode}\nmoderator1@${domain},moderator,${instCode}`
-    setCsvText(sample)
-    setPreviewData(null)
-    setBatchSentResult(null)
-    setBatchError(null)
-  }
+  const csvRowCount = parseCsvRows(csvText).length
 
   return (
     <section
@@ -279,7 +304,7 @@ export default function InvitationComposer({
               setBatchError(null)
             }}
           >
-            <i className="ti ti-file-spreadsheet" aria-hidden="true"></i> Bulk CSV / Structured
+            <i className="ti ti-file-spreadsheet" aria-hidden="true"></i> Bulk Invite
           </button>
         </div>
       )}
@@ -314,20 +339,21 @@ export default function InvitationComposer({
           ) : previewData ? (
             <div className="um-batch-preview-view">
               <div className="um-batch-metrics">
-                <div className="um-batch-metric-item">
-                  <strong>Total:</strong> {previewData.totalRows}
-                </div>
-                <div className="um-batch-metric-item">
-                  <span className="um-batch-pill is-valid">
-                    {previewData.validCount} Valid
+                <span className="um-batch-metric-total">
+                  <strong>{previewData.totalRows}</strong> recipient{previewData.totalRows === 1 ? '' : 's'}
+                </span>
+                <span className="um-batch-pill is-valid">
+                  {previewData.validCount} Valid
+                </span>
+                {previewData.rows.some((r) => r.status === 'domain_mismatch') && (
+                  <span className="um-batch-pill is-warning">
+                    {previewData.rows.filter((r) => r.status === 'domain_mismatch').length} Domain warning
                   </span>
-                </div>
+                )}
                 {previewData.invalidCount > 0 && (
-                  <div className="um-batch-metric-item">
-                    <span className="um-batch-pill is-error">
-                      {previewData.invalidCount} Issues
-                    </span>
-                  </div>
+                  <span className="um-batch-pill is-error">
+                    {previewData.invalidCount} Issues
+                  </span>
                 )}
               </div>
 
@@ -335,33 +361,59 @@ export default function InvitationComposer({
                 <table className="um-batch-table" aria-label="Batch Preview Table">
                   <thead>
                     <tr>
-                      <th>#</th>
-                      <th>Email</th>
+                      <th>Recipient</th>
                       <th>Role</th>
                       <th>Institution</th>
                       <th>Status</th>
-                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {previewData.rows.map((row) => (
-                      <tr key={row.index} className={`um-batch-row-${row.status}`}>
-                        <td>{row.index}</td>
-                        <td className="um-batch-email">{row.email}</td>
-                        <td>
-                          <span className="um-batch-role-tag">{row.role}</span>
-                        </td>
-                        <td>{row.institutionName || row.institutionId || '—'}</td>
-                        <td>
-                          <span className={`um-batch-status-badge ${statusBadgeClass(row.status)}`}>
-                            {statusDisplayLabel(row.status)}
-                          </span>
-                        </td>
-                        <td className="um-batch-reason">
-                          {row.reason || (row.status === 'valid' ? 'Ready to send' : '—')}
-                        </td>
-                      </tr>
-                    ))}
+                    {previewData.rows.map((row) => {
+                      const isContributor = row.role.toLowerCase() === 'contributor'
+                      return (
+                        <tr key={row.index} className={`um-batch-row-${row.status}`}>
+                          <td>
+                            <div className="um-batch-email">{row.email}</div>
+                          </td>
+                          <td>
+                            <span className="um-batch-role-tag">{row.role}</span>
+                          </td>
+                          <td>
+                            {isContributor && institutions.length > 0 ? (
+                              <select
+                                className={`um-batch-inst-select${row.status === 'inactive_institution' ? ' is-missing' : ''}`}
+                                value={row.institutionId ?? ''}
+                                title={row.institutionName ?? 'Select institution'}
+                                disabled={previewLoading || batchSending}
+                                aria-label={`Institution for ${row.email}`}
+                                onChange={(e) => void handleRowInstitutionChange(row.index, e.target.value)}
+                              >
+                                <option value="">Select institution…</option>
+                                {institutions.map((inst) => (
+                                  <option key={inst.id} value={inst.id}>
+                                    {inst.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="um-batch-inst">
+                                {isContributor ? (row.institutionName || row.institutionId || '—') : '—'}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="um-batch-status-cell">
+                              <span className={`um-batch-status-badge ${statusBadgeClass(row.status)}`}>
+                                {statusDisplayLabel(row.status)}
+                              </span>
+                              {row.reason && (
+                                <span className="um-batch-reason">{row.reason}</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -373,7 +425,7 @@ export default function InvitationComposer({
                 </div>
               )}
 
-              <div className="um-composer-footer" style={{ marginTop: '16px', display: 'flex', gap: '10px' }}>
+              <div className="um-composer-footer um-batch-footer is-split">
                 <button
                   type="button"
                   className="um-batch-btn-secondary"
@@ -396,7 +448,7 @@ export default function InvitationComposer({
                   ) : (
                     <>
                       <i className="ti ti-send" aria-hidden="true"></i>
-                      Confirm & Send {previewData.validCount} Valid Invitation{previewData.validCount === 1 ? '' : 's'}
+                      Send {previewData.validCount} Invitation{previewData.validCount === 1 ? '' : 's'}
                     </>
                   )}
                 </button>
@@ -404,35 +456,39 @@ export default function InvitationComposer({
             </div>
           ) : (
             <div className="um-batch-input-view">
-              <div className="um-section-head">
+              <div className="um-batch-input-head">
                 <div>
                   <label className="um-composer-label" htmlFor="bulk-invitation-input">
-                    CSV / Structured Recipient List
+                    Recipient list
                   </label>
                   <div className="um-composer-label-hint">
-                    Enter one recipient per row formatted as: <code>email, role, institution</code>. Up to 200 rows.
+                    One recipient per row: <code>email, role, institution</code>. Contributors require an institution code or name.
                   </div>
                 </div>
+                <span className={`um-batch-rowcount${csvRowCount > 200 ? ' is-over' : ''}`}>
+                  {csvRowCount} / 200
+                </span>
               </div>
 
-              <div className="um-batch-toolbar">
-                <div className="um-batch-toolbar-actions">
-                  <label className="um-batch-btn-secondary" style={{ cursor: 'pointer' }}>
+              <div className="um-batch-editor">
+                <textarea
+                  id="bulk-invitation-input"
+                  className="um-batch-textarea"
+                  rows={7}
+                  placeholder="contributor@institution.edu.ph, contributor, WVSU&#10;moderator@institution.edu.ph, moderator, WVSU"
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                />
+                <div className="um-batch-editor-bar">
+                  <label className="um-batch-btn-secondary">
                     <i className="ti ti-upload" aria-hidden="true"></i> Upload CSV
                     <input
                       type="file"
                       accept=".csv,text/csv,text/plain"
-                      style={{ display: 'none' }}
+                      className="um-batch-file-input"
                       onChange={handleFileUpload}
                     />
                   </label>
-                  <button
-                    type="button"
-                    className="um-batch-btn-secondary"
-                    onClick={handleLoadSample}
-                  >
-                    <i className="ti ti-template" aria-hidden="true"></i> Load Sample Data
-                  </button>
                   {csvText && (
                     <button
                       type="button"
@@ -445,15 +501,6 @@ export default function InvitationComposer({
                 </div>
               </div>
 
-              <textarea
-                id="bulk-invitation-input"
-                className="um-batch-textarea"
-                rows={6}
-                placeholder="contributor@institution.edu.ph, contributor, WVSU&#10;moderator@institution.edu.ph, moderator, WVSU"
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-              />
-
               {batchError && (
                 <div className="um-field-warning" role="alert">
                   <i className="ti ti-alert-circle" aria-hidden="true"></i>
@@ -461,7 +508,7 @@ export default function InvitationComposer({
                 </div>
               )}
 
-              <div className="um-composer-footer" style={{ marginTop: '14px' }}>
+              <div className="um-composer-footer um-batch-footer">
                 <button
                   type="button"
                   className="um-send-btn"
@@ -476,7 +523,7 @@ export default function InvitationComposer({
                   ) : (
                     <>
                       <i className="ti ti-eye" aria-hidden="true"></i>
-                      Preview Batch & Validate
+                      Preview
                     </>
                   )}
                 </button>
@@ -486,6 +533,7 @@ export default function InvitationComposer({
         </div>
       ) : (
         <form className="um-composer-form" onSubmit={onSubmit}>
+          {quickInviteHeader}
           <div className="um-composer-section um-recipient-section">
             <div className="um-section-head">
               <div>

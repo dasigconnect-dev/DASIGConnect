@@ -522,6 +522,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               emailDraft={emailDraft}
               role={inviteRole}
               selectedInstitution={selectedInstitution}
+              institutions={institutions}
               canChooseRole
               sending={sending}
               onDraftChange={setEmailDraft}
