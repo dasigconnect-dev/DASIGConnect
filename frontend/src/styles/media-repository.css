@@ -1450,10 +1450,11 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 }
 
 .med-modal-footer .med-btn-ghost:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1e293b;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--d-blue, #1877f2);
   transform: translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.1);
 }
 
 .med-modal-footer .med-btn-primary {

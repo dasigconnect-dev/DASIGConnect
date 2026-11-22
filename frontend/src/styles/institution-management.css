@@ -1176,7 +1176,10 @@
 
 .im-invite-modal-card {
   width: min(720px, 100%);
+  min-height: min(610px, calc(100vh - 48px));
   max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding: 28px 30px;
   border-radius: 18px;

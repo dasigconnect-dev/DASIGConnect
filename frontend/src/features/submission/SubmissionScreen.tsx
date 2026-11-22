@@ -329,6 +329,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
+  const [detailsValidationAttempted, setDetailsValidationAttempted] = useState(false);
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
     end: 0,
@@ -771,6 +772,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       return;
     }
     if (step === "schedule" && !isDetailsComplete) {
+      setDetailsValidationAttempted(true);
       toast.warning(
         "Complete Post Details — title, event date, and caption — before setting a schedule.",
       );
@@ -1713,6 +1715,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setActiveMediaIndex(0);
       const editableDraft = submission.status === "draft" || submission.status === "needs_revision";
       setFilter(queueBucket(submission.status));
+      setDetailsValidationAttempted(false);
       setActiveStep(editableDraft ? "media" : "details");
       setCenterMode("edit");
       setSaveState("saved");
@@ -1957,6 +1960,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (missing.length > 0) {
       toast.error(`Add ${missing.join(", ")} before submitting.`);
       if ((isAdminComposer && !form.institutionId) || !hasRealEventTitle(form.eventTitle) || !form.eventDate || !form.caption.trim()) {
+        setDetailsValidationAttempted(true);
         setActiveStep("details");
       } else if (!hasMedia) {
         setActiveStep("media");
@@ -2971,11 +2975,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               >
                 <input
                   ref={eventTitleRef}
-                  className={`sub-finput${!isReadOnlySubmission && !hasRealEventTitle(form.eventTitle) ? " is-invalid" : ""}`}
+                  className={`sub-finput${detailsValidationAttempted && !isReadOnlySubmission && !hasRealEventTitle(form.eventTitle) ? " is-invalid" : ""}`}
                   readOnly={isReadOnlySubmission}
                   aria-required={!isReadOnlySubmission}
                   aria-invalid={
-                    !isReadOnlySubmission && !hasRealEventTitle(form.eventTitle)
+                    detailsValidationAttempted && !isReadOnlySubmission && !hasRealEventTitle(form.eventTitle)
                   }
                   placeholder="e.g. CIT-U Innovation Summit 2026"
                   value={form.eventTitle}
@@ -3003,7 +3007,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     value={form.eventDate}
                     readOnly={isReadOnlySubmission}
                     placeholder="Select event date"
-                    invalid={!isReadOnlySubmission && !form.eventDate}
+                    invalid={detailsValidationAttempted && !isReadOnlySubmission && !form.eventDate}
                     onChange={(value) => updateField("eventDate", value)}
                   />
                 </Field>
@@ -3073,11 +3077,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div className="sub-caption-wrapper">
                 <textarea
                   ref={captionRef}
-                  className={`sub-finput ${captionTone(form.caption)}${!isReadOnlySubmission && !form.caption.trim() ? " is-invalid" : ""}`}
+                  className={`sub-finput ${captionTone(form.caption)}${detailsValidationAttempted && !isReadOnlySubmission && !form.caption.trim() ? " is-invalid" : ""}`}
                   rows={8}
                   readOnly={isReadOnlySubmission}
                   aria-required={!isReadOnlySubmission}
-                  aria-invalid={!isReadOnlySubmission && !form.caption.trim()}
+                  aria-invalid={detailsValidationAttempted && !isReadOnlySubmission && !form.caption.trim()}
                   value={form.caption}
                   onChange={(event) => {
                     updateCaption(event.target.value);

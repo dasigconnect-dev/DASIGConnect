@@ -68,6 +68,8 @@ export function getSubmissionStatusIcon(status: SubmissionStatus) {
       return "ti ti-clock";
     case "needs_revision":
       return "ti ti-alert-triangle";
+    case "missed_review":
+      return "ti ti-calendar-off";
     case "publish_failed":
     case "direct_post_failed":
     case "rejected":

@@ -164,7 +164,7 @@ export const statusGuidance: Record<SubmissionStatus, string> = {
   pending: "Awaiting review — submitted and waiting for review.",
   in_review: "Under review — this submission is currently being evaluated.",
   needs_revision: "Needs revision — changes were requested during review. Edit and resubmit.",
-  missed_review: "Missed schedule — scheduled time passed. Needs a new schedule.",
+  missed_review: "Missed schedule — scheduled time passed before review; needs a new schedule from a Moderator or Admin.",
   scheduled: "Approved — will publish automatically at the scheduled time.",
   publishing: "Publishing now to the DASIG Facebook Page.",
   publish_failed: "Publish failed — an Administrator or Moderator must retry or publish manually.",

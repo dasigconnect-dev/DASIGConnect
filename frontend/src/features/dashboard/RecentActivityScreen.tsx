@@ -330,6 +330,8 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
       return { label: "In Review", icon: "ti ti-eye", className: "pill-review" };
     case "needs_revision":
       return { label: "Needs Revision", icon: "ti ti-pencil-minus", className: "pill-revision" };
+    case "missed_review":
+      return { label: "Missed Schedule", icon: "ti ti-calendar-off", className: "pill-missed" };
     case "scheduled":
       return { label: "Scheduled", icon: "ti ti-calendar-event", className: "pill-scheduled" };
     case "publish_failed":

@@ -123,9 +123,6 @@ export default function AlbumCard({
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setMenuOpen(false);
       }}
     >
-      {institutionLogoUrl && (
-        <img className="med-folder-inst-watermark" src={institutionLogoUrl} alt="" aria-hidden="true" />
-      )}
       {institutionCode && <span className="med-folder-inst-badge">{institutionCode}</span>}
 
       <button className="med-folder-open" type="button" onClick={onOpen} aria-label={`Open ${album.name}`}>

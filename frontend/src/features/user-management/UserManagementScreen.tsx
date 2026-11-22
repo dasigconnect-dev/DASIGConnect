@@ -622,32 +622,33 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                 networkWide={inviteRole === 'moderator'}
                 embedded
                 sending={sending}
-                quickInviteHeader={
-                  inviteRole !== 'moderator' ? (
-                    <div className="um-context-bar" style={{ marginBottom: 0 }}>
-                      <div className="um-context-label">
-                        <i className="ti ti-building" aria-hidden="true"></i>
-                        <span>Invite to institution</span>
+                institutionPicker={
+                  <div className="um-composer-section">
+                    <div className="um-section-head">
+                      <div>
+                        <div className="um-composer-label">Institution</div>
                       </div>
-                      {institutionsLoading ? (
-                        <SkeletonBlock className="um-skeleton-line is-wide" />
-                      ) : (
-                        <BrandedSelect
-                          className="um-inst-select"
-                          value={effectiveInviteInstitutionId}
-                          onChange={setInviteInstitutionId}
-                          disabled={institutions.length === 0}
-                          ariaLabel="Select destination institution"
-                          placeholder="Select institution"
-                          options={
-                            institutions.length === 0
+                    </div>
+                    {institutionsLoading ? (
+                      <SkeletonBlock className="um-skeleton-line is-wide" />
+                    ) : (
+                      <BrandedSelect
+                        className="um-invite-inst-select"
+                        value={inviteRole === 'moderator' ? '__network__' : effectiveInviteInstitutionId}
+                        onChange={setInviteInstitutionId}
+                        disabled={institutions.length === 0 || inviteRole === 'moderator'}
+                        ariaLabel="Select destination institution"
+                        placeholder="Select institution"
+                        options={
+                          inviteRole === 'moderator'
+                            ? [{ value: '__network__', label: 'All institutions (network-wide)' }]
+                            : institutions.length === 0
                               ? [{ value: '', label: 'No institutions available', disabled: true }]
                               : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
-                          }
-                        />
-                      )}
-                    </div>
-                  ) : null
+                        }
+                      />
+                    )}
+                  </div>
                 }
                 onDraftChange={setEmailDraft}
                 onAddChip={(email) => {

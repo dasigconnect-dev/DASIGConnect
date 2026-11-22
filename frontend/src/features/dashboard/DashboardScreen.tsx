@@ -715,6 +715,8 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
       return { label, icon: "ti ti-eye", className: "pill-review" };
     case "needs_revision":
       return { label, icon: "ti ti-pencil-minus", className: "pill-revision" };
+    case "missed_review":
+      return { label, icon: "ti ti-calendar-off", className: "pill-missed" };
     case "scheduled":
       return { label, icon: "ti ti-calendar-event", className: "pill-scheduled" };
     case "publish_failed":
