@@ -27,6 +27,7 @@ import InvitationComposer from '../user-management/components/InvitationComposer
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
+import { roleTaskName, useTaskTelemetry } from '../../hooks/useTaskTelemetry'
 import {
   useInstitutionCountSummaryData,
   useInstitutionDetailData,
@@ -75,6 +76,13 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const invalidateInstitutionManagementData = useInvalidateInstitutionManagementData()
+  // Create / edit / deactivate / reactivate (AD1b): each success is one completed
+  // task, re-armed so the next action is timed from the previous one.
+  const institutionTelemetry = useTaskTelemetry(
+    roleTaskName(user.role, 'MANAGE_INSTITUTION'),
+    true,
+    { rearmAfterComplete: true },
+  )
   // inviting contributors and managing those pending invitations.
   const isAdmin = user.role === 'admin'
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -429,10 +437,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     setAddForm((f) => ({ ...f, loading: true, error: '' }))
     try {
       const response = await createInstitution(name, code, domain)
+      institutionTelemetry.completeTask(response.data.id)
       await invalidateInstitutionManagementData()
       toast.success(`${response.data.name} has been provisioned.`)
       handleCloseAddModal({ force: true })
     } catch (err: unknown) {
+      institutionTelemetry.recordError()
       const message = getApiErrorMessage(err, 'An error occurred while provisioning the workspace.')
       setAddForm((f) => ({ ...f, error: message }))
       toast.error(message)
@@ -494,10 +504,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     setEditForm((f) => ({ ...f, loading: true, error: '' }))
     try {
       const response = await updateInstitution(selectedInstitution.id, name, domain)
+      institutionTelemetry.completeTask(selectedInstitution.id)
       await invalidateInstitutionManagementData()
       toast.success(`${response.data.name} has been updated.`)
       handleCloseEditModal({ force: true })
     } catch (err: unknown) {
+      institutionTelemetry.recordError()
       const message = getApiErrorMessage(err, 'Failed to update institution.')
       setEditForm((f) => ({ ...f, error: message }))
       toast.error(message)
@@ -523,9 +535,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         setStatusActionLoading(true)
         try {
           await deactivateInstitution(institution.id)
+          institutionTelemetry.completeTask(institution.id)
           await invalidateInstitutionManagementData()
           toast.success(`${institution.name} has been deactivated.`)
         } catch (err: unknown) {
+          institutionTelemetry.recordError()
           toast.error(getApiErrorMessage(err, 'Failed to deactivate institution.'))
         } finally {
           setStatusActionLoading(false)
@@ -547,9 +561,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         setStatusActionLoading(true)
         try {
           await reactivateInstitution(institution.id)
+          institutionTelemetry.completeTask(institution.id)
           await invalidateInstitutionManagementData()
           toast.success(`${institution.name} has been reactivated.`)
         } catch (err: unknown) {
+          institutionTelemetry.recordError()
           toast.error(getApiErrorMessage(err, 'Failed to reactivate institution.'))
         } finally {
           setStatusActionLoading(false)

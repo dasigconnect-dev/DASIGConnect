@@ -14,6 +14,7 @@ import {
   type ManualPublishDetail,
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
+import { roleTaskName, useTaskTelemetry } from "./useTaskTelemetry";
 import { authenticatedQueryMeta } from "../lib/queryClient";
 import { invalidateQueryRoots } from "../lib/queryInvalidation";
 import { mutationCacheDependencies, queryKeys } from "../lib/queryKeys";
@@ -67,6 +68,14 @@ export function useResolutionFailures(
   search = "",
 ): UseResolutionFailuresResult {
   const toast = useToast();
+  // Failed-publication recovery (AD2): timed from the first recovery interaction
+  // (opening the manual-publish panel or pressing Retry) to a successful outcome.
+  // Re-armed so recovering several posts in one visit is timed per post.
+  const recoveryTelemetry = useTaskTelemetry(
+    roleTaskName(user.role, "RECOVER_FAILED_PUBLICATION"),
+    false,
+    { rearmAfterComplete: true },
+  );
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null);
@@ -177,6 +186,7 @@ export function useResolutionFailures(
   );
 
   function openWorkflowPanel(item: FailedPublication) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     detailErrorNotifiedRef.current = null;
     setActiveDetailId(item.submissionId);
   }
@@ -190,12 +200,14 @@ export function useResolutionFailures(
     scheduledAt: string,
     overrideReason?: string,
   ) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await retryPublicationWithNewSchedule(item.submissionId, {
         scheduledAt,
         overrideReason: overrideReason || undefined,
       });
+      recoveryTelemetry.completeTask(item.submissionId);
       toast.success(
         item.status === "missed_review"
           ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
@@ -211,6 +223,7 @@ export function useResolutionFailures(
         (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
         data?.message ||
         "Could not reschedule this submission — the new time may break a guard rail.";
+      recoveryTelemetry.recordError();
       toast.error(message);
       throw err;
     } finally {
@@ -219,9 +232,11 @@ export function useResolutionFailures(
   }
 
   async function handleRetry(item: FailedPublication) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await retryPublication(item.submissionId);
+      recoveryTelemetry.completeTask(item.submissionId);
       toast.success(`"${item.eventTitle}" re-queued for publishing.`);
       updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
@@ -233,6 +248,7 @@ export function useResolutionFailures(
         (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
         data?.message ||
         "Could not retry this submission.";
+      recoveryTelemetry.recordError();
       toast.error(message);
       throw err;
     } finally {
@@ -241,9 +257,11 @@ export function useResolutionFailures(
   }
 
   async function handleRetryAsLive(item: FailedPublication) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await retryPublicationAsLive(item.submissionId);
+      recoveryTelemetry.completeTask(item.submissionId);
       toast.success(`"${item.eventTitle}" switched to Live Event and re-queued.`);
       updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
@@ -255,6 +273,7 @@ export function useResolutionFailures(
         (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
         data?.message ||
         "Could not switch this submission to Live Event.";
+      recoveryTelemetry.recordError();
       toast.error(message);
       throw err;
     } finally {
@@ -263,6 +282,7 @@ export function useResolutionFailures(
   }
 
   async function handleStartManual(item: FailedPublication) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await startManualPublish(item.submissionId);
@@ -281,6 +301,7 @@ export function useResolutionFailures(
   }
 
   async function handleCancelManual(item: FailedPublication) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await cancelManualPublish(item.submissionId);
@@ -303,17 +324,20 @@ export function useResolutionFailures(
     postUrl?: string,
     notes?: string,
   ) {
+    recoveryTelemetry.ensureStarted(item.submissionId);
     setBusy(item.submissionId);
     try {
       await completeManualPublish(item.submissionId, {
         postUrl: postUrl || undefined,
         notes: notes || undefined,
       });
+      recoveryTelemetry.completeTask(item.submissionId);
       toast.success(`"${item.eventTitle}" marked as published.`);
       closeWorkflowPanel();
       updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
     } catch {
+      recoveryTelemetry.recordError();
       toast.error("Could not complete manual publish.");
     } finally {
       setBusy(null);
