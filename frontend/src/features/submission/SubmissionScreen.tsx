@@ -1113,7 +1113,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "eventTitle" && typeof value === "string") {
-        const previousDefault = current.eventTitle.trim();
+        const previousDefault = defaultMediaTags(current.eventTitle)[0] ?? "";
         const shouldRefreshDefaultTag =
           current.mediaTags.length === 0 ||
           (current.mediaTags.length === 1 && current.mediaTags[0] === previousDefault);

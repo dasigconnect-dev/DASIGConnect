@@ -204,8 +204,10 @@ export function removeHashtag(caption: string, hashtag: string) {
     .trim();
 }
 
+export const MAX_MEDIA_TAG_LENGTH = 50;
+
 export function normalizeMediaTag(value: string) {
-  return value.trim().replace(/^#+/, "").replace(/\s+/g, " ");
+  return value.trim().replace(/^#+/, "").replace(/\s+/g, " ").slice(0, MAX_MEDIA_TAG_LENGTH).trim();
 }
 
 export function defaultMediaTags(eventTitle: string) {

@@ -1014,6 +1014,34 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void attachMedia_truncatesLongMediaTagsTo50CharsAndDeduplicates() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        String longTitle = "Regional Science Technology and Innovation Week 2026 Celebration at Central Visayas";
+        submission.setMediaTags(longTitle + ", " + longTitle + ", dost7");
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("JPEG");
+        dto.setFileSizeBytes(1024L);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags
+                = org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
+        verify(assetTagRepository, org.mockito.Mockito.times(2)).save(tags.capture());
+        assertThat(tags.getAllValues())
+                .extracting(com.dasigconnect.backend.model.entity.AssetTag::getLabel)
+                .containsExactly(longTitle.substring(0, 50).trim(), "dost7");
+    }
+
+    @Test
     void attachMedia_onNeedsRevision_bindsInstitutionImmediately() {
         UUID submissionId = UUID.randomUUID();
         Submission submission = submission(submissionId, SubmissionStatus.needs_revision, Instant.now());
