@@ -1943,6 +1943,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function handleSubmit() {
     if (isReadOnlySubmission || busy) return;
     if (hasUnaddressedRevisions) {
+      submitTaskTelemetry.recordError();
       toast.error(
         `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`,
       );
@@ -1958,6 +1959,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (!form.albumName.trim()) missing.push("an album assignment");
     if (!form.fastTrack && !scheduledAt) missing.push("a preferred schedule");
     if (missing.length > 0) {
+      submitTaskTelemetry.recordError();
       toast.error(`Add ${missing.join(", ")} before submitting.`);
       if ((isAdminComposer && !form.institutionId) || !hasRealEventTitle(form.eventTitle) || !form.eventDate || !form.caption.trim()) {
         setDetailsValidationAttempted(true);
@@ -1994,6 +1996,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           );
           draftResponse = uploadResult as typeof draft;
         } catch (uploadErr: unknown) {
+          submitTaskTelemetry.recordError();
           toast.error(
             "Media upload failed. Your draft was preserved; use Save Draft or Submit to retry. " +
               getErrorMessage(uploadErr, "Check your connection and try again."),

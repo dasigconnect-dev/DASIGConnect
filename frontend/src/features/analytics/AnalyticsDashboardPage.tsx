@@ -18,6 +18,7 @@ import MultiSelect from "../../components/ui/MultiSelect";
 import { formatDateTime, formatNumber } from "./analyticsUtils";
 import "../../styles/analytics.css";
 import "../../styles/dasig-loader.css";
+import { roleTaskName, usePageViewTelemetry } from "../../hooks/useTaskTelemetry";
 
 interface Props {
   user: User;
@@ -26,6 +27,7 @@ interface Props {
 const DEFAULT_RANGE: AnalyticsRange = "30d";
 
 export default function AnalyticsDashboardPage({ user }: Props) {
+  usePageViewTelemetry(roleTaskName(user?.role, "VIEW_ANALYTICS"));
   const {
     range,
     setRange,

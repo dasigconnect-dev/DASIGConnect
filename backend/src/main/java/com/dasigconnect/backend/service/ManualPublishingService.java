@@ -167,6 +167,16 @@ public class ManualPublishingService {
         s.setRetryCount(0);
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
+
+        // Without this, a plain retry left no audit trace of who pressed Retry
+        // (only the retry-with-override variants were audited).
+        auditLogService.record(
+                entityManager.getReference(User.class, admin.userId()),
+                "MANUAL_PUBLISH_RETRY",
+                null, null,
+                submissionId,
+                Map.of("fastTrack", s.isFastTrack()));
+
         log.info("Admin {} queued retry for submission {}.", admin.userId(), submissionId);
 
         if (s.isFastTrack()) {
