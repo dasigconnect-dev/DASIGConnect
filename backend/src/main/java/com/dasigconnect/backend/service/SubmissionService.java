@@ -1009,14 +1009,21 @@ public class SubmissionService {
      * tags show up in the Media Library alongside library-uploaded assets'
      * tags.
      */
+    private static final int MAX_ASSET_TAG_LABEL_LENGTH = 50;
+
     private void applySubmissionMediaTags(MediaAsset asset, String joinedTags) {
         if (joinedTags == null || joinedTags.isBlank()) {
             return;
         }
         boolean changed = false;
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (String raw : joinedTags.split(",")) {
             String label = raw.trim();
-            if (label.isEmpty() || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
+            if (label.length() > MAX_ASSET_TAG_LABEL_LENGTH) {
+                label = label.substring(0, MAX_ASSET_TAG_LABEL_LENGTH).trim();
+            }
+            if (label.isEmpty() || !seen.add(label)
+                    || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
                 continue;
             }
             AssetTag tag = new AssetTag();

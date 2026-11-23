@@ -180,8 +180,23 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        Throwable root = ex.getMostSpecificCause();
+        String detail = root != null && root.getMessage() != null ? root.getMessage() : "";
+        String lower = detail.toLowerCase();
+        log.warn("Data integrity violation: {}", detail);
+
+        String message;
+        if (lower.contains("value too long")) {
+            message = "One of your fields exceeds the maximum allowed length (for example, media tags must be 50 characters or fewer). Please shorten your text and try again.";
+        } else if (lower.contains("ux_slot_reservations") || lower.contains("slot_reservations")) {
+            message = "That publishing time slot is already reserved or too close to another scheduled post. Please choose a different time.";
+        } else if (lower.contains("duplicate key") || lower.contains("unique constraint")) {
+            message = "A conflicting or duplicate record already exists. Please review your details (such as tags, album name, or schedule) and try again.";
+        } else {
+            message = "Unable to save due to invalid or conflicting data. Please check your inputs and try again.";
+        }
         return ResponseEntity.status(409)
-                .body(ApiResponse.error("CONFLICT", "Duplicate or invalid data", null));
+                .body(ApiResponse.error("CONFLICT", message, null));
     }
 
     @ExceptionHandler(SlotAlreadyTakenException.class)
