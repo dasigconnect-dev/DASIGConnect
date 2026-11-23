@@ -3,6 +3,7 @@ import type { InviteRole } from '../types'
 import type { InstitutionOption } from '../types'
 import EmailChipsInput from './EmailChipsInput'
 import { InlineSpinner } from './LoadingPrimitives'
+import { useTaskTelemetry } from '../../../hooks/useTaskTelemetry'
 import {
   previewBatchInvitations,
   sendBatchInvitations,
@@ -126,6 +127,10 @@ export default function InvitationComposer({
   const [batchSentResult, setBatchSentResult] = useState<BatchInvitationSendResponse | null>(null)
   const [batchError, setBatchError] = useState<string | null>(null)
 
+  // Bulk CSV invitation task (AD1a): clock starts at the first preview and
+  // stops when the batch is sent; rejected rows and failed calls count as errors.
+  const bulkInviteTelemetry = useTaskTelemetry('BULK_INVITE_USERS', false)
+
   const recipientCount = chips.length
   const atLimit = recipientCount >= maxRecipients
   const invalidRecipientCount = chips.filter((chip) => !isValidEmail(chip)).length
@@ -170,11 +175,15 @@ export default function InvitationComposer({
     }
 
     setPreviewLoading(true)
+    bulkInviteTelemetry.ensureStarted()
     try {
       setBatchRows(rows)
       const res = await previewBatchInvitations(rows)
       setPreviewData(res.data)
+      // Rows the server rejected are validation errors the participant had to fix.
+      if (res.data.invalidCount > 0) bulkInviteTelemetry.recordError(res.data.invalidCount)
     } catch (err: unknown) {
+      bulkInviteTelemetry.recordError()
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
         : 'Failed to preview batch invitations.'
@@ -225,8 +234,10 @@ export default function InvitationComposer({
       const res = await sendBatchInvitations(validRows)
       setBatchSentResult(res.data)
       setPreviewData(null)
+      bulkInviteTelemetry.completeTask(res.data.batchId)
       onBatchSuccess?.()
     } catch (err: unknown) {
+      bulkInviteTelemetry.recordError()
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
         : 'Failed to send batch invitations.'

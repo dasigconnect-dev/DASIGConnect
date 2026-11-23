@@ -12,6 +12,7 @@ import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import { dashboardTourSteps } from "../onboarding/tours/dashboardTour";
 import { statusGuidance, statusLabels } from "../submission/constants";
+import { roleTaskName, useTaskTelemetry } from "../../hooks/useTaskTelemetry";
 
 interface DashboardScreenProps {
   user: User;
@@ -47,6 +48,8 @@ interface ActivityItem {
 
 export default function DashboardScreen({ user }: DashboardScreenProps) {
   const navigate = useNavigate();
+  // Measures "land on the dashboard -> act on the next-action prompt" (RP-02).
+  const nextActionTelemetry = useTaskTelemetry(roleTaskName(user?.role, "DASHBOARD_NEXT_ACTION"));
   const dashboardData = useDashboardData(user);
   const institutions = dashboardData.institutions;
   const dashboardStats = dashboardData.stats ?? emptyDashboardStats;
@@ -140,7 +143,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                 <button
                   type="button"
                   className="first-login-notice-cta"
-                  onClick={() => navigate(nextAction.actionPath!)}
+                  onClick={() => {
+                    nextActionTelemetry.completeTask();
+                    navigate(nextAction.actionPath!);
+                  }}
                 >
                   <span>{nextAction.actionLabel}</span>
                   <i className="ti ti-arrow-right" aria-hidden="true" />

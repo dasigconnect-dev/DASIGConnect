@@ -23,6 +23,7 @@ import type { User } from "../../types/auth.types";
 import "../../styles/user-management.css";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
+import { roleTaskName, usePageViewTelemetry } from "../../hooks/useTaskTelemetry";
 
 interface Props {
   user: User;
@@ -42,6 +43,7 @@ function getUserCacheScope(user: User) {
 }
 
 export default function SystemHealthScreen({ user }: Props) {
+  usePageViewTelemetry(roleTaskName(user?.role, "VIEW_SYSTEM_HEALTH"));
   const toast = useToast();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);

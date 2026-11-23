@@ -8,6 +8,7 @@ This directory contains versioned release notes for all official releases of the
 
 | Version | Release Date | Summary Highlights |
 |---|---|---|
+| **[v3.4.3](./v3.4.3.md)** | `2026-11-24` | Expanded validation task telemetry & view-only page dwell tracking, admin audit actor attribution for institutions & plain retry, 50-char media tag truncation/deduplication fix, and clearer data integrity error messages |
 | **[v3.4.2](./v3.4.2.md)** | `2026-11-23` | Bulk invite soft domain warnings & per-row institution selector redesign, `BrandedSelect` dropdowns, missed schedule status badge, submission validation & Invite User modal UI/UX polish |
 | **[v3.4.1](./v3.4.1.md)** | `2026-11-22` | Review queue sorting & direction toggle, scheduling guard rails & timezone fix, semantic search & album auto-matching thresholds, smooth draft autosave & media caching, status badge tooltip, dashboard CTA & mobile UI polish |
 | **[v3.4.0](./v3.4.0.md)** | `2026-11-13` | Claude primary AI with Gemini standby fallback, Voyage AI card, session token & spend visibility, Facebook page name resolution, concurrent Run All Jobs toolbar, watermark studio & caption flow polish |

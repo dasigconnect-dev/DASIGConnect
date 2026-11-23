@@ -234,6 +234,19 @@ class ManualPublishingServiceTest {
     }
 
     @Test
+    void retry_publishFailed_recordsAuditEntryAttributedToCaller() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.retry(submissionId, admin);
+
+        verify(auditLogService).record(
+                org.mockito.ArgumentMatchers.argThat((User actor) -> actor != null && adminId.equals(actor.getId())),
+                eq("MANUAL_PUBLISH_RETRY"), any(), any(), eq(submissionId), any());
+    }
+
+    @Test
     void retry_nonPublishFailed_throwsConflict() {
         Submission s = submission(submissionId, SubmissionStatus.scheduled);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
