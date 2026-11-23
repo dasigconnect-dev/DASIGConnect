@@ -11,6 +11,7 @@ import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
 import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
+import BrandedSelect from "../../../components/ui/BrandedSelect";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import { buildAlbumOptions } from "../albumTree";
 
@@ -377,15 +378,16 @@ export default function AssetDetailPanel({
             <div>
               <div className="med-panel-section-label">Album Organization</div>
               <div className="med-album-manage">
-                <select
+                <BrandedSelect
                   className="med-album-select"
                   value={albumSelection}
-                  onChange={(event) => setAlbumSelection(event.target.value)}
-                >
-                  {albumOptions.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
+                  ariaLabel="Album selection"
+                  onChange={(val) => setAlbumSelection(val)}
+                  options={albumOptions.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                  }))}
+                />
                 {onUpdateAlbum && albumSelection && albumSelection !== (asset.albumId ?? "") && (
                   <button
                     className="med-btn med-btn-ghost med-btn-sm med-album-move-btn"

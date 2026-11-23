@@ -396,42 +396,44 @@
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.15), 0 4px 14px rgba(24, 119, 242, 0.08);
 }
 
+.ai-prompt-dialog:has(.dc-select.is-open) {
+  overflow: visible;
+}
+
 .ai-prompt-tone-select-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
   flex-shrink: 0;
-  height: 38px;
-  padding: 0 10px;
-  background: var(--sub-surface-2, #f7f9fd);
-  border: 1px solid var(--sub-border, #dde3ee);
-  border-radius: 999px;
 }
 
 .ai-prompt-tone-icon {
+  position: absolute;
+  left: 11px;
+  z-index: 370;
   font-size: 14px;
   color: var(--sub-blue, #1877f2);
   pointer-events: none;
   flex-shrink: 0;
 }
 
-.ai-prompt-tone-select {
-  appearance: auto;
-  border: none;
-  background: transparent;
-  color: var(--sub-text, #0c1d3d);
-  font-family: var(--sub-body);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  outline: none;
-  padding-right: 2px;
+.ai-prompt-tone-branded-select {
+  width: auto;
+  min-width: 142px;
 }
 
-.ai-prompt-tone-select:disabled {
-  opacity: 0.6;
-  cursor: default;
+.ai-prompt-tone-branded-select .dc-select-trigger {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 12px 0 32px;
+  background: var(--sub-surface-2, #f7f9fd);
+  border-color: var(--sub-border, #dde3ee);
+  color: var(--sub-text, #0c1d3d);
+  font-weight: 700;
+}
+
+.ai-prompt-tone-branded-select .dc-select-popover {
+  min-width: 164px;
 }
 
 .ai-prompt-chat-input-wrap {

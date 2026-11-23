@@ -1974,22 +1974,23 @@ function AlbumNameModal({
 
         <div className="med-modal-body">
           {showInstitutionPicker && (
-            <>
+            <div style={{ marginBottom: 12 }}>
               <label className="med-form-label" htmlFor="media-album-institution">Institution</label>
-              <select
-                id="media-album-institution"
-                className="med-form-input"
+              <BrandedSelect
                 value={institutionId}
-                onChange={(event) => onInstitutionChange?.(event.target.value)}
+                onChange={(val) => onInstitutionChange?.(val)}
                 disabled={saving}
-                style={{ marginBottom: 12 }}
-              >
-                <option value="">Select institution</option>
-                {institutions.map((inst) => (
-                  <option key={inst.id} value={inst.id}>{inst.name}</option>
-                ))}
-              </select>
-            </>
+                placeholder="Select institution"
+                ariaLabel="Institution"
+                options={[
+                  { value: "", label: "Select institution" },
+                  ...institutions.map((inst) => ({
+                    value: inst.id,
+                    label: inst.name,
+                  })),
+                ]}
+              />
+            </div>
           )}
           <label className="med-form-label" htmlFor="media-album-name">Folder name</label>
           <input

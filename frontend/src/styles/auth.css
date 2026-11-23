@@ -2077,6 +2077,10 @@ body {
   color: #ca8a04;
 }
 
+.pill-missed {
+  color: #c2410c;
+}
+
 .pill-draft {
   color: #64748b;
 }
