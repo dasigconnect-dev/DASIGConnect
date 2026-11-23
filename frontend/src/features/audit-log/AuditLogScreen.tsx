@@ -20,6 +20,7 @@ import AuditDetailModal from "./AuditDetailModal";
 import { SkeletonRows } from "../user-management/components/LoadingPrimitives";
 import "../../styles/audit-log.css";
 import "../../styles/dasig-loader.css";
+import { roleTaskName, usePageViewTelemetry } from "../../hooks/useTaskTelemetry";
 
 interface Props {
   user: User;
@@ -144,6 +145,7 @@ function getAuditLoadError(err: unknown) {
 }
 
 export default function AuditLogScreen({ user }: Props) {
+  usePageViewTelemetry(roleTaskName(user?.role, "VIEW_AUDIT_LOG"));
   const toast = useToast();
   const queryClient = useQueryClient();
   const userScope = getUserCacheScope(user);

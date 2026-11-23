@@ -21,6 +21,7 @@ import { CalendarErrorState } from "./CalendarStates";
 import { visibleCalendarStatus } from "./calendarStatus";
 import PageLoader from "../../components/common/PageLoader";
 import "../../styles/calendar.css";
+import { roleTaskName, usePageViewTelemetry } from "../../hooks/useTaskTelemetry";
 
 const CalendarView = lazy(() => import("./CalendarView"));
 const CalendarEventDetailModal = lazy(() => import("./CalendarEventDetailModal"));
@@ -31,6 +32,7 @@ interface CalendarScreenProps {
 }
 
 export default function CalendarScreen({ user }: CalendarScreenProps) {
+  usePageViewTelemetry(roleTaskName(user?.role, "VIEW_CALENDAR"));
   const calendarRef = useRef<FullCalendar>(null);
   const queryClient = useQueryClient();
   const toast = useToast();

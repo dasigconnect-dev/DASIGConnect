@@ -110,6 +110,29 @@ public class InstitutionService {
     }
 
     /**
+     * Records an administrator-initiated institution change attributed to the
+     * authenticated caller. Falls back to a system entry when there is no
+     * authenticated principal (e.g. internal callers), so nothing is lost.
+     */
+    private void recordAdminAudit(String action, UUID resourceId, Map<String, ?> metadata) {
+        UUID actorId = currentActorId();
+        if (actorId == null) {
+            auditLogService.recordSystemAction(action, resourceId, metadata);
+            return;
+        }
+        auditLogService.recordByActorId(actorId, action, null, null, resourceId, metadata);
+    }
+
+    private static UUID currentActorId() {
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof JwtUserDetails principal) {
+            return principal.userId();
+        }
+        return null;
+    }
+
+    /**
      * Creates a new institution with status INACTIVE and provisions its RLS
      * workspace.
      */
@@ -143,7 +166,7 @@ public class InstitutionService {
 
         workspaceProvisioner.provision(institution);
 
-        auditLogService.recordSystemAction(
+        recordAdminAudit(
                 "INSTITUTION_CREATED",
                 institution.getId(),
                 Map.of("name", institution.getName(), "code", institution.getCode())
@@ -314,7 +337,7 @@ public class InstitutionService {
         institution.setEmailDomain(newDomain);
         Institution saved = institutionRepository.save(institution);
 
-        auditLogService.recordSystemAction(
+        recordAdminAudit(
                 "INSTITUTION_UPDATED",
                 institutionId,
                 Map.of(
@@ -377,7 +400,7 @@ public class InstitutionService {
         institution.setStatus(InstitutionStatus.inactive);
         Institution saved = institutionRepository.save(institution);
 
-        auditLogService.recordSystemAction(
+        recordAdminAudit(
                 "INSTITUTION_DEACTIVATED",
                 institutionId,
                 Map.of("previousStatus", previousStatus)
@@ -405,7 +428,7 @@ public class InstitutionService {
         institution.setStatus(InstitutionStatus.active);
         Institution saved = institutionRepository.save(institution);
 
-        auditLogService.recordSystemAction(
+        recordAdminAudit(
                 "INSTITUTION_REACTIVATED",
                 institutionId,
                 Map.of("previousStatus", previousStatus, "newStatus", InstitutionStatus.active.name())
